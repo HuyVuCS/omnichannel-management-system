@@ -1,0 +1,39 @@
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using Omnichannel.Domain.Entities;
+
+namespace Omnichannel.Infrastructure.Persistence.Configurations;
+
+internal sealed class InventoryMovementConfiguration : IEntityTypeConfiguration<InventoryMovement>
+{
+    public void Configure(EntityTypeBuilder<InventoryMovement> builder)
+    {
+        builder.ToTable("InventoryMovements", t =>
+            t.HasCheckConstraint("CK_InventoryMovements_Stock_Positive", "\"Stock\" > 0"));
+
+        builder.HasKey(x => x.InventoryMovementId);
+        builder.Property(x => x.InventoryMovementId).ValueGeneratedNever();
+
+        builder.Property(x => x.Type).HasEnumAsString();
+        builder.Property(x => x.ReferenceType).HasEnumAsString();
+        builder.Property(x => x.ReferenceId).HasMaxLength(128);
+        builder.Property(x => x.DocumentNumber).HasMaxLength(64);
+        builder.Property(x => x.DocumentSeries).HasMaxLength(32);
+        builder.ConfigureAuditColumns();
+
+        builder.HasOne(x => x.Product)
+            .WithMany()
+            .HasForeignKey(x => x.ProductId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasIndex(x => new { x.ProductId, x.CreatedAt });
+        builder.HasIndex(x => new { x.ReferenceType, x.ReferenceId });
+
+        // Defence in depth for idempotency: a document can reserve/release a product only once,
+        // even if a redelivered message slips past the order-level check.
+        builder.HasIndex(x => new { x.ReferenceType, x.ReferenceId, x.ProductId, x.Type })
+            .IsUnique()
+            .HasFilter("\"ReferenceId\" IS NOT NULL AND \"Type\" IN ('Reserve', 'Release')")
+            .HasDatabaseName("UX_InventoryMovements_Reference_Reservation");
+    }
+}

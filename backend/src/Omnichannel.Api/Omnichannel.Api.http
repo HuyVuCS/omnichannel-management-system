@@ -1,0 +1,31 @@
+# VS Code REST Client / Visual Studio .http file.
+# Use the bootstrap admin configured via user-secrets (see README).
+@baseUrl = http://localhost:5080
+@email = admin@example.com
+@password = change-me
+
+### Health (anonymous)
+GET {{baseUrl}}/health
+
+### Login
+# @name login
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "{{email}}",
+  "password": "{{password}}"
+}
+
+### Current user
+GET {{baseUrl}}/api/auth/me
+Authorization: Bearer {{login.response.body.accessToken}}
+
+### Validation error (400 ProblemDetails)
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "not-an-email",
+  "password": ""
+}
