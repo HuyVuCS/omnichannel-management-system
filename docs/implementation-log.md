@@ -3,6 +3,13 @@
 Decisions taken while implementing the architecture document, in order of the implementation plan (section 15).
 Anything listed under "Deviations" differs from, or adds to, the architecture document and should be confirmed.
 
+## Working model
+
+- Planning and review: Claude Cowork. Implementation, build, test: Claude Code (desktop Code tab or VS Code).
+- Handoff through `docs/tasks/` (see `docs/tasks/README.md`): Cowork writes `NNN-*.md`, Claude Code runs `/next-task`
+  and writes `NNN-*.report.md`. Only results in a report count as verified.
+- `.claude/settings.json` pre-approves read-only/build commands and denies reading `.env` files.
+
 ## Steps 1–3 — Solution, Docker, data model, Auth/RBAC (2026-09-25)
 
 ### Decisions
