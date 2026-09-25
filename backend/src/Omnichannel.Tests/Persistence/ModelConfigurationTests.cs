@@ -104,7 +104,8 @@ public sealed class ModelConfigurationTests : IDisposable
     {
         var property = _model.FindEntityType(entityType)!.FindProperty(propertyName)!;
 
-        Assert.Equal(typeof(string), property.GetValueConverter()?.ProviderClrType);
+        // HasConversion<string>() only records the provider type; the converter itself lives on the type mapping.
+        Assert.Equal(typeof(string), property.GetTypeMapping().Converter?.ProviderClrType);
     }
 
     [Fact]
