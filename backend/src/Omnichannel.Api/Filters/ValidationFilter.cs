@@ -1,8 +1,6 @@
 using System.Collections.Concurrent;
 using FluentValidation;
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
-using Microsoft.AspNetCore.Mvc.Infrastructure;
 
 namespace Omnichannel.Api.Filters;
 
@@ -46,18 +44,7 @@ public sealed class ValidationFilter : IAsyncActionFilter
 
         if (!context.ModelState.IsValid)
         {
-            var factory = services.GetRequiredService<ProblemDetailsFactory>();
-            var problem = factory.CreateValidationProblemDetails(
-                context.HttpContext,
-                context.ModelState,
-                StatusCodes.Status400BadRequest,
-                title: "Validation failed");
-            problem.Extensions["errorCode"] = "validation_failed";
-
-            context.Result = new BadRequestObjectResult(problem)
-            {
-                ContentTypes = { "application/problem+json" }
-            };
+            context.Result = ValidationProblemResponse.Create(context.HttpContext, context.ModelState);
             return;
         }
 

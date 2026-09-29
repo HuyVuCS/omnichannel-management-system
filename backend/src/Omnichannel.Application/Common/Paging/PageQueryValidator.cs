@@ -8,7 +8,7 @@ public abstract class PageQueryValidator<TQuery> : AbstractValidator<TQuery>
 {
     protected PageQueryValidator(IReadOnlyCollection<string> sortFields)
     {
-        RuleFor(x => x.Page).GreaterThanOrEqualTo(1);
+        RuleFor(x => x.Page).InclusiveBetween(1, PageQuery.MaxPage);
 
         RuleFor(x => x.PageSize).InclusiveBetween(1, PageQuery.MaxPageSize);
 

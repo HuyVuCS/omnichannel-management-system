@@ -20,6 +20,8 @@ public sealed class PageQueryValidatorTests
 
     [Theory]
     [InlineData(0, 20)]
+    [InlineData(10_001, 20)]
+    [InlineData(int.MaxValue, 20)]
     [InlineData(1, 0)]
     [InlineData(1, 101)]
     public void Rejects_out_of_range_page_or_size(int page, int pageSize)

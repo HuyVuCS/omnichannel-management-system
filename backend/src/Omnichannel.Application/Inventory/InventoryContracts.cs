@@ -27,8 +27,8 @@ public sealed record InventoryListQuery : PageQuery
         [SortBySku, SortByName, SortByAvailableStock, SortByUpdatedAt];
 
     /// <summary>
-    /// Only products that are low on stock: <c>LowStockThreshold &gt; 0 AND AvailableStock &lt;= LowStockThreshold</c>.
-    /// A threshold of 0 turns the low-stock warning off for that product.
+    /// Only products that are low on stock: <c>AvailableStock &lt;= LowStockThreshold</c> (inclusive, no special case;
+    /// threshold 0 means "warn when out of stock").
     /// </summary>
     public bool LowStockOnly { get; init; }
 }
