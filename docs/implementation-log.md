@@ -124,3 +124,28 @@ Order intake (decision A), migration `ProcessingTaskIdempotencyKey`, camelCase v
 | Publishing | Outbox Publisher in Workers; `FOR UPDATE SKIP LOCKED` batches; publisher confirms + mandatory; mark Published only after confirm | Several instances safe; no silent loss | — |
 | Delivery guarantee | At-least-once; consumers deduplicate by `messageId` (= OutboxEventId) | Crash between confirm and commit republishes | — |
 | Publish failures | `PublishAttempts`/`NextAttemptAt`/`LastError` on OutboxEvent, exponential backoff with jitter, `Failed` + SystemEventLog after 10 | No infinite retry; failures visible | — |
+
+## Task 005 result (reviewed 2026-09-30)
+
+RabbitMQ topology + Outbox Publisher + request hash (409 `order_conflict`); migrations `ProcessingTaskRequestHash`,
+`OutboxPublishTracking`; 224/224 tests. Review: `docs/tasks/005-*.review.md`.
+
+| Topic | Decision | Reason |
+| --- | --- | --- |
+| Outbox attempt counting | Only message-specific failures (returned/unroutable, nack) count toward `MaxAttempts`; connection/channel errors and confirm timeouts back off the loop and leave rows untouched (task 006 Part A) | A broker outage must never turn healthy messages into `Failed` (doc §13) |
+| Broker unreachable at start-up | Workers host starts and warns; topology declared on first successful connection; mismatch stops the host | Both task requirements hold |
+
+## Task 006 plan — Order Worker (2026-09-30)
+
+| Topic | Decision | Reason |
+| --- | --- | --- |
+| Reservation | One transaction; per item `UPDATE ... SET ReservedStock = ReservedStock + n WHERE ProductId = @p AND AvailableStock >= n RETURNING ...`, items in `ProductId` order; all or nothing | Atomic check-and-reserve, no oversell, no deadlock |
+| Insufficient stock | Order stored with `Status = InsufficientStock`, **task `Succeeded`**, `SystemEventLog` Warning `order.insufficient_stock` (alert source for step 11) | Deterministic business outcome, not a technical failure; `Failed` tasks mean operator action |
+| Attempts | Attempt row committed before the business transaction; stale `Running` attempts marked `Failed/abandoned` on redelivery | Attempts survive crashes; history is exact |
+| Duplicate delivery | Terminal task status → ACK without work; `UX_Orders_ChannelId_ExternalOrderId` as final guard | At-least-once delivery from the publisher |
+| Transient failures (interim) | Attempt `Failed` + task `RetryScheduled` + nack requeue, bounded by `x-delivery-limit`; replaced by delayed retry in 007 | Keep 006 focused on reservation correctness |
+
+## Roadmap change (2026-09-30)
+User management (Admin: create users, roles, lock/unlock, reset password) added as task 009; later planned tasks renumbered.
+Only the bootstrap admin existed. An untracked, empty `Omnichannel.UserSeeder` project was deleted with the user's approval.
+Task 005 manual acceptance check confirmed by the user (message with envelope in `order.processing`).
