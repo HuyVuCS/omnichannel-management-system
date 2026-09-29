@@ -91,6 +91,46 @@ public sealed class OrderIntakeTests(ApiFactory factory)
     }
 
     [Fact]
+    public async Task Resubmission_with_items_in_another_order_is_still_a_duplicate()
+    {
+        var (customerId, a) = await CreateCustomerAndProductAsync();
+        var (_, b) = await CreateCustomerAndProductAsync();
+        var request = NewOrder(customerId, (a.ProductId, 1), (b.ProductId, 2));
+
+        var first = await (await _staff.PostAsJsonAsync("/api/orders/website", request)).ReadAsync<SubmitOrderResponse>();
+        var reordered = request with { Items = request.Items.Reverse().ToList() };
+        var second = await _staff.PostAsJsonAsync("/api/orders/website", reordered);
+
+        Assert.Equal(HttpStatusCode.Accepted, second.StatusCode);
+        var secondBody = await second.ReadAsync<SubmitOrderResponse>();
+        Assert.Equal((first.TaskId, true), (secondBody.TaskId, secondBody.Duplicate));
+    }
+
+    [Fact]
+    public async Task Resubmission_with_different_content_is_a_conflict_and_writes_nothing()
+    {
+        var (customerId, product) = await CreateCustomerAndProductAsync();
+        var (otherCustomerId, _) = await CreateCustomerAndProductAsync();
+        var request = NewOrder(customerId, (product.ProductId, 1));
+        var first = await _staff.PostAsJsonAsync("/api/orders/website", request);
+        Assert.Equal(HttpStatusCode.Accepted, first.StatusCode);
+
+        var otherQuantity = await _staff.PostAsJsonAsync(
+            "/api/orders/website", request with { Items = [new SubmitOrderItem(product.ProductId, 2)] });
+        var otherCustomer = await _staff.PostAsJsonAsync(
+            "/api/orders/website", request with { CustomerId = otherCustomerId });
+
+        Assert.Equal(HttpStatusCode.Conflict, otherQuantity.StatusCode);
+        Assert.Equal(OrderErrorCodes.OrderConflict, await otherQuantity.ReadErrorCodeAsync());
+        Assert.Equal(HttpStatusCode.Conflict, otherCustomer.StatusCode);
+        Assert.Equal(OrderErrorCodes.OrderConflict, await otherCustomer.ReadErrorCodeAsync());
+
+        var (tasks, outbox, _) = await RowsAsync(request.ExternalOrderId);
+        Assert.Equal(OrderRequestHash.Compute(customerId, request.Items), Assert.Single(tasks).RequestHash);
+        Assert.Single(outbox);
+    }
+
+    [Fact]
     public async Task Concurrent_identical_submissions_create_one_task()
     {
         var (customerId, product) = await CreateCustomerAndProductAsync();

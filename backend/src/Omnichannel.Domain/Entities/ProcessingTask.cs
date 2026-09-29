@@ -16,16 +16,24 @@ public class ProcessingTask : IHasTimestamps
 
     public const int MaxIdempotencyKeyLength = 200;
 
+    /// <summary>SHA-256 as lower-case hex.</summary>
+    public const int RequestHashLength = 64;
+
     /// <param name="idempotencyKey">
     /// Optional business key (unique): a second task with the same key cannot be created, e.g. the same external order
     /// submitted twice before any order exists.
+    /// </param>
+    /// <param name="requestHash">
+    /// Optional hash of the submitted content behind <paramref name="idempotencyKey"/>, used to tell an identical
+    /// resubmission from a conflicting one.
     /// </param>
     public ProcessingTask(
         ProcessingTaskType taskType,
         Guid? orderId,
         string correlationId,
         string? messageId,
-        string? idempotencyKey = null)
+        string? idempotencyKey = null,
+        string? requestHash = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(correlationId);
         if (idempotencyKey is not null)
@@ -33,6 +41,13 @@ public class ProcessingTask : IHasTimestamps
             ArgumentException.ThrowIfNullOrWhiteSpace(idempotencyKey);
             ArgumentOutOfRangeException.ThrowIfGreaterThan(idempotencyKey.Length, MaxIdempotencyKeyLength, nameof(idempotencyKey));
         }
+
+        if (requestHash is not null && requestHash.Length != RequestHashLength)
+        {
+            throw new ArgumentException($"Request hash must be {RequestHashLength} hex characters.", nameof(requestHash));
+        }
+
+        RequestHash = requestHash;
 
         TaskId = Guid.CreateVersion7();
         TaskType = taskType;
@@ -55,6 +70,7 @@ public class ProcessingTask : IHasTimestamps
     public string CorrelationId { get; private set; } = null!;
     public string? MessageId { get; private set; }
     public string? IdempotencyKey { get; private set; }
+    public string? RequestHash { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset? UpdatedAt { get; private set; }
 

@@ -17,4 +17,7 @@ public static class OrderErrorCodes
 {
     /// <summary>The channel slug does not exist or the channel is inactive.</summary>
     public const string ChannelNotFound = "channel_not_found";
+
+    /// <summary>The external order id was already submitted on this channel with different content.</summary>
+    public const string OrderConflict = "order_conflict";
 }

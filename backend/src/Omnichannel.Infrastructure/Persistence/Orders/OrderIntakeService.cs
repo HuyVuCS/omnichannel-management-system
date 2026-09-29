@@ -44,6 +44,7 @@ internal sealed class OrderIntakeService(
 
         var externalOrderId = request.ExternalOrderId.Trim();
         var idempotencyKey = OrderIdempotencyKey.For(channel.ChannelId, externalOrderId);
+        var requestHash = OrderRequestHash.Compute(request.CustomerId, request.Items);
         var correlationId = correlationContext.CorrelationId;
 
         // The outbox id is the RabbitMQ messageId; the task records it, so it is generated first.
@@ -53,7 +54,8 @@ internal sealed class OrderIntakeService(
             orderId: null,
             correlationId,
             messageId: outboxEventId.ToString(),
-            idempotencyKey);
+            idempotencyKey,
+            requestHash);
 
         var order = new NormalizedOrder(
             task.TaskId,
@@ -82,7 +84,7 @@ internal sealed class OrderIntakeService(
         catch (DbUpdateException exception)
             when (exception.IsUniqueViolation(ProcessingTaskConfiguration.IdempotencyKeyIndexName))
         {
-            return await ExistingSubmissionAsync(idempotencyKey, cancellationToken);
+            return await ExistingSubmissionAsync(idempotencyKey, requestHash, externalOrderId, cancellationToken);
         }
 
         logger.LogInformation(
@@ -128,7 +130,15 @@ internal sealed class OrderIntakeService(
         return failures.Count == 0 ? prices : throw new ValidationException(failures);
     }
 
-    private async Task<SubmitOrderResponse> ExistingSubmissionAsync(string idempotencyKey, CancellationToken cancellationToken)
+    /// <summary>
+    /// Same key: identical content → the existing task (duplicate); different content → 409, the new content is not
+    /// silently dropped. Tasks stored before hashes existed (null hash) are treated as identical.
+    /// </summary>
+    private async Task<SubmitOrderResponse> ExistingSubmissionAsync(
+        string idempotencyKey,
+        string requestHash,
+        string externalOrderId,
+        CancellationToken cancellationToken)
     {
         // Forget the rejected inserts; the unique index guarantees the winning submission is committed.
         dbContext.ChangeTracker.Clear();
@@ -136,8 +146,19 @@ internal sealed class OrderIntakeService(
         var existing = await dbContext.ProcessingTasks
             .AsNoTracking()
             .Where(t => t.IdempotencyKey == idempotencyKey)
-            .Select(t => new { t.TaskId, t.Status, t.CorrelationId })
+            .Select(t => new { t.TaskId, t.Status, t.CorrelationId, t.RequestHash })
             .SingleAsync(cancellationToken);
+
+        if (existing.RequestHash is not null && existing.RequestHash != requestHash)
+        {
+            logger.LogWarning(
+                "Order {ExternalOrderId} resubmitted with different content; existing task {TaskId}",
+                externalOrderId,
+                existing.TaskId);
+            throw new ConflictException(
+                OrderErrorCodes.OrderConflict,
+                $"Order '{externalOrderId}' was already submitted on this channel with different content.");
+        }
 
         logger.LogInformation("Duplicate order submission for existing task {TaskId}", existing.TaskId);
 
