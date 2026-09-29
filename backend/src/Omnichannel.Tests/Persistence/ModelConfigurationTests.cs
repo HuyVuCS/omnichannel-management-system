@@ -95,6 +95,28 @@ public sealed class ModelConfigurationTests : IDisposable
         Assert.True(index.IsUnique);
     }
 
+    [Fact]
+    public void Movement_reference_is_unique_per_product_for_import_reserve_and_release()
+    {
+        var index = Entity<InventoryMovement>().GetIndexes()
+            .Single(i => i.GetDatabaseName() == "UX_InventoryMovements_Reference");
+
+        Assert.True(index.IsUnique);
+        Assert.Equal(
+            new[]
+            {
+                nameof(InventoryMovement.ReferenceType), nameof(InventoryMovement.ReferenceId),
+                nameof(InventoryMovement.ProductId), nameof(InventoryMovement.Type)
+            },
+            index.Properties.Select(p => p.Name).ToArray());
+        Assert.Equal(
+            "\"ReferenceId\" IS NOT NULL AND \"Type\" IN ('Import', 'Reserve', 'Release')",
+            index.GetFilter());
+        Assert.DoesNotContain(
+            Entity<InventoryMovement>().GetIndexes(),
+            i => i.GetDatabaseName() == "UX_InventoryMovements_Reference_Reservation");
+    }
+
     [Theory]
     [InlineData(typeof(Order), nameof(Order.Status))]
     [InlineData(typeof(ProcessingTask), nameof(ProcessingTask.Status))]

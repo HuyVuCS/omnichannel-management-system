@@ -6,4 +6,8 @@ namespace Omnichannel.Application.Inventory;
 public interface IInventoryQueryService
 {
     Task<PagedResult<InventoryItemResponse>> ListAsync(InventoryListQuery query, CancellationToken cancellationToken);
+
+    Task<PagedResult<InventoryMovementResponse>> ListMovementsAsync(
+        InventoryMovementListQuery query,
+        CancellationToken cancellationToken);
 }

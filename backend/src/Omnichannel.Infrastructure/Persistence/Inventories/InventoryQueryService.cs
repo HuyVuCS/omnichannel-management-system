@@ -70,4 +70,69 @@ internal sealed class InventoryQueryService(OmnichannelDbContext dbContext) : II
 
         return new PagedResult<InventoryItemResponse>(items, query.Page, query.PageSize, totalCount);
     }
+
+    public async Task<PagedResult<InventoryMovementResponse>> ListMovementsAsync(
+        InventoryMovementListQuery query,
+        CancellationToken cancellationToken)
+    {
+        IQueryable<InventoryMovement> movements = dbContext.InventoryMovements.AsNoTracking();
+
+        if (query.ProductId is { } productId)
+        {
+            movements = movements.Where(m => m.ProductId == productId);
+        }
+
+        if (query.Type is { } type)
+        {
+            movements = movements.Where(m => m.Type == type);
+        }
+
+        if (query.ReferenceType is { } referenceType)
+        {
+            movements = movements.Where(m => m.ReferenceType == referenceType);
+        }
+
+        if (!string.IsNullOrWhiteSpace(query.ReferenceId))
+        {
+            var referenceId = query.ReferenceId.Trim();
+            movements = movements.Where(m => m.ReferenceId == referenceId);
+        }
+
+        // Npgsql only writes UTC DateTimeOffset values to timestamptz; clients may send any offset.
+        if (query.From is { } from)
+        {
+            var fromUtc = from.ToUniversalTime();
+            movements = movements.Where(m => m.CreatedAt >= fromUtc);
+        }
+
+        if (query.To is { } to)
+        {
+            var toUtc = to.ToUniversalTime();
+            movements = movements.Where(m => m.CreatedAt <= toUtc);
+        }
+
+        var totalCount = await movements.CountAsync(cancellationToken);
+
+        var items = await movements
+            .OrderByDescending(m => m.CreatedAt)
+            .ThenByDescending(m => m.InventoryMovementId)
+            .Skip(query.Skip)
+            .Take(query.PageSize)
+            .Select(m => new InventoryMovementResponse(
+                m.InventoryMovementId,
+                m.ProductId,
+                m.Product.Sku,
+                m.Product.Name,
+                m.Type,
+                m.Stock,
+                m.ReferenceType,
+                m.ReferenceId,
+                m.DocumentNumber,
+                m.DocumentSeries,
+                m.CreatedAt,
+                m.CreatedBy))
+            .ToListAsync(cancellationToken);
+
+        return new PagedResult<InventoryMovementResponse>(items, query.Page, query.PageSize, totalCount);
+    }
 }

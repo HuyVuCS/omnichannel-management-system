@@ -36,6 +36,8 @@ try
     builder.Services.AddApplication();
     builder.Services.AddInfrastructure();
     builder.Services.AddSingleton<ICurrentUser, WorkerCurrentUser>();
+    builder.Services.AddScoped<WorkerCorrelationContext>();
+    builder.Services.AddScoped<ICorrelationContext>(sp => sp.GetRequiredService<WorkerCorrelationContext>());
 
     // Hosted workers (OrderWorker, OutboxPublisher, StockSyncWorker, ...) are registered from
     // implementation step 6 onwards, together with RabbitMQ.
