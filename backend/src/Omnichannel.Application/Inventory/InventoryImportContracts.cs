@@ -23,4 +23,7 @@ public sealed record ImportedInventoryItem(
 public static class InventoryErrorCodes
 {
     public const string ImportAlreadyApplied = "stock_import_already_applied";
+
+    /// <summary>The import would push TotalStock beyond the column's maximum (PostgreSQL integer).</summary>
+    public const string StockLimitExceeded = "stock_limit_exceeded";
 }

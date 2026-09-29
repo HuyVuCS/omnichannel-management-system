@@ -1,3 +1,4 @@
+using Omnichannel.Application.Common.Validation;
 using Omnichannel.Application.Auth;
 
 namespace Omnichannel.Tests.Auth;
@@ -21,7 +22,7 @@ public sealed class LoginRequestValidatorTests
         var result = _validator.Validate(new LoginRequest(email, password));
 
         Assert.False(result.IsValid);
-        Assert.Contains(result.Errors, e => e.PropertyName == invalidProperty);
+        Assert.Contains(result.Errors, e => e.PropertyName == ValidationConventions.JsonName(invalidProperty));
     }
 
     [Fact]
@@ -31,6 +32,6 @@ public sealed class LoginRequestValidatorTests
 
         var result = _validator.Validate(new LoginRequest("admin@example.com", password));
 
-        Assert.Contains(result.Errors, e => e.PropertyName == nameof(LoginRequest.Password));
+        Assert.Contains(result.Errors, e => e.PropertyName == ValidationConventions.JsonName(nameof(LoginRequest.Password)));
     }
 }
