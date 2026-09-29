@@ -10,6 +10,25 @@ Every stock change must leave an `InventoryMovement` and, in the **same transact
 until then they simply stay `Pending`. This task introduces the first real stock mutation, so the concurrency rules
 below are mandatory.
 
+## Part A — Follow-ups from review 002 (separate commit)
+1. **Model-binding 400s carry `errorCode`:** configure `ApiBehaviorOptions.InvalidModelStateResponseFactory` so automatic
+   `[ApiController]` 400s have the same shape as `ValidationFilter` responses (`errorCode = "validation_failed"`,
+   `correlationId`). Integration test: `GET /api/products?pageSize=abc` → 400 with `errorCode=validation_failed`.
+2. **Page upper bound:** `PageQuery.MaxPage = 10_000`, validated (`page` 1–10,000). Test: `page=2147483647` → 400, not 500.
+3. **SKU format:** after trim + upper-case, SKU must match `^[A-Z0-9][A-Z0-9._-]*$` (≤ 64). Validator + entity guard.
+   Tests: `abc-1.x_2` accepted (stored `ABC-1.X_2`); `AB C`, `A/B`, `-AB`, `ÁB` rejected with 400.
+4. **Low-stock rule corrected (supersedes the task-002 rule):** `isLowStock = AvailableStock <= LowStockThreshold`,
+   with **no** special case for threshold 0 (threshold 0 ⇒ warn when the product is out of stock).
+   - Define the predicate **once** (e.g. `Expression<Func<Inventory, bool>>` in `Persistence/Inventories`) and use it for
+     both `lowStockOnly` and `isLowStock`; step 11 alerts will reuse it. Update the XML doc on `InventoryListQuery.LowStockOnly`.
+   - Replace the task-002 test with: threshold 5 / stock 0 → low; threshold 0 / stock 0 → low.
+   - After Part B exists, add: threshold 5 + import 10 → not low; threshold 5 + import 5 → low (boundary is inclusive).
+
+## Part B — Inventory import and movements
+
+Placement: `Application/Inventory` for contracts/validators/interfaces; implementation in
+`Infrastructure/Persistence/Inventories` (namespace decision from task 002).
+
 ## Endpoints
 
 ### `POST /api/inventory/import` — ManagerOrAdmin
