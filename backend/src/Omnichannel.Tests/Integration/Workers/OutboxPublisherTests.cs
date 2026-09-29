@@ -6,6 +6,7 @@ using System.Text.Json.Nodes;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Omnichannel.Application.Common.Messaging;
 using Omnichannel.Domain.Entities;
 using Omnichannel.Domain.Enums;
@@ -186,9 +187,18 @@ public sealed class OutboxPublisherTests(WorkersFixture fixture) : IAsyncLifetim
     }
 
     [Fact]
-    public async Task Rows_stay_pending_while_the_broker_is_down_and_are_published_when_it_is_back()
+    public async Task Broker_outage_leaves_rows_pending_without_counting_attempts_and_they_are_published_when_it_is_back()
     {
-        using var host = fixture.CreateHost("broker-outage", new Dictionary<string, string?> { ["OutboxPublisher:MaxAttempts"] = "1000" });
+        const int maxAttempts = 3;
+        var logs = new CapturingLoggerProvider();
+        using var host = fixture.CreateHost(
+            "broker-outage",
+            new Dictionary<string, string?>
+            {
+                ["OutboxPublisher:MaxAttempts"] = maxAttempts.ToString(),
+                ["OutboxPublisher:MaxBackoff"] = "00:00:00.500"
+            },
+            services => services.AddSingleton<ILoggerProvider>(logs));
         await host.StartAsync();
         var lifetime = host.Services.GetRequiredService<IHostApplicationLifetime>();
         var rows = new[] { NewOrderCreatedRow("outage-1"), NewOrderCreatedRow("outage-2") };
@@ -199,16 +209,20 @@ public sealed class OutboxPublisherTests(WorkersFixture fixture) : IAsyncLifetim
             await fixture.StopBrokerAsync();
             await InsertAsync(rows);
 
-            var failing = await Eventually.WaitAsync(
-                () => LoadAllAsync(ids),
-                loaded => loaded.All(r => r.PublishAttempts >= 2),
+            // Well beyond MaxAttempts publisher polls hit the dead broker ...
+            await Eventually.WaitAsync(
+                () => Task.FromResult(logs.Count(typeof(OutboxPublisherService).FullName!, LogLevel.Warning, "RabbitMQ unavailable")),
+                count => count >= maxAttempts + 2,
                 Timeout,
-                "publish attempts while the broker is down");
-            Assert.All(failing, r =>
+                "publisher backing off on the unavailable broker");
+
+            // ... but no row counted an attempt: an outage of any length must not fail healthy messages.
+            Assert.All(await LoadAllAsync(ids), r =>
             {
                 Assert.Equal(OutboxEventStatus.Pending, r.Status);
-                Assert.NotNull(r.LastError);
-                Assert.True(r.NextAttemptAt > r.UpdatedAt, "NextAttemptAt must be in the future when the failure is recorded");
+                Assert.Equal(0, r.PublishAttempts);
+                Assert.Null(r.LastError);
+                Assert.Null(r.NextAttemptAt);
             });
             Assert.False(lifetime.ApplicationStopping.IsCancellationRequested);
         }

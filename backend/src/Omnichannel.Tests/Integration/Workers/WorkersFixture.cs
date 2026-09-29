@@ -83,8 +83,14 @@ public sealed class WorkersFixture : IAsyncLifetime
         await Task.WhenAll(_postgres.DisposeAsync().AsTask(), _rabbit.DisposeAsync().AsTask());
     }
 
-    /// <summary>A Workers host (not started) with test configuration; <paramref name="overrides"/> win.</summary>
-    public IHost CreateHost(string instanceId, IDictionary<string, string?>? overrides = null)
+    /// <summary>
+    /// A Workers host (not started) with test configuration; <paramref name="overrides"/> win.
+    /// <paramref name="configureServices"/> runs after the production registrations (test seams, log capture).
+    /// </summary>
+    public IHost CreateHost(
+        string instanceId,
+        IDictionary<string, string?>? overrides = null,
+        Action<IServiceCollection>? configureServices = null)
     {
         var settings = new Dictionary<string, string?>
         {
@@ -113,6 +119,7 @@ public sealed class WorkersFixture : IAsyncLifetime
         });
         builder.Configuration.AddInMemoryCollection(settings);
         builder.Services.AddWorkerServices(builder.Configuration);
+        configureServices?.Invoke(builder.Services);
         return builder.Build();
     }
 
