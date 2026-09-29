@@ -89,6 +89,28 @@ dotnet run --project src/Omnichannel.Api --launch-profile http
 
 Run the API in Docker instead: `docker compose -f docker/docker-compose.yml --env-file docker/.env --profile app up -d --build` (port 8080).
 
+### 6. Workers (Outbox Publisher)
+
+The Workers host publishes pending outbox rows to RabbitMQ. It uses the **runtime** database role and the RabbitMQ user from
+`docker/.env` (secrets via user-secrets, never appsettings):
+
+```powershell
+cd src/Omnichannel.Workers
+dotnet user-secrets set "ConnectionStrings:Default" "Host=localhost;Port=5432;Database=omnichannel;Username=omnichannel_app;Password=<OMNI_APP_PASSWORD>"
+dotnet user-secrets set "RabbitMq:UserName" "<RABBITMQ_USER>"
+dotnet user-secrets set "RabbitMq:Password" "<RABBITMQ_PASSWORD>"
+cd ../..
+dotnet run --project src/Omnichannel.Workers
+```
+
+- On start-up it declares the RabbitMQ topology (exchanges `omnichannel.topic` / `omnichannel.dlx`, quorum queues and their
+  `.dlq` queues). If an existing queue has different arguments the host stops with a "topology mismatch" error; queues are
+  never deleted automatically. If RabbitMQ is down, the host still starts and publishing resumes when the broker is back.
+- Management UI: http://localhost:15672 (same RabbitMQ user). After submitting an order through the API, the message appears
+  in queue `order.processing` (no consumer yet).
+- Optional settings: `OutboxPublisher:BatchSize` (100), `PollInterval` (1 s), `MaxAttempts` (10), `InitialBackoff` (1 s),
+  `MaxBackoff` (5 min), `ConfirmTimeout` (10 s); `Worker:InstanceId` (default `{MachineName}-{ProcessId}`).
+
 ## API conventions
 
 - Every endpoint requires a JWT (`Authorization: Bearer ...`) unless marked `[AllowAnonymous]`.

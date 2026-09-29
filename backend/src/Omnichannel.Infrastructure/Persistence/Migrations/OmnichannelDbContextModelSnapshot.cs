@@ -542,9 +542,19 @@ namespace Omnichannel.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("InventoryMovementId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("LastError")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<DateTimeOffset?>("NextAttemptAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("Payload")
                         .IsRequired()
                         .HasColumnType("jsonb");
+
+                    b.Property<int>("PublishAttempts")
+                        .HasColumnType("integer");
 
                     b.Property<DateTimeOffset?>("PublishedAt")
                         .HasColumnType("timestamp with time zone");
@@ -562,6 +572,8 @@ namespace Omnichannel.Infrastructure.Persistence.Migrations
                     b.HasIndex("CreatedAt")
                         .HasDatabaseName("IX_OutboxEvents_Pending_CreatedAt")
                         .HasFilter("\"Status\" = 'Pending'");
+
+                    NpgsqlIndexBuilderExtensions.IncludeProperties(b.HasIndex("CreatedAt"), new[] { "NextAttemptAt" });
 
                     b.HasIndex("InventoryMovementId")
                         .IsUnique();

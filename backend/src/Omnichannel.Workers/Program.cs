@@ -1,6 +1,3 @@
-using Omnichannel.Application;
-using Omnichannel.Application.Common.Abstractions;
-using Omnichannel.Infrastructure;
 using Omnichannel.Workers;
 using Serilog;
 using Serilog.Formatting.Compact;
@@ -33,14 +30,8 @@ try
         }
     });
 
-    builder.Services.AddApplication();
-    builder.Services.AddInfrastructure();
-    builder.Services.AddSingleton<ICurrentUser, WorkerCurrentUser>();
-    builder.Services.AddScoped<WorkerCorrelationContext>();
-    builder.Services.AddScoped<ICorrelationContext>(sp => sp.GetRequiredService<WorkerCorrelationContext>());
-
-    // Hosted workers (OrderWorker, OutboxPublisher, StockSyncWorker, ...) are registered from
-    // implementation step 6 onwards, together with RabbitMQ.
+    // RabbitMQ topology + Outbox Publisher; further workers (OrderWorker, StockSyncWorker, ...) follow in later steps.
+    builder.Services.AddWorkerServices(builder.Configuration);
 
     var host = builder.Build();
     await host.RunAsync();
