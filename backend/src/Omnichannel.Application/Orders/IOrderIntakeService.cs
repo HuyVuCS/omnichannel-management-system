@@ -11,5 +11,8 @@ public interface IOrderIntakeService
     /// Unknown or inactive channel (<see cref="OrderErrorCodes.ChannelNotFound"/>).
     /// </exception>
     /// <exception cref="FluentValidation.ValidationException">Unknown customer or product.</exception>
+    /// <exception cref="Common.Exceptions.ConflictException">
+    /// Same channel + external order id already submitted with different content (<see cref="OrderErrorCodes.OrderConflict"/>).
+    /// </exception>
     Task<SubmitOrderResponse> SubmitAsync(string channelSlug, SubmitOrderRequest request, CancellationToken cancellationToken);
 }

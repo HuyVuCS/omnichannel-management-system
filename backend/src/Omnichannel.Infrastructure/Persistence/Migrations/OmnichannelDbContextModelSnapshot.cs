@@ -648,6 +648,10 @@ namespace Omnichannel.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("OrderId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("RequestHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
                     b.Property<int>("RetryCount")
                         .HasColumnType("integer");
 

@@ -23,6 +23,7 @@ internal sealed class ProcessingTaskConfiguration : IEntityTypeConfiguration<Pro
             .IsRequired();
         builder.Property(x => x.MessageId).HasMaxLength(100);
         builder.Property(x => x.IdempotencyKey).HasMaxLength(ProcessingTask.MaxIdempotencyKeyLength);
+        builder.Property(x => x.RequestHash).HasMaxLength(ProcessingTask.RequestHashLength);
         builder.Property(x => x.CreatedAt).IsRequired();
 
         builder.HasOne(x => x.Order)
