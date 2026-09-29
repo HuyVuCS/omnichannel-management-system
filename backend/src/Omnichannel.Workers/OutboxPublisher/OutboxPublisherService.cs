@@ -16,8 +16,10 @@ namespace Omnichannel.Workers.OutboxPublisher;
 /// <item>Each batch is locked with <c>FOR UPDATE SKIP LOCKED</c> inside a transaction, so several instances never publish
 /// the same row concurrently.</item>
 /// <item>A row becomes <c>Published</c> only after a positive publisher confirm for a mandatory publish that was not returned.</item>
-/// <item>Failures are retried with exponential backoff; after <see cref="OutboxPublisherOptions.MaxAttempts"/> the row is
-/// <c>Failed</c> and a <c>SystemEventLog</c> error is written. Nothing retries forever.</item>
+/// <item>Message-specific failures (returned/unroutable, nack) are retried per row with exponential backoff; after
+/// <see cref="OutboxPublisherOptions.MaxAttempts"/> the row is <c>Failed</c> and a <c>SystemEventLog</c> error is written.</item>
+/// <item>Broker failures (unreachable, connection lost, confirm timeout) never count against a row: unconfirmed rows stay
+/// Pending untouched and the loop backs off (capped), so an outage of any length does not fail healthy messages (doc §13).</item>
 /// </list>
 /// <para>
 /// <b>Delivery is at-least-once.</b> If the process dies (or the commit fails) after the broker confirmed a message but before
@@ -56,14 +58,29 @@ public sealed class OutboxPublisherService(
             _options.MaxAttempts);
 
         var consecutiveErrors = 0;
+        var consecutiveBrokerFailures = 0;
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
-                var rowCount = await PublishBatchAsync(stoppingToken);
+                var batch = await PublishBatchAsync(stoppingToken);
                 consecutiveErrors = 0;
 
-                if (rowCount < _options.BatchSize)
+                if (batch.BrokerError is { } brokerError)
+                {
+                    // The broker (not the messages) failed: rows were left Pending without counting an attempt.
+                    consecutiveBrokerFailures++;
+                    var delay = OutboxBackoff.Compute(
+                        consecutiveBrokerFailures, _options.InitialBackoff, _options.MaxBackoff, Random.Shared.NextDouble());
+                    logger.LogWarning(
+                        "RabbitMQ unavailable ({BrokerError}); {Unconfirmed} rows left Pending, next try in {Delay}",
+                        brokerError, batch.UnconfirmedCount, delay);
+                    await Task.Delay(delay, timeProvider, stoppingToken);
+                    continue;
+                }
+
+                consecutiveBrokerFailures = 0;
+                if (batch.RowCount < _options.BatchSize)
                 {
                     await Task.Delay(_options.PollInterval, timeProvider, stoppingToken);
                 }
@@ -100,8 +117,7 @@ public sealed class OutboxPublisherService(
         logger.LogInformation("Outbox publisher stopped");
     }
 
-    /// <returns>Number of rows processed (published or failed) in this batch.</returns>
-    private async Task<int> PublishBatchAsync(CancellationToken stoppingToken)
+    private async Task<BatchResult> PublishBatchAsync(CancellationToken stoppingToken)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<OmnichannelDbContext>();
@@ -120,15 +136,17 @@ public sealed class OutboxPublisherService(
 
         if (rows.Count == 0)
         {
-            return 0;
+            return new BatchResult(0, null, 0);
         }
 
-        var errors = await PublishAsync(rows, stoppingToken);
+        var (outcomes, brokerError) = await PublishAsync(rows, stoppingToken);
         var completedAt = timeProvider.GetUtcNow();
+        var unconfirmed = 0;
 
         foreach (var row in rows)
         {
-            if (errors[row.OutboxEventId] is not { } error)
+            var outcome = outcomes[row.OutboxEventId];
+            if (outcome.Kind == PublishOutcomeKind.Confirmed)
             {
                 row.MarkPublished(completedAt);
                 logger.LogDebug(
@@ -137,6 +155,14 @@ public sealed class OutboxPublisherService(
                 continue;
             }
 
+            if (outcome.Kind == PublishOutcomeKind.BrokerFailure)
+            {
+                // Connection/channel/confirm problem: not the message's fault. Leave the row untouched (no attempt counted).
+                unconfirmed++;
+                continue;
+            }
+
+            var error = outcome.Error!;
             var delay = OutboxBackoff.Compute(
                 row.PublishAttempts + 1, _options.InitialBackoff, _options.MaxBackoff, Random.Shared.NextDouble());
 
@@ -170,15 +196,21 @@ public sealed class OutboxPublisherService(
             }
         }
 
+        // Confirmed rows are committed even when others hit a broker failure (fewer duplicates than rolling back).
         // The messages are already out: finish the batch even if shutdown was requested meanwhile.
         await dbContext.SaveChangesAsync(CancellationToken.None);
         await transaction.CommitAsync(CancellationToken.None);
 
-        return rows.Count;
+        return new BatchResult(rows.Count, brokerError, unconfirmed);
     }
 
-    /// <returns>Per row: null when confirmed by the broker, otherwise a sanitised error.</returns>
-    private async Task<Dictionary<Guid, string?>> PublishAsync(IReadOnlyList<OutboxEvent> rows, CancellationToken stoppingToken)
+    /// <returns>
+    /// Per row: confirmed, message-specific failure (returned/unroutable, nack: counts as an attempt) or broker failure
+    /// (connection, channel, confirm timeout: does not count). <c>BrokerError</c> is set when any broker failure occurred.
+    /// </returns>
+    private async Task<(Dictionary<Guid, PublishOutcome> Outcomes, string? BrokerError)> PublishAsync(
+        IReadOnlyList<OutboxEvent> rows,
+        CancellationToken stoppingToken)
     {
         IChannel channel;
         try
@@ -190,9 +222,9 @@ public sealed class OutboxPublisherService(
         }
         catch (Exception exception) when (exception is not OperationCanceledException and not RabbitMqTopologyMismatchException)
         {
-            // Broker unreachable or connection recovering: every row of the batch counts one failed attempt.
+            // Broker unreachable or connection recovering: nothing was published, no row is touched.
             var error = Describe(exception, timedOut: false);
-            return rows.ToDictionary(r => r.OutboxEventId, _ => (string?)error);
+            return (rows.ToDictionary(r => r.OutboxEventId, _ => new PublishOutcome(PublishOutcomeKind.BrokerFailure, error)), error);
         }
 
         await using (channel)
@@ -203,25 +235,48 @@ public sealed class OutboxPublisherService(
             // Publish the whole batch, then await the confirms (the client tracks them per message).
             var publishes = rows.Select(row => (row, task: PublishOneAsync(channel, row, confirmTimeout.Token))).ToList();
 
-            var results = new Dictionary<Guid, string?>(rows.Count);
+            var results = new Dictionary<Guid, PublishOutcome>(rows.Count);
+            string? brokerError = null;
             foreach (var (row, task) in publishes)
             {
                 try
                 {
                     await task;
-                    results[row.OutboxEventId] = null;
+                    results[row.OutboxEventId] = new PublishOutcome(PublishOutcomeKind.Confirmed, null);
+                }
+                catch (PublishException exception)
+                {
+                    // Returned (unroutable) or nacked: a property of this message, counts toward MaxAttempts.
+                    results[row.OutboxEventId] = new PublishOutcome(PublishOutcomeKind.MessageFailure, Describe(exception, timedOut: false));
                 }
                 catch (Exception exception)
                 {
-                    results[row.OutboxEventId] = Describe(exception, confirmTimeout.IsCancellationRequested);
+                    // Connection lost, channel closed or confirm timeout.
+                    var error = Describe(exception, confirmTimeout.IsCancellationRequested);
+                    brokerError ??= error;
+                    results[row.OutboxEventId] = new PublishOutcome(PublishOutcomeKind.BrokerFailure, error);
                 }
             }
 
             // Shutdown mid-batch: roll back (rows stay Pending; confirmed ones are republished later, at-least-once).
             stoppingToken.ThrowIfCancellationRequested();
-            return results;
+            return (results, brokerError);
         }
     }
+
+    private enum PublishOutcomeKind
+    {
+        Confirmed,
+        MessageFailure,
+        BrokerFailure
+    }
+
+    private sealed record PublishOutcome(PublishOutcomeKind Kind, string? Error);
+
+    /// <param name="RowCount">Rows locked in this batch.</param>
+    /// <param name="BrokerError">Set when the broker (not a message) failed; the loop then backs off.</param>
+    /// <param name="UnconfirmedCount">Rows left Pending because of the broker failure.</param>
+    private sealed record BatchResult(int RowCount, string? BrokerError, int UnconfirmedCount);
 
     private static async Task PublishOneAsync(IChannel channel, OutboxEvent row, CancellationToken cancellationToken)
     {
