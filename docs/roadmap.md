@@ -3,7 +3,7 @@
 Plan from the current state to the complete system (backend + frontend), following the implementation order in
 the architecture document (section 15). Maintained by Cowork; updated after every task review.
 
-Last updated: 2026-09-29 (after review 003)
+Last updated: 2026-09-30 (after review 004)
 
 ## Conventions
 - One row = one task file `docs/tasks/NNN-*.md`, written by Cowork shortly before it is needed (not all up front),
@@ -21,8 +21,8 @@ Last updated: 2026-09-29 (after review 003)
 | 001 | BE | Build, test, `InitialCreate` migration for steps 1–3 | 1–3 | Done |
 | 002 | BE | Channel / Customer / Product CRUD, inventory list, integration-test infrastructure | 4 | Done |
 | 003 | BE | Inventory import, movement history, `inventory.changed` outbox events | 4 | Done |
-| 004 | BE | Order intake `POST /api/orders/{slug}` (outbox first, decision A) | 5 | Open |
-| 005 | BE | RabbitMQ topology (exchange, queues, DLQs), message envelope, Outbox Publisher with publisher confirms | 6, 8 | Planned |
+| 004 | BE | Order intake `POST /api/orders/{slug}` (outbox first, decision A) | 5 | Done |
+| 005 | BE | RabbitMQ topology (exchange, quorum queues, DLX/DLQs), message envelope, Outbox Publisher with publisher confirms | 6, 8 | Open |
 | 006 | BE | Order Worker: consume `order.created`, atomic reserve transaction (lock inventory rows in `ProductId` order, same as import), Order/Items/Movements/Outbox, ProcessingAttempt tracking, ACK after commit, oversell tests | 6, 7 | Planned |
 | 007 | BE | Shared retry/backoff + DLQ handling for all consumers, max attempts, poison messages | 8 | Planned |
 | 008 | BE | `GET /api/orders`, `GET /api/orders/{id}` (with tasks/attempts), `GET /api/processing/tasks`, `POST .../retry`, SystemEventLog writes | 9 | Planned |

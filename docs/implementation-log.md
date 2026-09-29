@@ -104,3 +104,23 @@ Review: `docs/tasks/003-*.review.md`.
 | Inventory lock order | Every code path locking several `Inventories` rows sorts by `ProductId` (.NET `Guid` order = PostgreSQL `uuid` order) | Prevents deadlocks between import and reservation |
 | Validation error keys | camelCase JSON paths (`items[0].productId`) — task 004 Part A | Frontend maps errors to form fields |
 | Stock overflow | PostgreSQL 22003 on stock update → 409 `stock_limit_exceeded` (task 004 Part A) | No 500 for a business limit |
+
+## Task 004 result (reviewed 2026-09-30)
+
+Order intake (decision A), migration `ProcessingTaskIdempotencyKey`, camelCase validation keys, stock overflow → 409;
+193/193 tests. Review: `docs/tasks/004-*.review.md`.
+
+| Topic | Decision | Reason |
+| --- | --- | --- |
+| Resubmission with different content | **Option 1 (user, 2026-09-30):** `ProcessingTask.RequestHash` = SHA-256 of customerId + items sorted by productId (`productId:stock`); same key + same hash → 202 duplicate; different hash → 409 `order_conflict` (task 005 Part A) | Channel edits or client bugs must be visible, not silently dropped |
+
+## Task 005 plan — RabbitMQ and Outbox Publisher (2026-09-30)
+
+| Topic | Decision | Reason | Revisit when |
+| --- | --- | --- | --- |
+| Client | `RabbitMQ.Client` 7.x (async API) | Doc stack; current major | — |
+| Queue type | Durable quorum queues; DLX `omnichannel.dlx` (direct) → `<queue>.dlq`; at-least-once dead-lettering; `x-delivery-limit = 10` | Data safety on RabbitMQ 4; poison messages cannot loop forever | — |
+| Topology owner | Declared idempotently by the Workers host at start-up; mismatch stops the host | Single definition in code; never auto-delete queues | Ops-managed definitions in production |
+| Publishing | Outbox Publisher in Workers; `FOR UPDATE SKIP LOCKED` batches; publisher confirms + mandatory; mark Published only after confirm | Several instances safe; no silent loss | — |
+| Delivery guarantee | At-least-once; consumers deduplicate by `messageId` (= OutboxEventId) | Crash between confirm and commit republishes | — |
+| Publish failures | `PublishAttempts`/`NextAttemptAt`/`LastError` on OutboxEvent, exponential backoff with jitter, `Failed` + SystemEventLog after 10 | No infinite retry; failures visible | — |
