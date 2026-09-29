@@ -51,6 +51,8 @@ dotnet build
 dotnet test
 ```
 
+Integration tests need Docker running (Testcontainers PostgreSQL); `dotnet test --filter "Category!=Integration"` runs unit tests only.
+
 ### 3. API secrets (user-secrets, never appsettings)
 
 ```powershell
@@ -66,9 +68,9 @@ cd ../..
 
 ### 4. Database migrations (run with the migrator role)
 
-```powershell
-dotnet ef migrations add InitialCreate -p src/Omnichannel.Infrastructure -s src/Omnichannel.Api -o Persistence/Migrations
+The migrations already exist in `src/Omnichannel.Infrastructure/Persistence/Migrations`; apply them:
 
+```powershell
 $env:OMNICHANNEL_MIGRATOR_CONNECTION = "Host=localhost;Port=5432;Database=omnichannel;Username=omnichannel_migrator;Password=<OMNI_MIGRATOR_PASSWORD>"
 dotnet ef database update -p src/Omnichannel.Infrastructure -s src/Omnichannel.Api
 ```
