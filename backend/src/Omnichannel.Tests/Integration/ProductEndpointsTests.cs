@@ -83,22 +83,44 @@ public sealed class ProductEndpointsTests(ApiFactory factory)
     }
 
     [Fact]
-    public async Task Low_stock_filter_returns_products_at_or_below_a_positive_threshold()
+    public async Task Out_of_stock_products_are_low_stock_for_any_threshold_including_zero()
     {
         var marker = TestData.UniqueSuffix();
-        var low = await CreateAsync(NewProduct($"LOW-{marker}", lowStockThreshold: 5));
-        var thresholdOff = await CreateAsync(NewProduct($"OFF-{marker}", lowStockThreshold: 0));
+        var thresholdFive = await CreateAsync(NewProduct($"LOW5-{marker}", lowStockThreshold: 5));
+        var thresholdZero = await CreateAsync(NewProduct($"LOW0-{marker}", lowStockThreshold: 0));
 
         var response = await _manager.GetAsync($"/api/inventory?lowStockOnly=true&search={marker}");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var page = await response.ReadAsync<PagedResult<InventoryItemResponse>>();
-        var item = Assert.Single(page.Items);
-        Assert.Equal(low.ProductId, item.ProductId);
-        Assert.True(item.IsLowStock);
-        Assert.Equal(5, item.LowStockThreshold);
-        Assert.Equal(0, item.AvailableStock);
-        Assert.DoesNotContain(page.Items, i => i.ProductId == thresholdOff.ProductId);
+        Assert.Equal(2, page.TotalCount);
+        Assert.All(page.Items, i => Assert.True(i.IsLowStock));
+        Assert.Equal(
+            new[] { thresholdFive.ProductId, thresholdZero.ProductId }.Order(),
+            page.Items.Select(i => i.ProductId).Order());
+    }
+
+    [Fact]
+    public async Task Sku_is_normalised_to_upper_case()
+    {
+        var suffix = TestData.UniqueSuffix();
+
+        var created = await CreateAsync(NewProduct($"abc-1.x_2-{suffix}"));
+
+        Assert.Equal($"ABC-1.X_2-{suffix}".ToUpperInvariant(), created.Sku);
+    }
+
+    [Theory]
+    [InlineData("AB C")]
+    [InlineData("A/B")]
+    [InlineData("-AB")]
+    [InlineData("ÁB")]
+    public async Task Sku_with_disallowed_characters_is_rejected(string sku)
+    {
+        var response = await _manager.PostAsJsonAsync("/api/products", NewProduct(sku));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("validation_failed", await response.ReadErrorCodeAsync());
     }
 
     [Fact]

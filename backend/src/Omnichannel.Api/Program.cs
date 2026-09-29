@@ -64,7 +64,10 @@ try
     // Web
     builder.Services
         .AddControllers(options => options.Filters.Add<ValidationFilter>())
-        .AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+        .AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()))
+        // Model-binding errors (malformed JSON, "pageSize=abc", unknown enum) use the same 400 shape as validators.
+        .ConfigureApiBehaviorOptions(options => options.InvalidModelStateResponseFactory =
+            context => ValidationProblemResponse.Create(context.HttpContext, context.ModelState));
 
     builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
     builder.Services.AddProblemDetails(options => options.CustomizeProblemDetails = context =>

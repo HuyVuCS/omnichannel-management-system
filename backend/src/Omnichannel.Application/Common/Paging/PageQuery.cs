@@ -7,6 +7,8 @@ namespace Omnichannel.Application.Common.Paging;
 /// </summary>
 public abstract record PageQuery
 {
+    /// <summary>Upper bound for <see cref="Page"/>; keeps <see cref="Skip"/> far from int overflow.</summary>
+    public const int MaxPage = 10_000;
     public const int DefaultPageSize = 20;
     public const int MaxPageSize = 100;
     public const int MaxSearchLength = 100;

@@ -17,6 +17,17 @@ public sealed class ProductTests
     }
 
     [Fact]
+    public void Sku_format_is_guarded_by_the_entity()
+    {
+        Assert.Equal("ABC-1.X_2", new Product("abc-1.x_2", "Milk", 1m, 0, null).Sku);
+
+        Assert.Throws<ArgumentException>(() => new Product("AB C", "Milk", 1m, 0, null));
+        Assert.Throws<ArgumentException>(() => new Product("-AB", "Milk", 1m, 0, null));
+        Assert.Throws<ArgumentException>(() => new Product("ÁB", "Milk", 1m, 0, null));
+        Assert.Throws<ArgumentException>(() => new Product(new string('A', Product.MaxSkuLength + 1), "Milk", 1m, 0, null));
+    }
+
+    [Fact]
     public void Update_rejects_invalid_values()
     {
         var product = new Product("SKU", "Milk", 10m, 2, null);

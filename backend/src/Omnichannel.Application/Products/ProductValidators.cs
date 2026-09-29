@@ -1,15 +1,21 @@
 using FluentValidation;
 using Omnichannel.Application.Common.Paging;
+using Omnichannel.Domain.Entities;
 
 namespace Omnichannel.Application.Products;
 
 public sealed class CreateProductRequestValidator : AbstractValidator<CreateProductRequest>
 {
-    public const int MaxSkuLength = 64;
+    public const int MaxSkuLength = Product.MaxSkuLength;
 
     public CreateProductRequestValidator()
     {
-        RuleFor(x => x.Sku).NotEmpty().MaximumLength(MaxSkuLength);
+        RuleFor(x => x.Sku)
+            .Cascade(CascadeMode.Stop)
+            .NotEmpty()
+            .Must(sku => Product.IsValidSku(Product.NormalizeSku(sku)))
+            .WithMessage($"'{{PropertyName}}' must be at most {MaxSkuLength} characters of A-Z, 0-9, '.', '_' or '-', "
+                + "starting with a letter or digit (case-insensitive).");
         RuleFor(x => x.Name).ProductName();
         RuleFor(x => x.Price).ProductPrice();
         RuleFor(x => x.LowStockThreshold).GreaterThanOrEqualTo(0);

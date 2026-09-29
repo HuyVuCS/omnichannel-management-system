@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
 using Omnichannel.Application.Common.Paging;
 using Omnichannel.Application.Inventory;
@@ -9,6 +10,20 @@ namespace Omnichannel.Infrastructure.Persistence.Inventories;
 // shadow the Inventory entity for every class in Omnichannel.Infrastructure.Persistence.
 internal sealed class InventoryQueryService(OmnichannelDbContext dbContext) : IInventoryQueryService
 {
+    private static readonly Expression<Func<Inventory, InventoryItemResponse>> ToItem =
+        InventoryPredicates.Inline<Inventory, InventoryItemResponse>(
+            (i, isLowStock) => new InventoryItemResponse(
+                i.ProductId,
+                i.Product.Sku,
+                i.Product.Name,
+                i.TotalStock,
+                i.ReservedStock,
+                i.AvailableStock,
+                i.Product.LowStockThreshold,
+                isLowStock,
+                i.UpdatedAt ?? i.CreatedAt),
+            InventoryPredicates.IsLowStock);
+
     public async Task<PagedResult<InventoryItemResponse>> ListAsync(InventoryListQuery query, CancellationToken cancellationToken)
     {
         IQueryable<Inventory> inventories = dbContext.Inventories.AsNoTracking();
@@ -21,11 +36,9 @@ internal sealed class InventoryQueryService(OmnichannelDbContext dbContext) : II
                 || EF.Functions.ILike(i.Product.Name, pattern, LikePattern.EscapeCharacter));
         }
 
-        // Low-stock rule (see InventoryListQuery.LowStockOnly); must match IsLowStock below.
         if (query.LowStockOnly)
         {
-            inventories = inventories.Where(i =>
-                i.Product.LowStockThreshold > 0 && i.AvailableStock <= i.Product.LowStockThreshold);
+            inventories = inventories.Where(InventoryPredicates.IsLowStock);
         }
 
         var totalCount = await inventories.CountAsync(cancellationToken);
@@ -52,16 +65,7 @@ internal sealed class InventoryQueryService(OmnichannelDbContext dbContext) : II
             .ThenBy(i => i.ProductId)
             .Skip(query.Skip)
             .Take(query.PageSize)
-            .Select(i => new InventoryItemResponse(
-                i.ProductId,
-                i.Product.Sku,
-                i.Product.Name,
-                i.TotalStock,
-                i.ReservedStock,
-                i.AvailableStock,
-                i.Product.LowStockThreshold,
-                i.Product.LowStockThreshold > 0 && i.AvailableStock <= i.Product.LowStockThreshold,
-                i.UpdatedAt ?? i.CreatedAt))
+            .Select(ToItem)
             .ToListAsync(cancellationToken);
 
         return new PagedResult<InventoryItemResponse>(items, query.Page, query.PageSize, totalCount);

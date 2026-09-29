@@ -37,6 +37,29 @@ public sealed class ProductRequestValidatorTests
 
         Assert.False(_create.Validate(new CreateProductRequest(sku, "Milk", 1m, 0, null)).IsValid);
     }
+
+    [Theory]
+    [InlineData("abc-1.x_2")]
+    [InlineData(" 9A ")]
+    [InlineData("A")]
+    public void Accepts_sku_format_case_insensitively(string sku)
+    {
+        Assert.True(_create.Validate(new CreateProductRequest(sku, "Milk", 1m, 0, null)).IsValid);
+    }
+
+    [Theory]
+    [InlineData("AB C")]
+    [InlineData("A/B")]
+    [InlineData("-AB")]
+    [InlineData(".AB")]
+    [InlineData("ÁB")]
+    [InlineData(null)]
+    public void Rejects_sku_format(string? sku)
+    {
+        var result = _create.Validate(new CreateProductRequest(sku!, "Milk", 1m, 0, null));
+
+        Assert.Contains(result.Errors, e => e.PropertyName == nameof(CreateProductRequest.Sku));
+    }
 }
 
 public sealed class ChannelRequestValidatorTests
