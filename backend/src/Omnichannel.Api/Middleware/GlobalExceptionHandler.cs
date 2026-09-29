@@ -31,7 +31,7 @@ public sealed class GlobalExceptionHandler(
         ProblemDetails problem = exception switch
         {
             ValidationException validation => CreateValidationProblem(validation),
-            NotFoundException notFound => Create(StatusCodes.Status404NotFound, "Resource not found", notFound.Message, "not_found"),
+            NotFoundException notFound => Create(StatusCodes.Status404NotFound, "Resource not found", notFound.Message, notFound.ErrorCode),
             ConflictException conflict => Create(StatusCodes.Status409Conflict, "Conflict", conflict.Message, conflict.ErrorCode),
             DbUpdateConcurrencyException => Create(
                 StatusCodes.Status409Conflict,

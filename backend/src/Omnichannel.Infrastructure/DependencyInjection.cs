@@ -8,6 +8,7 @@ using Omnichannel.Application.Auth;
 using Omnichannel.Application.Channels;
 using Omnichannel.Application.Customers;
 using Omnichannel.Application.Inventory;
+using Omnichannel.Application.Orders;
 using Omnichannel.Application.Products;
 using Omnichannel.Infrastructure.Identity;
 using Omnichannel.Infrastructure.Persistence;
@@ -15,6 +16,7 @@ using Omnichannel.Infrastructure.Persistence.Channels;
 using Omnichannel.Infrastructure.Persistence.Customers;
 using Omnichannel.Infrastructure.Persistence.Interceptors;
 using Omnichannel.Infrastructure.Persistence.Inventories;
+using Omnichannel.Infrastructure.Persistence.Orders;
 using Omnichannel.Infrastructure.Persistence.Products;
 
 namespace Omnichannel.Infrastructure;
@@ -52,6 +54,7 @@ public static class DependencyInjection
         services.AddScoped<IProductService, ProductService>();
         services.AddScoped<IInventoryQueryService, InventoryQueryService>();
         services.AddScoped<IInventoryImportService, InventoryImportService>();
+        services.AddScoped<IOrderIntakeService, OrderIntakeService>();
 
         return services;
     }

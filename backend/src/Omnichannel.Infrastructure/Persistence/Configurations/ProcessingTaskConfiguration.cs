@@ -6,6 +6,8 @@ namespace Omnichannel.Infrastructure.Persistence.Configurations;
 
 internal sealed class ProcessingTaskConfiguration : IEntityTypeConfiguration<ProcessingTask>
 {
+    public const string IdempotencyKeyIndexName = "UX_ProcessingTasks_IdempotencyKey";
+
     public void Configure(EntityTypeBuilder<ProcessingTask> builder)
     {
         builder.ToTable("ProcessingTasks", t =>
@@ -20,6 +22,7 @@ internal sealed class ProcessingTaskConfiguration : IEntityTypeConfiguration<Pro
             .HasMaxLength(ConfigurationExtensions.CorrelationIdMaxLength)
             .IsRequired();
         builder.Property(x => x.MessageId).HasMaxLength(100);
+        builder.Property(x => x.IdempotencyKey).HasMaxLength(ProcessingTask.MaxIdempotencyKeyLength);
         builder.Property(x => x.CreatedAt).IsRequired();
 
         builder.HasOne(x => x.Order)
@@ -37,5 +40,11 @@ internal sealed class ProcessingTaskConfiguration : IEntityTypeConfiguration<Pro
         builder.HasIndex(x => x.OrderId);
         builder.HasIndex(x => x.CorrelationId);
         builder.HasIndex(x => new { x.TaskType, x.Status, x.CreatedAt });
+
+        // Intake idempotency: the same external order (key) can create only one task, before any Order exists.
+        builder.HasIndex(x => x.IdempotencyKey)
+            .IsUnique()
+            .HasFilter("\"IdempotencyKey\" IS NOT NULL")
+            .HasDatabaseName(IdempotencyKeyIndexName);
     }
 }
