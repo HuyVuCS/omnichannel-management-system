@@ -167,7 +167,8 @@ namespace Omnichannel.Infrastructure.Persistence.Migrations
                     b.HasKey("ChannelId");
 
                     b.HasIndex("Slug")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasDatabaseName("IX_Channels_Slug");
 
                     b.ToTable("Channels", (string)null);
 
@@ -402,8 +403,8 @@ namespace Omnichannel.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("ReferenceType", "ReferenceId", "ProductId", "Type")
                         .IsUnique()
-                        .HasDatabaseName("UX_InventoryMovements_Reference_Reservation")
-                        .HasFilter("\"ReferenceId\" IS NOT NULL AND \"Type\" IN ('Reserve', 'Release')");
+                        .HasDatabaseName("UX_InventoryMovements_Reference")
+                        .HasFilter("\"ReferenceId\" IS NOT NULL AND \"Type\" IN ('Import', 'Reserve', 'Release')");
 
                     b.ToTable("InventoryMovements", null, t =>
                         {
@@ -715,7 +716,8 @@ namespace Omnichannel.Infrastructure.Persistence.Migrations
                     b.HasKey("ProductId");
 
                     b.HasIndex("Sku")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasDatabaseName("IX_Products_Sku");
 
                     b.ToTable("Products", null, t =>
                         {

@@ -47,6 +47,7 @@ try
     builder.Services.AddIdentityInfrastructure();
     builder.Services.AddHttpContextAccessor();
     builder.Services.AddScoped<ICurrentUser, HttpCurrentUser>();
+    builder.Services.AddScoped<ICorrelationContext, HttpCorrelationContext>();
 
     // Security
     builder.Services.AddJwtAuthentication(builder.Configuration);
