@@ -1,8 +1,8 @@
 using System.Net;
 using System.Net.Http.Json;
-using System.Reflection;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Omnichannel.Application.Auth;
 using Omnichannel.Application.Channels;
 using Omnichannel.Application.Common.Messaging;
@@ -11,7 +11,7 @@ using Omnichannel.Application.Orders;
 using Omnichannel.Application.Products;
 using Omnichannel.Domain.Entities;
 using Omnichannel.Domain.Enums;
-using Omnichannel.Infrastructure.Persistence;
+using Omnichannel.Infrastructure.RabbitMQ;
 
 namespace Omnichannel.Tests.Integration;
 
@@ -226,17 +226,18 @@ public sealed class OrderIntakeTests(ApiFactory factory)
     }
 
     /// <summary>
-    /// Decision A: intake does not depend on RabbitMQ. The integration test host has no broker at all (every test in this
-    /// class runs without one), and no API-side assembly references a RabbitMQ client.
+    /// Decision A: intake does not depend on RabbitMQ. The API integration host has no broker at all (every test in this
+    /// class runs without one), the API assembly does not reference a RabbitMQ client, and the API host registers no
+    /// RabbitMQ services (Infrastructure contains them since task 005, but only the Workers host adds them).
     /// </summary>
     [Fact]
     public void Api_has_no_rabbitmq_dependency()
     {
-        Assembly[] apiSide = [typeof(Program).Assembly, typeof(OmnichannelDbContext).Assembly, typeof(SubmitOrderRequest).Assembly];
+        Assert.DoesNotContain(
+            typeof(Program).Assembly.GetReferencedAssemblies(),
+            reference => reference.Name!.Contains("RabbitMQ", StringComparison.OrdinalIgnoreCase));
 
-        Assert.All(apiSide, assembly => Assert.DoesNotContain(
-            assembly.GetReferencedAssemblies(),
-            reference => reference.Name!.Contains("RabbitMQ", StringComparison.OrdinalIgnoreCase)));
+        Assert.Null(factory.Services.GetService<RabbitMqConnectionProvider>());
     }
 
     private async Task<(Guid CustomerId, ProductResponse Product)> CreateCustomerAndProductAsync(decimal price = 9.99m)

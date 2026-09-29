@@ -13,6 +13,8 @@ public static class MessageJson
 
     public static string Serialize<T>(T payload) => JsonSerializer.Serialize(payload, Options);
 
+    public static byte[] SerializeToUtf8Bytes<T>(T payload) => JsonSerializer.SerializeToUtf8Bytes(payload, Options);
+
     public static T Deserialize<T>(string json) =>
         JsonSerializer.Deserialize<T>(json, Options)
         ?? throw new JsonException($"Message payload is empty; expected {typeof(T).Name}.");
