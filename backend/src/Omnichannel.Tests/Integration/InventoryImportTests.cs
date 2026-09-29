@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Omnichannel.Application.Auth;
 using Omnichannel.Application.Common.Messaging;
@@ -81,8 +82,41 @@ public sealed class InventoryImportTests(ApiFactory factory)
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Equal("validation_failed", await response.ReadErrorCodeAsync());
-        Assert.Contains("Items[1].ProductId", await response.Content.ReadAsStringAsync());
+        Assert.Contains("\"items[1].productId\"", await response.Content.ReadAsStringAsync());
         Assert.Equal((0, 0, 0), await CountsAsync(product.ProductId));
+    }
+
+    [Fact]
+    public async Task Validation_error_keys_are_json_paths()
+    {
+        var product = await CreateProductAsync();
+
+        var unknownProduct = await _manager.PostAsJsonAsync(
+            "/api/inventory/import",
+            Import($"GRN-{TestData.UniqueSuffix()}", null, (product.ProductId, 1), (Guid.NewGuid(), 1)));
+        var invalidFields = await _manager.PostAsJsonAsync(
+            "/api/inventory/import",
+            Import("", null, (product.ProductId, 0)));
+
+        Assert.Equal(new[] { "items[1].productId" }, await ErrorKeysAsync(unknownProduct));
+        Assert.Equal(new[] { "documentNumber", "items[0].stock" }, await ErrorKeysAsync(invalidFields));
+    }
+
+    [Fact]
+    public async Task Import_beyond_the_maximum_stock_is_a_conflict_and_changes_nothing()
+    {
+        var product = await CreateProductAsync();
+        const int nearMaximum = int.MaxValue - 10;
+        await factory.QueryDbAsync(db => db.Database.ExecuteSqlAsync(
+            $"UPDATE \"Inventories\" SET \"TotalStock\" = {nearMaximum} WHERE \"ProductId\" = {product.ProductId}"));
+
+        var response = await _manager.PostAsJsonAsync(
+            "/api/inventory/import",
+            Import($"GRN-{TestData.UniqueSuffix()}", null, (product.ProductId, 1_000_000)));
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Equal(InventoryErrorCodes.StockLimitExceeded, await response.ReadErrorCodeAsync());
+        Assert.Equal((nearMaximum, 0, 0), await CountsAsync(product.ProductId));
     }
 
     [Fact]
@@ -229,6 +263,13 @@ public sealed class InventoryImportTests(ApiFactory factory)
             new CreateProductRequest(sku, $"Product {sku}", 1m, lowStockThreshold, null));
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         return await response.ReadAsync<ProductResponse>();
+    }
+
+    private static async Task<string[]> ErrorKeysAsync(HttpResponseMessage response)
+    {
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        return body.RootElement.GetProperty("errors").EnumerateObject().Select(p => p.Name).Order().ToArray();
     }
 
     private Task<(int TotalStock, int Movements, int OutboxEvents)> CountsAsync(Guid productId) =>

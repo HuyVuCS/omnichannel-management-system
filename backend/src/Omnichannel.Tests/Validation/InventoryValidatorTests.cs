@@ -1,3 +1,4 @@
+using Omnichannel.Application.Common.Validation;
 using Omnichannel.Application.Inventory;
 using Omnichannel.Domain.Enums;
 
@@ -29,7 +30,7 @@ public sealed class ImportInventoryRequestValidatorTests
         var result = _validator.Validate(Request("GRN-1", null,
             new ImportInventoryItem(productId, 1), new ImportInventoryItem(productId, 2)));
 
-        Assert.Contains(result.Errors, e => e.PropertyName == nameof(ImportInventoryRequest.Items));
+        Assert.Contains(result.Errors, e => e.PropertyName == ValidationConventions.JsonName(nameof(ImportInventoryRequest.Items)));
     }
 
     [Fact]
@@ -52,7 +53,7 @@ public sealed class ImportInventoryRequestValidatorTests
     {
         var result = _validator.Validate(Request("GRN-1", null, Item(stock)));
 
-        Assert.Contains(result.Errors, e => e.PropertyName == "Items[0].Stock");
+        Assert.Contains(result.Errors, e => e.PropertyName == "items[0].stock");
     }
 
     [Fact]
@@ -60,7 +61,7 @@ public sealed class ImportInventoryRequestValidatorTests
     {
         var result = _validator.Validate(Request("GRN-1", null, new ImportInventoryItem(Guid.Empty, 1)));
 
-        Assert.Contains(result.Errors, e => e.PropertyName == "Items[0].ProductId");
+        Assert.Contains(result.Errors, e => e.PropertyName == "items[0].productId");
     }
 
     [Fact]

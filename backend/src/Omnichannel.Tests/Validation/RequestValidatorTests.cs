@@ -1,3 +1,4 @@
+using Omnichannel.Application.Common.Validation;
 using Omnichannel.Application.Channels;
 using Omnichannel.Application.Customers;
 using Omnichannel.Application.Products;
@@ -27,7 +28,7 @@ public sealed class ProductRequestValidatorTests
     {
         var result = _create.Validate(new CreateProductRequest(sku, name, (decimal)price, threshold, null));
 
-        Assert.Contains(result.Errors, e => e.PropertyName == property);
+        Assert.Contains(result.Errors, e => e.PropertyName == ValidationConventions.JsonName(property));
     }
 
     [Fact]
@@ -58,7 +59,7 @@ public sealed class ProductRequestValidatorTests
     {
         var result = _create.Validate(new CreateProductRequest(sku!, "Milk", 1m, 0, null));
 
-        Assert.Contains(result.Errors, e => e.PropertyName == nameof(CreateProductRequest.Sku));
+        Assert.Contains(result.Errors, e => e.PropertyName == ValidationConventions.JsonName(nameof(CreateProductRequest.Sku)));
     }
 }
 
@@ -88,7 +89,7 @@ public sealed class ChannelRequestValidatorTests
     {
         var result = _create.Validate(new CreateChannelRequest("Name", slug, ChannelType.Website));
 
-        Assert.Contains(result.Errors, e => e.PropertyName == nameof(CreateChannelRequest.Slug));
+        Assert.Contains(result.Errors, e => e.PropertyName == ValidationConventions.JsonName(nameof(CreateChannelRequest.Slug)));
     }
 
     [Fact]
@@ -128,6 +129,6 @@ public sealed class CustomerRequestValidatorTests
     {
         var result = _validator.Validate(new CustomerRequest(name, phone, email, null));
 
-        Assert.Contains(result.Errors, e => e.PropertyName == property);
+        Assert.Contains(result.Errors, e => e.PropertyName == ValidationConventions.JsonName(property));
     }
 }

@@ -4,6 +4,7 @@ using Omnichannel.Api.Filters;
 using Omnichannel.Api.Middleware;
 using Omnichannel.Application;
 using Omnichannel.Application.Common.Abstractions;
+using Omnichannel.Application.Common.Validation;
 using Omnichannel.Infrastructure;
 using Omnichannel.Infrastructure.Identity;
 using Omnichannel.Infrastructure.Persistence;
@@ -21,6 +22,9 @@ Log.Logger = new LoggerConfiguration()
 try
 {
     var builder = WebApplication.CreateBuilder(args);
+
+    // Validation error keys = JSON names (items[0].productId); process-wide FluentValidation setting.
+    ValidationConventions.UseJsonPropertyNames();
 
     // Levels/overrides/enrichers come from the "Serilog" config section; the console sink is set here:
     // readable text in Development, structured JSON everywhere else (for log shipping).

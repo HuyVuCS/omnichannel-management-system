@@ -2,9 +2,11 @@ using FluentValidation;
 using FluentValidation.Results;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Npgsql;
 using Omnichannel.Application.Common.Abstractions;
 using Omnichannel.Application.Common.Exceptions;
 using Omnichannel.Application.Common.Messaging;
+using Omnichannel.Application.Common.Validation;
 using Omnichannel.Application.Inventory;
 using Omnichannel.Domain.Entities;
 using Omnichannel.Domain.Enums;
@@ -41,21 +43,33 @@ internal sealed class InventoryImportService(
         {
             // Single atomic statement: no read-modify-write in C#. Raw SQL bypasses the auditing interceptor,
             // so UpdatedAt/UpdatedBy are set here.
-            var stock = await dbContext.Database
-                .SqlQuery<StockRow>($"""
-                    UPDATE "Inventories"
-                    SET "TotalStock" = "TotalStock" + {item.Stock}, "UpdatedAt" = {now}, "UpdatedBy" = {actor}
-                    WHERE "ProductId" = {item.ProductId}
-                    RETURNING "TotalStock", "ReservedStock", "AvailableStock"
-                    """)
-                .ToListAsync(cancellationToken);
+            List<StockRow> stock;
+            try
+            {
+                stock = await dbContext.Database
+                    .SqlQuery<StockRow>($"""
+                        UPDATE "Inventories"
+                        SET "TotalStock" = "TotalStock" + {item.Stock}, "UpdatedAt" = {now}, "UpdatedBy" = {actor}
+                        WHERE "ProductId" = {item.ProductId}
+                        RETURNING "TotalStock", "ReservedStock", "AvailableStock"
+                        """)
+                    .ToListAsync(cancellationToken);
+            }
+            catch (PostgresException exception) when (exception.SqlState == PostgresErrorCodes.NumericValueOutOfRange)
+            {
+                // TotalStock is an integer column; the failed statement aborts the transaction, which is rolled back on dispose.
+                throw new ConflictException(
+                    InventoryErrorCodes.StockLimitExceeded,
+                    $"Importing {item.Stock} units would exceed the maximum stock of product '{item.ProductId}'.");
+            }
 
             if (stock.Count == 0)
             {
                 // Disposing the transaction without commit rolls back the items already applied.
                 throw new ValidationException(
                 [
-                    new ValidationFailure($"{nameof(request.Items)}[{index}].{nameof(ImportInventoryItem.ProductId)}",
+                    new ValidationFailure(
+                        ValidationConventions.ItemPath(nameof(request.Items), index, nameof(ImportInventoryItem.ProductId)),
                         $"Product '{item.ProductId}' does not exist.")
                 ]);
             }
