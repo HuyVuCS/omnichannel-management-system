@@ -1,8 +1,12 @@
 # VS Code REST Client / Visual Studio .http file.
 # Use the bootstrap admin configured via user-secrets (see README).
+# Credentials are read from backend/src/Omnichannel.Api/.env (git-ignored), e.g.:
+#   BOOTSTRAP_ADMIN_EMAIL=...
+#   BOOTSTRAP_ADMIN_PASSWORD=...
+# Never put a real credential in this file.
 @baseUrl = http://localhost:5080
-@email = admin@example.com
-@password = change-me
+@email = {{$dotenv BOOTSTRAP_ADMIN_EMAIL}}
+@password = {{$dotenv BOOTSTRAP_ADMIN_PASSWORD}}
 
 ### Health (anonymous)
 GET {{baseUrl}}/health
