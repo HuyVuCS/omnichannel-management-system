@@ -637,6 +637,10 @@ namespace Omnichannel.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("IdempotencyKey")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
                     b.Property<string>("MessageId")
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
@@ -663,6 +667,11 @@ namespace Omnichannel.Infrastructure.Persistence.Migrations
                     b.HasKey("TaskId");
 
                     b.HasIndex("CorrelationId");
+
+                    b.HasIndex("IdempotencyKey")
+                        .IsUnique()
+                        .HasDatabaseName("UX_ProcessingTasks_IdempotencyKey")
+                        .HasFilter("\"IdempotencyKey\" IS NOT NULL");
 
                     b.HasIndex("OrderId");
 

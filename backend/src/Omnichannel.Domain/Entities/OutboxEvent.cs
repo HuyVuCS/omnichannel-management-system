@@ -13,14 +13,25 @@ public class OutboxEvent : IHasTimestamps
     {
     }
 
-    public OutboxEvent(string eventType, string aggregateId, string payload, string correlationId, Guid? inventoryMovementId)
+    /// <param name="outboxEventId">
+    /// Pre-generated id, for callers that must reference the RabbitMQ messageId before creating the row
+    /// (e.g. <c>ProcessingTask.MessageId</c>). A new UUIDv7 when null.
+    /// </param>
+    public OutboxEvent(
+        string eventType,
+        string aggregateId,
+        string payload,
+        string correlationId,
+        Guid? inventoryMovementId,
+        Guid? outboxEventId = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(eventType);
         ArgumentException.ThrowIfNullOrWhiteSpace(aggregateId);
         ArgumentException.ThrowIfNullOrWhiteSpace(payload);
         ArgumentException.ThrowIfNullOrWhiteSpace(correlationId);
+        if (outboxEventId == Guid.Empty) throw new ArgumentException("Outbox event id must not be empty.", nameof(outboxEventId));
 
-        OutboxEventId = Guid.CreateVersion7();
+        OutboxEventId = outboxEventId ?? Guid.CreateVersion7();
         EventType = eventType;
         AggregateId = aggregateId;
         Payload = payload;
