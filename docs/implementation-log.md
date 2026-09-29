@@ -92,3 +92,15 @@ Catalog CRUD + `GET /api/inventory` + Testcontainers integration tests; 114/114 
 | Infrastructure namespace | `Persistence/Inventories` (not `Inventory`) | Avoids shadowing the `Inventory` entity |
 | SKU format | Upper-cased, `^[A-Z0-9][A-Z0-9._-]*$`, ≤ 64 (task 003) | SKUs go to channel APIs and exports |
 | Paging bound | `page` ≤ 10,000 (task 003) | Prevents `int` overflow in `Skip` |
+
+## Task 003 result (reviewed 2026-09-29)
+
+Inventory import + movements + `inventory.changed` outbox; migration `InventoryImportIdempotency`; 165/165 tests.
+Review: `docs/tasks/003-*.review.md`.
+
+| Topic | Decision | Reason |
+| --- | --- | --- |
+| Correlation id access | `ICorrelationContext` (Application abstraction); API = request `X-Correlation-Id`, Workers = per scope, set from the envelope | Services need it without controllers threading it through |
+| Inventory lock order | Every code path locking several `Inventories` rows sorts by `ProductId` (.NET `Guid` order = PostgreSQL `uuid` order) | Prevents deadlocks between import and reservation |
+| Validation error keys | camelCase JSON paths (`items[0].productId`) — task 004 Part A | Frontend maps errors to form fields |
+| Stock overflow | PostgreSQL 22003 on stock update → 409 `stock_limit_exceeded` (task 004 Part A) | No 500 for a business limit |

@@ -4,6 +4,17 @@ Status: Open
 Written by: Cowork, 2026-09-29
 Depends on: 003 (message contract, `MessageJson`, error mapping)
 
+## Part A — Follow-ups from review 003 (separate commit)
+1. **Validation error keys use the JSON (camelCase) names**, e.g. `items[0].productId`, `pageSize`, `documentNumber`,
+   so the frontend can map errors to form fields. Configure FluentValidation globally (property-name resolver producing
+   camelCase for every segment of the path) in one place at API start-up; fix the manually built failure in
+   `InventoryImportService` to use the same format. Update existing tests that assert keys. Add an integration test:
+   `POST /api/inventory/import` with an unknown product at index 1 → error key `items[1].productId`.
+   Model-binding (automatic) 400s keep ASP.NET's own keys; document that difference on `ValidationProblemResponse`.
+2. **Stock overflow:** in the import, PostgreSQL `22003` (`numeric_value_out_of_range`) from the `UPDATE` → roll back,
+   409 `stock_limit_exceeded`. Integration test: set a product's `TotalStock` near `int.MaxValue` directly in the test
+   database, import 1,000,000 → 409, stock unchanged.
+
 ## Decision (user, 2026-09-29): option A
 The API does **not** create the order and does **not** talk to RabbitMQ. It validates, normalises, and writes a
 `ProcessingTask(OrderProcessing)` plus an `OutboxEvent("order.created")` in **one transaction**, then returns 202.
@@ -26,7 +37,8 @@ Flow (`Application/Orders/IOrderIntakeService`, implementation in `Infrastructur
 4. One transaction: insert `ProcessingTask(OrderProcessing, orderId: null, correlationId, messageId, idempotencyKey)`
    and `OutboxEvent(order.created, aggregateId = taskId, payload = OrderCreatedPayload, correlationId)`.
    Generate both ids up front: `messageId = outboxEventId.ToString()` (the outbox id is the RabbitMQ messageId).
-5. `correlationId` comes from the request (`HttpContext.GetCorrelationId()`), passed explicitly by the controller.
+5. `correlationId` comes from `ICorrelationContext` (added in task 003; the API implementation returns the request's
+   `X-Correlation-Id`). The controller does not pass it.
 
 Response **202 Accepted**: `{ "taskId": "...", "status": "Pending", "correlationId": "...", "duplicate": false }`.
 
@@ -62,7 +74,7 @@ Unit: request validator; idempotency key format.
 ## Acceptance criteria
 - [ ] Build 0 warnings; all tests pass (unit/integration counts).
 - [ ] Migration + clean `has-pending-model-changes`; new migration SQL in the report.
-- [ ] Controller only binds, passes slug/body/correlation id, maps the result to 202.
+- [ ] Controller only binds, passes slug and body, maps the result to 202.
 
 ## Out of scope
 RabbitMQ, Outbox Publisher, Order Worker, stock reservation, `GET /api/orders*`, webhook endpoint and signature
