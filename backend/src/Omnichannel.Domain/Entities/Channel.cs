@@ -28,4 +28,14 @@ public class Channel : AuditableEntity
 
     public ChannelType Type { get; private set; }
     public ChannelStatus Status { get; private set; }
+
+    /// <summary>Slug and type are immutable: orders and webhooks are routed by slug.</summary>
+    public void Update(string name, ChannelStatus status)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        if (!Enum.IsDefined(status)) throw new ArgumentOutOfRangeException(nameof(status), status, "Unknown channel status.");
+
+        Name = name.Trim();
+        Status = status;
+    }
 }

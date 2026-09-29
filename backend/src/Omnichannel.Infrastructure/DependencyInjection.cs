@@ -5,9 +5,17 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using Omnichannel.Application.Auth;
+using Omnichannel.Application.Channels;
+using Omnichannel.Application.Customers;
+using Omnichannel.Application.Inventory;
+using Omnichannel.Application.Products;
 using Omnichannel.Infrastructure.Identity;
 using Omnichannel.Infrastructure.Persistence;
+using Omnichannel.Infrastructure.Persistence.Channels;
+using Omnichannel.Infrastructure.Persistence.Customers;
 using Omnichannel.Infrastructure.Persistence.Interceptors;
+using Omnichannel.Infrastructure.Persistence.Inventories;
+using Omnichannel.Infrastructure.Persistence.Products;
 
 namespace Omnichannel.Infrastructure;
 
@@ -38,6 +46,11 @@ public static class DependencyInjection
             options.UseNpgsql(database.ConnectionString);
             options.AddInterceptors(serviceProvider.GetRequiredService<AuditingInterceptor>());
         });
+
+        services.AddScoped<IChannelService, ChannelService>();
+        services.AddScoped<ICustomerService, CustomerService>();
+        services.AddScoped<IProductService, ProductService>();
+        services.AddScoped<IInventoryQueryService, InventoryQueryService>();
 
         return services;
     }

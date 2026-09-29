@@ -8,13 +8,8 @@ public class Customer : AuditableEntity
 
     public Customer(string name, string? phone, string? email, string? address)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(name);
-
         CustomerId = Guid.CreateVersion7();
-        Name = name.Trim();
-        Phone = phone?.Trim();
-        Email = email?.Trim();
-        Address = address?.Trim();
+        Update(name, phone, email, address);
     }
 
     public Guid CustomerId { get; private set; }
@@ -22,4 +17,17 @@ public class Customer : AuditableEntity
     public string? Phone { get; private set; }
     public string? Email { get; private set; }
     public string? Address { get; private set; }
+
+    /// <summary>Optional fields that are blank are stored as null.</summary>
+    public void Update(string name, string? phone, string? email, string? address)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+
+        Name = name.Trim();
+        Phone = NullIfBlank(phone);
+        Email = NullIfBlank(email);
+        Address = NullIfBlank(address);
+    }
+
+    private static string? NullIfBlank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }
