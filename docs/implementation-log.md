@@ -149,3 +149,19 @@ RabbitMQ topology + Outbox Publisher + request hash (409 `order_conflict`); migr
 User management (Admin: create users, roles, lock/unlock, reset password) added as task 009; later planned tasks renumbered.
 Only the bootstrap admin existed. An untracked, empty `Omnichannel.UserSeeder` project was deleted with the user's approval.
 Task 005 manual acceptance check confirmed by the user (message with envelope in `order.processing`).
+
+## Task 006 result (reviewed 2026-09-30)
+
+Order Worker with atomic reservation, attempt tracking, poison handling; broker outages no longer fail outbox rows;
+263/263 tests; manual check confirmed by the user. Review: `docs/tasks/006-*.review.md`.
+The DB CHECK on `ReservedStock` is the last line of defence; the conditional `UPDATE` is the working availability check (proven by mutation).
+
+## Task 007 plan — retry, backoff, DLQ (2026-09-30)
+
+| Topic | Decision | Reason | Revisit when |
+| --- | --- | --- | --- |
+| Delayed retry | Per-tier delay queues (`omnichannel.delay.<tier>`, quorum, fixed `x-message-ttl`) behind fanout exchanges; expired messages dead-letter to `omnichannel.retry` (direct) and return to the source queue by their original routing key (= queue name). Tiers 5 s / 30 s / 2 m / 10 m | No plugin; one TTL per queue avoids head-of-line blocking; reusable by every consumer | Need per-message arbitrary delays |
+| Retry decision | Handler returns `Ack` / `Retry` / `Fail` / `Reject`; attempt number from the database; `MaxAttempts` default 5; retry copy published with confirm before ACK | Database is the source of truth for attempts; no message loss |
+| Classification | Transient (deadlock, serialization, DB unavailable, timeouts, broker, unknown) → retry; PostgreSQL `22xxx`, `23514`, `23502`, `23503` → permanent failure | Bugs/bad data must not burn retries silently |
+| Final failure | Task `Failed` + attempt `Failed` + `SystemEventLog` `processing.failed`, then reject to `<queue>.dlq`; `x-delivery-count` last-chance guard for crash loops | Every failure visible, nothing left `RetryScheduled` |
+| Consumer resilience | Closed consumer channel is re-created with backoff | Review 006 P2 |
