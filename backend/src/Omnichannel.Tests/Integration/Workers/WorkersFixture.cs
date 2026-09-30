@@ -90,13 +90,24 @@ public sealed class WorkersFixture : IAsyncLifetime
     public IHost CreateHost(
         string instanceId,
         IDictionary<string, string?>? overrides = null,
+        Action<IServiceCollection>? configureServices = null) =>
+        BuildWorkersHost(
+            _postgres.GetConnectionString(), _rabbit.Hostname, _amqpHostPort, instanceId, overrides, configureServices);
+
+    /// <summary>Workers host with the production registrations against the given database and broker (test credentials).</summary>
+    public static IHost BuildWorkersHost(
+        string databaseConnectionString,
+        string rabbitHostName,
+        int rabbitPort,
+        string instanceId,
+        IDictionary<string, string?>? overrides = null,
         Action<IServiceCollection>? configureServices = null)
     {
         var settings = new Dictionary<string, string?>
         {
-            ["ConnectionStrings:Default"] = _postgres.GetConnectionString(),
-            ["RabbitMq:HostName"] = _rabbit.Hostname,
-            ["RabbitMq:Port"] = _amqpHostPort.ToString(),
+            ["ConnectionStrings:Default"] = databaseConnectionString,
+            ["RabbitMq:HostName"] = rabbitHostName,
+            ["RabbitMq:Port"] = rabbitPort.ToString(),
             ["RabbitMq:UserName"] = RabbitUser,
             ["RabbitMq:Password"] = RabbitPassword,
             ["RabbitMq:ClientProvidedName"] = $"tests-{instanceId}",
@@ -127,6 +138,26 @@ public sealed class WorkersFixture : IAsyncLifetime
     {
         await using var scope = _tools!.Services.CreateAsyncScope();
         return await action(scope.ServiceProvider.GetRequiredService<OmnichannelDbContext>());
+    }
+
+    /// <summary>Runs application services (intake, import, ...) of a non-started Workers host in a fresh scope.</summary>
+    public async Task<T> WithServicesAsync<T>(Func<IServiceProvider, Task<T>> action)
+    {
+        await using var scope = _tools!.Services.CreateAsyncScope();
+        return await action(scope.ServiceProvider);
+    }
+
+    /// <summary>Publishes a raw message to the main exchange, as the Outbox Publisher would.</summary>
+    public async Task PublishAsync(string routingKey, byte[] body, string? messageId = null)
+    {
+        await using var channel = await OpenChannelAsync();
+        var properties = new BasicProperties
+        {
+            MessageId = messageId,
+            ContentType = "application/json",
+            DeliveryMode = DeliveryModes.Persistent
+        };
+        await channel.BasicPublishAsync(RabbitMqTopology.Exchange, routingKey, mandatory: false, properties, body);
     }
 
     /// <summary>Channel on a separate connection used only by test assertions.</summary>

@@ -76,4 +76,75 @@ public class ProcessingTask : IHasTimestamps
 
     public Order? Order { get; private set; }
     public IReadOnlyCollection<ProcessingAttempt> Attempts => _attempts;
+
+    /// <summary>Succeeded or Failed: no further attempts.</summary>
+    public bool IsTerminal => Status is ProcessingTaskStatus.Succeeded or ProcessingTaskStatus.Failed;
+
+    /// <summary>
+    /// Starts attempt <c>max(AttemptNo) + 1</c> and marks the task InProgress. Attempts still Running belong to a worker that
+    /// died (the message was redelivered) and are marked abandoned. Requires all attempts to be loaded.
+    /// </summary>
+    public ProcessingAttempt StartAttempt(string workerName, string workerInstanceId, DateTimeOffset startedAt)
+    {
+        EnsureNotTerminal();
+
+        foreach (var running in _attempts.Where(a => a.Status == ProcessingAttemptStatus.Running))
+        {
+            running.Abandon(startedAt);
+        }
+
+        var attemptNo = _attempts.Count == 0 ? 1 : _attempts.Max(a => a.AttemptNo) + 1;
+        var attempt = new ProcessingAttempt(TaskId, workerName, workerInstanceId, attemptNo, startedAt);
+        _attempts.Add(attempt);
+        Status = ProcessingTaskStatus.InProgress;
+        return attempt;
+    }
+
+    /// <summary>The work is done with a business outcome (for orders: the Order that was stored).</summary>
+    public void Succeed(Guid? orderId, Guid attemptId, DateTimeOffset finishedAt)
+    {
+        EnsureNotTerminal();
+
+        AttemptOf(attemptId).Succeed(finishedAt);
+        OrderId = orderId ?? OrderId;
+        Status = ProcessingTaskStatus.Succeeded;
+    }
+
+    /// <summary>Closes an attempt that found the task already completed by another delivery (nothing was done).</summary>
+    public void CloseAttemptOfCompletedTask(Guid attemptId, DateTimeOffset finishedAt)
+    {
+        if (!IsTerminal)
+        {
+            throw new InvalidOperationException($"Task {TaskId} is {Status}, not completed.");
+        }
+
+        AttemptOf(attemptId).Succeed(finishedAt);
+    }
+
+    /// <summary>
+    /// Temporary failure: the attempt fails and the task is scheduled for another attempt. If the task was completed meanwhile
+    /// by a concurrent delivery, only the attempt is recorded.
+    /// </summary>
+    public void ScheduleRetry(Guid attemptId, string errorCode, string errorMessage, DateTimeOffset finishedAt)
+    {
+        AttemptOf(attemptId).Fail(errorCode, errorMessage, finishedAt);
+
+        if (!IsTerminal)
+        {
+            Status = ProcessingTaskStatus.RetryScheduled;
+            RetryCount++;
+        }
+    }
+
+    private ProcessingAttempt AttemptOf(Guid attemptId) =>
+        _attempts.SingleOrDefault(a => a.AttemptId == attemptId)
+        ?? throw new InvalidOperationException($"Attempt {attemptId} does not belong to task {TaskId} (or is not loaded).");
+
+    private void EnsureNotTerminal()
+    {
+        if (IsTerminal)
+        {
+            throw new InvalidOperationException($"Task {TaskId} is already {Status}.");
+        }
+    }
 }

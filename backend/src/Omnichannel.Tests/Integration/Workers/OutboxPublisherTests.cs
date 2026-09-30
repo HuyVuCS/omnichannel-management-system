@@ -11,6 +11,7 @@ using Omnichannel.Application.Common.Messaging;
 using Omnichannel.Domain.Entities;
 using Omnichannel.Domain.Enums;
 using Omnichannel.Infrastructure.RabbitMQ;
+using Omnichannel.Workers.OrderWorker;
 using Omnichannel.Workers.OutboxPublisher;
 using RabbitMQ.Client;
 
@@ -169,8 +170,8 @@ public sealed class OutboxPublisherTests(WorkersFixture fixture) : IAsyncLifetim
         await InsertAsync(rows);
         var overrides = new Dictionary<string, string?> { ["OutboxPublisher:BatchSize"] = "20" };
 
-        using var first = fixture.CreateHost("publisher-a", overrides);
-        using var second = fixture.CreateHost("publisher-b", overrides);
+        using var first = CreatePublisherHost("publisher-a", overrides);
+        using var second = CreatePublisherHost("publisher-b", overrides);
         await Task.WhenAll(first.StartAsync(), second.StartAsync());
         try
         {
@@ -191,7 +192,7 @@ public sealed class OutboxPublisherTests(WorkersFixture fixture) : IAsyncLifetim
     {
         const int maxAttempts = 3;
         var logs = new CapturingLoggerProvider();
-        using var host = fixture.CreateHost(
+        using var host = CreatePublisherHost(
             "broker-outage",
             new Dictionary<string, string?>
             {
@@ -267,12 +268,23 @@ public sealed class OutboxPublisherTests(WorkersFixture fixture) : IAsyncLifetim
         Assert.False(string.IsNullOrEmpty(logPayload["lastError"]!.GetValue<string>()));
     }
 
+    /// <summary>Workers host without the Order Worker, so published messages stay in their queues for inspection.</summary>
+    private IHost CreatePublisherHost(
+        string instanceId,
+        IDictionary<string, string?>? overrides = null,
+        Action<IServiceCollection>? configureServices = null) =>
+        fixture.CreateHost(instanceId, overrides, services =>
+        {
+            services.RemoveHostedService<OrderWorkerService>();
+            configureServices?.Invoke(services);
+        });
+
     private async Task RunPublisherUntilAsync(
         Guid[] ids,
         OutboxEventStatus status,
         IDictionary<string, string?>? overrides = null)
     {
-        using var host = fixture.CreateHost($"publisher-{Guid.NewGuid():N}", overrides);
+        using var host = CreatePublisherHost($"publisher-{Guid.NewGuid():N}", overrides);
         await host.StartAsync();
         try
         {
