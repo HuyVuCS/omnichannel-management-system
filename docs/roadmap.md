@@ -3,7 +3,7 @@
 Plan from the current state to the complete system (backend + frontend), following the implementation order in
 the architecture document (section 15). Maintained by Cowork; updated after every task review.
 
-Last updated: 2026-09-30 (after review 006)
+Last updated: 2026-09-30 (after review 007)
 
 ## Conventions
 - One row = one task file `docs/tasks/NNN-*.md`, written by Cowork shortly before it is needed (not all up front),
@@ -24,8 +24,8 @@ Last updated: 2026-09-30 (after review 006)
 | 004 | BE | Order intake `POST /api/orders/{slug}` (outbox first, decision A) | 5 | Done |
 | 005 | BE | RabbitMQ topology (exchange, quorum queues, DLX/DLQs), message envelope, Outbox Publisher with publisher confirms | 6, 8 | Done |
 | 006 | BE | Order Worker: consume `order.created`, atomic reserve transaction (lock inventory rows in `ProductId` order, same as import), Order/Items/Movements/Outbox, ProcessingAttempt tracking, ACK after commit, oversell tests | 6, 7 | Done |
-| 007 | BE | Shared retry/backoff + DLQ handling for all consumers, max attempts, poison messages | 8 | Open |
-| 008 | BE | `GET /api/orders`, `GET /api/orders/{id}` (with tasks/attempts), `GET /api/processing/tasks`, `POST .../retry`, SystemEventLog writes | 9 | Planned |
+| 007 | BE | Shared retry/backoff + DLQ handling for all consumers, max attempts, poison messages | 8 | Done |
+| 008 | BE | `GET /api/orders`, `GET /api/orders/{id}` (with tasks/attempts), `GET /api/processing/tasks`, `POST .../retry`, SystemEventLog writes | 9 | Open |
 | 009 | BE | User management (Admin only): list/create users, assign role, lock/unlock, reset password; no ad-hoc seeder tools | 6 | Planned |
 | 010 | FE | Vite + React + TS + Redux Toolkit/RTK Query scaffold; login, token handling, role guard, layout, ProblemDetails handling | 3 | Planned |
 | 011 | FE | Products, Customers, Channels pages (search, filter, sort, paging) | 3.2 | Planned |
