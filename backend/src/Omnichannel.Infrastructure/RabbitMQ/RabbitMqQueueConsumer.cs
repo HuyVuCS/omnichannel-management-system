@@ -12,7 +12,8 @@ namespace Omnichannel.Infrastructure.RabbitMQ;
 /// <item><c>Ack</c> → ACK (only after the handler returned, i.e. after it committed).</item>
 /// <item><c>Reject</c> → reject without requeue → <c>&lt;queue&gt;.dlq</c>.</item>
 /// <item><c>Retry</c> below <see cref="RetryPolicy.MaxAttempts"/> → delayed retry copy published with confirm, then ACK; if the
-/// copy cannot be published → NACK with requeue (the message is not lost).</item>
+/// copy cannot be published → NACK with requeue (the message is not lost) after a bounded backoff (1 s doubling to 30 s per
+/// consecutive failure of this consumer, reset when a copy is published), so a persistently unroutable copy cannot spin.</item>
 /// <item><c>Retry</c> at the limit or <c>Fail</c> → the handler's final-failure callback, then reject → DLQ.</item>
 /// <item>Last delivery the queue allows (<c>x-delivery-count</c>) → final-failure callback before processing (crash loops).</item>
 /// <item>A handler exception → delayed copy counting the failures in <c>x-handler-failures</c>; at the limit a final failure.
@@ -24,6 +25,14 @@ public sealed class RabbitMqQueueConsumer : IAsyncDisposable
 {
     private const string DeliveryCountHeader = "x-delivery-count";
 
+    /// <summary>Wait before a NACK-requeue when the retry copy could not be published (RabbitMQ 4 does not bound such loops).</summary>
+    private static readonly TimeSpan RequeueInitialBackoff = TimeSpan.FromSeconds(1);
+
+    private static readonly TimeSpan RequeueMaxBackoff = TimeSpan.FromSeconds(30);
+
+    /// <summary>At most one error log per interval for failed retry-copy publishes; the others are counted and logged at Debug.</summary>
+    private static readonly TimeSpan RequeueErrorLogInterval = TimeSpan.FromSeconds(30);
+
     private readonly IConnection _connection;
     private readonly IChannel _channel;
     private readonly QueueConsumerSettings _settings;
@@ -32,7 +41,11 @@ public sealed class RabbitMqQueueConsumer : IAsyncDisposable
     private readonly ILogger _logger;
     private readonly object _inFlightLock = new();
     private readonly TaskCompletionSource<string> _interrupted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly CancellationTokenSource _stopped = new();
     private int _inFlight;
+    private int _consecutiveRequeues;
+    private int _suppressedRequeueErrors;
+    private long _lastRequeueErrorLogAt; // Environment.TickCount64 of the last error log; 0 = never
     private TaskCompletionSource? _drained;
     private string? _consumerTag;
     private volatile bool _stopping;
@@ -109,6 +122,9 @@ public sealed class RabbitMqQueueConsumer : IAsyncDisposable
     public async Task StopAsync(CancellationToken cancellationToken)
     {
         _stopping = true;
+
+        // Deliveries waiting before a requeue give their message back at once.
+        await _stopped.CancelAsync();
         if (_consumerTag is not null && _channel.IsOpen)
         {
             try
@@ -139,6 +155,7 @@ public sealed class RabbitMqQueueConsumer : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         _stopping = true;
+        await _stopped.CancelAsync();
         await _channel.DisposeAsync();
     }
 
@@ -302,21 +319,57 @@ public sealed class RabbitMqQueueConsumer : IAsyncDisposable
     }
 
     /// <summary>
-    /// Delayed copy with confirm, then ACK of the original. If the copy cannot be published (broker trouble), NACK with requeue
-    /// so the message is not lost.
+    /// Delayed copy with confirm, then ACK of the original. If the copy cannot be published (broker trouble, missing delay
+    /// exchange), NACK with requeue so the message is not lost — after a bounded backoff, because RabbitMQ 4 does not count
+    /// NACK-requeues toward <c>x-delivery-limit</c> and a persistently unroutable copy would otherwise spin.
     /// </summary>
     private async Task<Settlement> PublishDelayedAsync(ReceivedMessage message, int retryNumber, IReadOnlyDictionary<string, object?> headers)
     {
         try
         {
             await _retryPublisher.PublishDelayedAsync(_settings.Queue, message, retryNumber, headers, CancellationToken.None);
+            Interlocked.Exchange(ref _consecutiveRequeues, 0);
             return Settlement.Ack;
         }
         catch (Exception exception)
         {
-            _logger.LogError(exception, "Could not publish the retry copy of message {MessageId}; message requeued instead", message.MessageId);
+            var failures = Interlocked.Increment(ref _consecutiveRequeues);
+            var delay = RetryBackoff.Compute(failures, RequeueInitialBackoff, RequeueMaxBackoff, Random.Shared.NextDouble());
+            LogRequeue(exception, message.MessageId, failures, delay);
+
+            try
+            {
+                await Task.Delay(delay, _stopped.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                // Stopping: requeue now; the message is redelivered to the next consumer.
+            }
+
             return Settlement.Requeue;
         }
+    }
+
+    /// <summary>Error at most once per <see cref="RequeueErrorLogInterval"/> (with the number suppressed since), Debug otherwise.</summary>
+    private void LogRequeue(Exception exception, string? messageId, int consecutiveFailures, TimeSpan delay)
+    {
+        var now = Environment.TickCount64;
+        var last = Interlocked.Read(ref _lastRequeueErrorLogAt);
+        if ((last == 0 || now - last >= (long)RequeueErrorLogInterval.TotalMilliseconds)
+            && Interlocked.CompareExchange(ref _lastRequeueErrorLogAt, now, last) == last)
+        {
+            var suppressed = Interlocked.Exchange(ref _suppressedRequeueErrors, 0);
+            _logger.LogError(
+                exception,
+                "Could not publish the retry copy of message {MessageId} on {Queue} ({ConsecutiveFailures} consecutive, {Suppressed} not logged since the last error); requeued after {Delay}",
+                messageId, _settings.Queue, consecutiveFailures, suppressed, delay);
+            return;
+        }
+
+        Interlocked.Increment(ref _suppressedRequeueErrors);
+        _logger.LogDebug(
+            "Could not publish the retry copy of message {MessageId} on {Queue} ({ConsecutiveFailures} consecutive): {Error}; requeued after {Delay}",
+            messageId, _settings.Queue, consecutiveFailures, exception.Message, delay);
     }
 
     private static int HandlerFailuresOf(ReceivedMessage message) =>
