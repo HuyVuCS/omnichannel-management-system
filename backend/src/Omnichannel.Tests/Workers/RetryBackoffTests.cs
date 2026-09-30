@@ -1,8 +1,8 @@
-using Omnichannel.Workers.OutboxPublisher;
+using Omnichannel.Infrastructure.RabbitMQ;
 
 namespace Omnichannel.Tests.Workers;
 
-public sealed class OutboxBackoffTests
+public sealed class RetryBackoffTests
 {
     private static readonly TimeSpan Initial = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan Max = TimeSpan.FromMinutes(5);
@@ -15,10 +15,10 @@ public sealed class OutboxBackoffTests
     [InlineData(9, 256)]
     public void Doubles_per_attempt_within_equal_jitter_bounds(int attempt, int baseSeconds)
     {
-        Assert.Equal(TimeSpan.FromSeconds(baseSeconds / 2d), OutboxBackoff.Compute(attempt, Initial, Max, jitter: 0));
-        Assert.Equal(TimeSpan.FromSeconds(baseSeconds * 0.75), OutboxBackoff.Compute(attempt, Initial, Max, jitter: 0.5));
+        Assert.Equal(TimeSpan.FromSeconds(baseSeconds / 2d), RetryBackoff.Compute(attempt, Initial, Max, jitter: 0));
+        Assert.Equal(TimeSpan.FromSeconds(baseSeconds * 0.75), RetryBackoff.Compute(attempt, Initial, Max, jitter: 0.5));
 
-        var upper = OutboxBackoff.Compute(attempt, Initial, Max, jitter: 0.999999);
+        var upper = RetryBackoff.Compute(attempt, Initial, Max, jitter: 0.999999);
         Assert.InRange(upper, TimeSpan.FromSeconds(baseSeconds * 0.999), TimeSpan.FromSeconds(baseSeconds));
     }
 
@@ -28,8 +28,8 @@ public sealed class OutboxBackoffTests
     [InlineData(int.MaxValue)]
     public void Is_capped_at_the_maximum(int attempt)
     {
-        Assert.Equal(TimeSpan.FromMinutes(2.5), OutboxBackoff.Compute(attempt, Initial, Max, jitter: 0));
-        Assert.InRange(OutboxBackoff.Compute(attempt, Initial, Max, jitter: 0.999999), TimeSpan.FromMinutes(2.5), Max);
+        Assert.Equal(TimeSpan.FromMinutes(2.5), RetryBackoff.Compute(attempt, Initial, Max, jitter: 0));
+        Assert.InRange(RetryBackoff.Compute(attempt, Initial, Max, jitter: 0.999999), TimeSpan.FromMinutes(2.5), Max);
     }
 
     [Fact]
@@ -37,7 +37,7 @@ public sealed class OutboxBackoffTests
     {
         for (var i = 0; i < 1000; i++)
         {
-            var delay = OutboxBackoff.Compute(4, Initial, Max, Random.Shared.NextDouble());
+            var delay = RetryBackoff.Compute(4, Initial, Max, Random.Shared.NextDouble());
             Assert.InRange(delay, TimeSpan.FromSeconds(4), TimeSpan.FromSeconds(8));
         }
     }
@@ -48,6 +48,6 @@ public sealed class OutboxBackoffTests
     [InlineData(1, 1.0)]
     public void Rejects_invalid_arguments(int attempt, double jitter)
     {
-        Assert.Throws<ArgumentOutOfRangeException>(() => OutboxBackoff.Compute(attempt, Initial, Max, jitter));
+        Assert.Throws<ArgumentOutOfRangeException>(() => RetryBackoff.Compute(attempt, Initial, Max, jitter));
     }
 }

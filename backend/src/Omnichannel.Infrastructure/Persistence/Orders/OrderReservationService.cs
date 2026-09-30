@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Omnichannel.Application.Common.Abstractions;
 using Omnichannel.Application.Common.Messaging;
 using Omnichannel.Application.Orders;
+using Omnichannel.Application.Processing;
 using Omnichannel.Domain.Entities;
 using Omnichannel.Domain.Enums;
 using Omnichannel.Infrastructure.Persistence.Configurations;
@@ -158,6 +159,64 @@ internal sealed class OrderReservationService(
         task.ScheduleRetry(attemptId, errorCode, errorMessage, timeProvider.GetUtcNow());
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+    }
+
+    public async Task<int?> RecordFinalFailureAsync(
+        Guid taskId,
+        Guid? attemptId,
+        string errorCode,
+        string errorMessage,
+        string workerName,
+        string workerInstanceId,
+        string queue,
+        CancellationToken cancellationToken)
+    {
+        dbContext.ChangeTracker.Clear();
+
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        var now = timeProvider.GetUtcNow();
+        var task = await LockTaskAsync(taskId, cancellationToken);
+        if (task.IsTerminal)
+        {
+            return null;
+        }
+
+        // No attempt yet for this delivery (delivery-limit guard): record the failure as its own attempt.
+        if (attemptId is not { } id)
+        {
+            var attempt = task.StartAttempt(workerName, workerInstanceId, now);
+            dbContext.ProcessingAttempts.Add(attempt);
+            id = attempt.AttemptId;
+        }
+
+        task.Fail(id, errorCode, errorMessage, now);
+        var attemptNo = task.Attempts.Single(a => a.AttemptId == id).AttemptNo;
+
+        dbContext.SystemEventLogs.Add(new SystemEventLog(
+            SystemEventLevel.Error,
+            ProcessingEvents.Failed,
+            task.CorrelationId,
+            task.TaskId,
+            task.OrderId,
+            workerName,
+            MessageJson.Serialize(new
+            {
+                taskId = task.TaskId,
+                taskType = task.TaskType,
+                attemptNo,
+                errorCode,
+                errorMessage,
+                queue
+            }),
+            now));
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+
+        logger.LogError(
+            "Task {TaskId} failed permanently at attempt {AttemptNo} ({ErrorCode}); message goes to the DLQ",
+            task.TaskId, attemptNo, errorCode);
+        return attemptNo;
     }
 
     public async Task RecordRejectedMessageAsync(

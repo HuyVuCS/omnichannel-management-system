@@ -51,7 +51,7 @@ public sealed class RabbitMqConnectionProvider(
             try
             {
                 await using var channel = await connection.CreateChannelAsync(cancellationToken: cancellationToken);
-                await RabbitMqTopology.DeclareAsync(channel, cancellationToken);
+                await RabbitMqTopology.DeclareAsync(channel, settings.EffectiveRetryDelays, cancellationToken);
             }
             catch
             {

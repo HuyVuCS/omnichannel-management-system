@@ -1,7 +1,7 @@
-namespace Omnichannel.Workers.OutboxPublisher;
+namespace Omnichannel.Infrastructure.RabbitMQ;
 
-/// <summary>Exponential backoff with jitter for publish retries.</summary>
-public static class OutboxBackoff
+/// <summary>Exponential backoff with jitter, shared by the Outbox Publisher and the consumers.</summary>
+public static class RetryBackoff
 {
     /// <summary>
     /// Delay before the next attempt after <paramref name="failedAttempts"/> failures:

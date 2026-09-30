@@ -20,6 +20,15 @@ public sealed class RabbitMqOptions
 
     /// <summary>Wait between automatic reconnection attempts after the connection was lost.</summary>
     public TimeSpan NetworkRecoveryInterval { get; set; } = TimeSpan.FromSeconds(5);
+
+    /// <summary>
+    /// Retry delay tiers (ascending); null/empty = <see cref="RabbitMqTopology.DefaultRetryDelays"/>. Each tier is a delay
+    /// exchange + queue pair in the topology.
+    /// </summary>
+    public TimeSpan[]? RetryDelays { get; set; }
+
+    public IReadOnlyList<TimeSpan> EffectiveRetryDelays =>
+        RetryDelays is { Length: > 0 } delays ? delays : RabbitMqTopology.DefaultRetryDelays;
 }
 
 public sealed class RabbitMqOptionsValidator : IValidateOptions<RabbitMqOptions>
@@ -57,6 +66,13 @@ public sealed class RabbitMqOptionsValidator : IValidateOptions<RabbitMqOptions>
         if (options.NetworkRecoveryInterval <= TimeSpan.Zero)
         {
             failures.Add("RabbitMq:NetworkRecoveryInterval must be positive.");
+        }
+
+        var delays = options.EffectiveRetryDelays;
+        if (delays.Any(d => d < TimeSpan.FromMilliseconds(100) || d > TimeSpan.FromDays(1))
+            || delays.Zip(delays.Skip(1)).Any(pair => pair.Second <= pair.First))
+        {
+            failures.Add("RabbitMq:RetryDelays must be ascending and each between 100 ms and 1 day.");
         }
 
         return failures.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failures);

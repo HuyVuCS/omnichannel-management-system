@@ -10,6 +10,9 @@ public sealed class OrderWorkerOptions
     /// <summary>Messages handled in parallel by this instance (consumer dispatch concurrency and prefetch).</summary>
     public ushort Concurrency { get; set; } = 4;
 
+    /// <summary>Attempts of a task (from the database) before a temporary failure becomes final (task Failed, DLQ).</summary>
+    public int MaxAttempts { get; set; } = 5;
+
     /// <summary>Backoff for (re)starting the consumer while RabbitMQ is unavailable.</summary>
     public TimeSpan InitialBackoff { get; set; } = TimeSpan.FromSeconds(1);
 
@@ -25,6 +28,11 @@ public sealed class OrderWorkerOptionsValidator : IValidateOptions<OrderWorkerOp
         if (options.Concurrency is < 1 or > 64)
         {
             failures.Add("OrderWorker:Concurrency must be between 1 and 64.");
+        }
+
+        if (options.MaxAttempts is < 1 or > 20)
+        {
+            failures.Add("OrderWorker:MaxAttempts must be between 1 and 20.");
         }
 
         if (options.InitialBackoff <= TimeSpan.Zero || options.MaxBackoff < options.InitialBackoff)
