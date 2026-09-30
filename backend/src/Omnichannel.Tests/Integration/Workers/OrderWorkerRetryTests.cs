@@ -112,6 +112,64 @@ public sealed partial class OrderWorkerTests
     }
 
     [Fact]
+    public async Task Unroutable_retry_copy_is_requeued_with_backoff_and_processed_once_the_topology_is_back()
+    {
+        var (customerId, products) = await SeedAsync(stock: [10]);
+        // The handler throws on every delivery, so each one needs a retry copy in the first delay tier - whose exchange is gone.
+        var failures = new FailureInjection { StartAttemptFailures = int.MaxValue };
+        var logs = new CapturingLoggerProvider();
+        var firstTier = RabbitMqTopology.DelayNameOf(WorkersFixture.TestRetryDelays[0]);
+
+        var hosts = StartWorkers(instances: 1, configureServices: services =>
+        {
+            services.InjectFailures(failures);
+            services.AddSingleton<ILoggerProvider>(logs);
+        });
+        try
+        {
+            // The consumer runs only after the topology was declared; delete the exchange afterwards (as an operator might).
+            var worker = hosts[0].Services.GetServices<IHostedService>().OfType<OrderWorkerService>().Single();
+            await Eventually.WaitAsync(() => Task.FromResult(worker.Consumer.Current), c => c is not null, Timeout, "consumer started");
+            await using (var channel = await fixture.OpenChannelAsync())
+            {
+                await channel.ExchangeDeleteAsync(firstTier);
+            }
+
+            var taskId = await SubmitAsync(customerId, (products[0].ProductId, 2));
+            await Eventually.WaitAsync(() => Task.FromResult(failures.StartAttemptCalls), n => n >= 1, Timeout, "first delivery");
+
+            // Without a backoff this spun thousands of times per second (nack-requeues are not counted by the broker).
+            await Task.Delay(TimeSpan.FromSeconds(10));
+            var deliveries = failures.StartAttemptCalls;
+            Assert.InRange(deliveries, 3, 6);
+
+            // Rate-limited: one error for all of these requeues (the others are logged at Debug).
+            Assert.Equal(1, logs.Count(typeof(ResilientQueueConsumer).FullName!, LogLevel.Error, "Could not publish the retry copy"));
+
+            // Not lost, not failed, nothing dead-lettered.
+            Assert.Equal(ProcessingTaskStatus.Pending, (await LoadTaskAsync(taskId)).Status);
+            Assert.Equal(0u, await MessageCountAsync(RabbitMqTopology.DeadLetterQueueOf(Queue)));
+
+            await using (var channel = await fixture.OpenChannelAsync())
+            {
+                await RabbitMqTopology.DeclareAsync(channel, WorkersFixture.TestRetryDelays, CancellationToken.None);
+            }
+
+            failures.Heal();
+            await WaitForTasksAsync([taskId], ProcessingTaskStatus.Succeeded);
+        }
+        finally
+        {
+            await StopAsync(hosts);
+            await using var channel = await fixture.OpenChannelAsync();
+            await RabbitMqTopology.DeclareAsync(channel, WorkersFixture.TestRetryDelays, CancellationToken.None);
+        }
+
+        Assert.Equal((10, 2, 8), await StockAsync(products[0].ProductId));
+        await AssertQueuesEmptyAsync(includeDeadLetter: true);
+    }
+
+    [Fact]
     public async Task Crash_loop_is_finalised_after_max_attempts_instead_of_looping()
     {
         var (customerId, products) = await SeedAsync(stock: [10]);
