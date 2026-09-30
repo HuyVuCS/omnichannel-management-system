@@ -11,7 +11,10 @@ internal sealed class ProcessingTaskConfiguration : IEntityTypeConfiguration<Pro
     public void Configure(EntityTypeBuilder<ProcessingTask> builder)
     {
         builder.ToTable("ProcessingTasks", t =>
-            t.HasCheckConstraint("CK_ProcessingTasks_RetryCount_NonNegative", "\"RetryCount\" >= 0"));
+        {
+            t.HasCheckConstraint("CK_ProcessingTasks_RetryCount_NonNegative", "\"RetryCount\" >= 0");
+            t.HasCheckConstraint("CK_ProcessingTasks_AttemptBudgetStart_NonNegative", "\"AttemptBudgetStart\" >= 0");
+        });
 
         builder.HasKey(x => x.TaskId);
         builder.Property(x => x.TaskId).ValueGeneratedNever();
@@ -24,6 +27,7 @@ internal sealed class ProcessingTaskConfiguration : IEntityTypeConfiguration<Pro
         builder.Property(x => x.MessageId).HasMaxLength(100);
         builder.Property(x => x.IdempotencyKey).HasMaxLength(ProcessingTask.MaxIdempotencyKeyLength);
         builder.Property(x => x.RequestHash).HasMaxLength(ProcessingTask.RequestHashLength);
+        builder.Property(x => x.AttemptBudgetStart).HasDefaultValue(0);
         builder.Property(x => x.CreatedAt).IsRequired();
 
         builder.HasOne(x => x.Order)

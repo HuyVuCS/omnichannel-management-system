@@ -172,6 +172,38 @@ public sealed class InventoryImportTests(ApiFactory factory)
     }
 
     [Fact]
+    public async Task Applied_import_writes_an_audit_event_with_the_request_correlation_id()
+    {
+        var (a, b) = (await CreateProductAsync(), await CreateProductAsync());
+        var correlationId = $"audit-{TestData.UniqueSuffix()}";
+        var documentNumber = $"GRN-{TestData.UniqueSuffix()}";
+
+        async Task<HttpResponseMessage> PostAsync()
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, "/api/inventory/import")
+            {
+                Content = JsonContent.Create(Import(documentNumber, "A1", (a.ProductId, 12), (b.ProductId, 30)))
+            };
+            request.Headers.Add("X-Correlation-Id", correlationId);
+            return await _manager.SendAsync(request);
+        }
+
+        Assert.Equal(HttpStatusCode.OK, (await PostAsync()).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, (await PostAsync()).StatusCode); // rejected re-import: no second event
+
+        var events = await factory.QueryDbAsync(db => db.SystemEventLogs.AsNoTracking()
+            .Where(l => l.EventType == InventoryEvents.Imported && l.CorrelationId == correlationId)
+            .ToListAsync());
+        var logged = Assert.Single(events);
+        Assert.Equal((SystemEventLevel.Information, (Guid?)null, (Guid?)null), (logged.Level, logged.TaskId, logged.OrderId));
+        using var payload = JsonDocument.Parse(logged.Payload!);
+        Assert.Equal(($"A1/{documentNumber}", 2, 42L),
+            (payload.RootElement.GetProperty("referenceId").GetString(),
+                payload.RootElement.GetProperty("itemCount").GetInt32(),
+                payload.RootElement.GetProperty("totalQuantity").GetInt64()));
+    }
+
+    [Fact]
     public async Task Movements_are_filtered_and_paged_newest_first()
     {
         var product = await CreateProductAsync();

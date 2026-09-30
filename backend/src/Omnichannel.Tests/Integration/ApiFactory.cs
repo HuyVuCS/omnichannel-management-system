@@ -54,11 +54,14 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         builder.UseSetting("Jwt:SigningKey", TestSigningKey);
     }
 
-    /// <summary>Client carrying a token for a random user id in <paramref name="role"/>, issued by the app's own issuer.</summary>
-    public HttpClient CreateClientAs(string role)
+    /// <summary>
+    /// Client carrying a token for <paramref name="userId"/> (a random user id when null) in <paramref name="role"/>, issued by
+    /// the app's own issuer.
+    /// </summary>
+    public HttpClient CreateClientAs(string role, Guid? userId = null)
     {
         var issuer = Services.GetRequiredService<IAccessTokenIssuer>();
-        var token = issuer.Issue(Guid.NewGuid(), $"{role.ToLowerInvariant()}@integration.test", [role]);
+        var token = issuer.Issue(userId ?? Guid.NewGuid(), $"{role.ToLowerInvariant()}@integration.test", [role]);
 
         var client = CreateClient();
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token.Token);

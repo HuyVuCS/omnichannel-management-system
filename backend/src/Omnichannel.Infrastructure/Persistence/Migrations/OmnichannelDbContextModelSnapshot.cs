@@ -641,6 +641,11 @@ namespace Omnichannel.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("TaskId")
                         .HasColumnType("uuid");
 
+                    b.Property<int>("AttemptBudgetStart")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0);
+
                     b.Property<string>("CorrelationId")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -695,6 +700,8 @@ namespace Omnichannel.Infrastructure.Persistence.Migrations
 
                     b.ToTable("ProcessingTasks", null, t =>
                         {
+                            t.HasCheckConstraint("CK_ProcessingTasks_AttemptBudgetStart_NonNegative", "\"AttemptBudgetStart\" >= 0");
+
                             t.HasCheckConstraint("CK_ProcessingTasks_RetryCount_NonNegative", "\"RetryCount\" >= 0");
                         });
                 });

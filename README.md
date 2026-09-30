@@ -115,6 +115,10 @@ dotnet run --project src/Omnichannel.Workers
   `RabbitMq:RetryDelays` to change the tiers). After the last attempt, or at once for a permanent error (bad data, check or
   foreign-key violation), the task becomes `Failed`, a `processing.failed` row is written to `SystemEventLogs`, and the message
   is moved to `order.processing.dlq` (inspect it in the management UI).
+- Manual retry: a Manager/Admin calls `POST /api/processing/tasks/{id}/retry` on a `Failed` task. The original message is copied
+  into a new outbox row (new message id, original routing key), the task becomes `Pending` with a fresh attempt budget
+  (`OrderWorker:MaxAttempts` new attempts; attempt numbers keep counting), and `processing.retry_requested` is logged. The copy in
+  the DLQ is left there for inspection. Look up the result with `GET /api/processing/tasks/{id}` or `GET /api/orders/{orderId}`.
 
 ## API conventions
 

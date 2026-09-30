@@ -1,0 +1,76 @@
+using Omnichannel.Application.Common.Paging;
+using Omnichannel.Application.Processing;
+using Omnichannel.Domain.Enums;
+
+namespace Omnichannel.Application.Orders;
+
+public sealed record OrderChannelResponse(Guid ChannelId, string Slug, string Name);
+
+public sealed record OrderCustomerResponse(Guid CustomerId, string Name);
+
+/// <param name="ItemCount">Number of order lines.</param>
+public sealed record OrderSummaryResponse(
+    Guid OrderId,
+    string ExternalOrderId,
+    OrderStatus Status,
+    decimal TotalAmount,
+    int ItemCount,
+    OrderChannelResponse Channel,
+    OrderCustomerResponse Customer,
+    DateTimeOffset CreatedAt);
+
+/// <summary>An order with its lines and every processing task (with all attempts) tied to it.</summary>
+public sealed record OrderDetailResponse(
+    Guid OrderId,
+    string ExternalOrderId,
+    OrderStatus Status,
+    decimal TotalAmount,
+    int ItemCount,
+    OrderChannelResponse Channel,
+    OrderCustomerResponse Customer,
+    DateTimeOffset CreatedAt,
+    IReadOnlyList<OrderItemResponse> Items,
+    IReadOnlyList<OrderTaskResponse> Tasks);
+
+/// <param name="Stock">Ordered quantity.</param>
+/// <param name="UnitPrice">Price snapshot taken at intake.</param>
+public sealed record OrderItemResponse(
+    Guid ProductId,
+    string Sku,
+    string ProductName,
+    int Stock,
+    decimal UnitPrice,
+    decimal LineTotal);
+
+/// <param name="Attempts">Ordered by <c>attemptNo</c>.</param>
+public sealed record OrderTaskResponse(
+    Guid TaskId,
+    ProcessingTaskType TaskType,
+    ProcessingTaskStatus Status,
+    int RetryCount,
+    string CorrelationId,
+    string? MessageId,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset? UpdatedAt,
+    IReadOnlyList<ProcessingAttemptResponse> Attempts);
+
+/// <summary>
+/// Search matches the external order id or the customer name. <see cref="From"/>/<see cref="To"/> filter on <c>CreatedAt</c>
+/// (inclusive). Default order: newest first (<c>createdAt</c>, descending unless <c>sortDir=asc</c>).
+/// </summary>
+public sealed record OrderListQuery : PageQuery
+{
+    public const string SortByCreatedAt = "createdAt";
+    public const string SortByTotalAmount = "totalAmount";
+    public const string SortByExternalOrderId = "externalOrderId";
+
+    public static readonly IReadOnlyList<string> SortFields = [SortByCreatedAt, SortByTotalAmount, SortByExternalOrderId];
+
+    /// <summary>Channel slug (case-insensitive); an unknown slug matches nothing.</summary>
+    public string? Channel { get; init; }
+
+    public OrderStatus? Status { get; init; }
+    public Guid? CustomerId { get; init; }
+    public DateTimeOffset? From { get; init; }
+    public DateTimeOffset? To { get; init; }
+}
