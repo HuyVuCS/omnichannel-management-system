@@ -165,3 +165,21 @@ The DB CHECK on `ReservedStock` is the last line of defence; the conditional `UP
 | Classification | Transient (deadlock, serialization, DB unavailable, timeouts, broker, unknown) → retry; PostgreSQL `22xxx`, `23514`, `23502`, `23503` → permanent failure | Bugs/bad data must not burn retries silently |
 | Final failure | Task `Failed` + attempt `Failed` + `SystemEventLog` `processing.failed`, then reject to `<queue>.dlq`; `x-delivery-count` last-chance guard for crash loops | Every failure visible, nothing left `RetryScheduled` |
 | Consumer resilience | Closed consumer channel is re-created with backoff | Review 006 P2 |
+
+## Task 007 result (reviewed 2026-09-30)
+
+Delayed retry (tiers `omnichannel.delay.5s/30s/2m/10m`), final failure → task `Failed` + `processing.failed` + DLQ, consumer channel
+re-creation; 306/306 tests; manual check confirmed by the user. Review: `docs/tasks/007-*.review.md`.
+
+**Platform fact:** RabbitMQ 4 does not count `basic.nack(requeue: true)` toward `x-delivery-limit` (only unsettled returns on channel
+close). Never rely on NACK-requeue being bounded; count failures in the consumer and use the delay tiers.
+
+## Task 008 plan — orders/processing API, manual retry (2026-09-30)
+
+| Topic | Decision | Reason |
+| --- | --- | --- |
+| Manual retry | Only `Failed` tasks; new outbox row copying the original message (original routing key), task `Pending`, audit event; DLQ copy left for inspection | Reuses the reliable outbox path; doc's `processing.retry` routing key stays unused (deviation) |
+| Attempt budget | `ProcessingTask.AttemptBudgetStart`; limit checks `AttemptNo - AttemptBudgetStart`; attempt numbers keep increasing | Fresh retries after a manual retry, complete attempt history |
+| Task search | Attempt-level filters (worker, instance, error code, attempt no) via `EXISTS` | Doc §5.3 |
+| Authorization | Reads AnyStaff; manual retry ManagerOrAdmin | Operators see errors; only managers re-trigger work |
+| Audit | `SystemEventLog` for manual retry and stock import | Doc §6 audit for important operations |
