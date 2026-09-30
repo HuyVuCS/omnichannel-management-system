@@ -136,6 +136,23 @@ public class ProcessingTask : IHasTimestamps
         }
     }
 
+    /// <summary>
+    /// Final failure (retry limit reached, permanent error, delivery limit): the task becomes Failed (terminal, needs an
+    /// operator). The attempt is failed with the error unless its failure was already recorded (transient failure before).
+    /// </summary>
+    public void Fail(Guid attemptId, string errorCode, string errorMessage, DateTimeOffset finishedAt)
+    {
+        EnsureNotTerminal();
+
+        var attempt = AttemptOf(attemptId);
+        if (attempt.Status == ProcessingAttemptStatus.Running || attempt.IsAbandoned)
+        {
+            attempt.Fail(errorCode, errorMessage, finishedAt);
+        }
+
+        Status = ProcessingTaskStatus.Failed;
+    }
+
     private ProcessingAttempt AttemptOf(Guid attemptId) =>
         _attempts.SingleOrDefault(a => a.AttemptId == attemptId)
         ?? throw new InvalidOperationException($"Attempt {attemptId} does not belong to task {TaskId} (or is not loaded).");

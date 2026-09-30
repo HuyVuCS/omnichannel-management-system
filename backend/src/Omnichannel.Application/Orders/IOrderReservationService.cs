@@ -37,6 +37,21 @@ public interface IOrderReservationService
         string errorMessage,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Final failure, in one transaction before the message goes to the DLQ: attempt Failed (<paramref name="attemptId"/>, or a new
+    /// attempt when null), task Failed, and SystemEventLog Error <c>processing.failed</c>.
+    /// </summary>
+    /// <returns>The failed attempt number; null when the task was already completed (nothing to fail).</returns>
+    Task<int?> RecordFinalFailureAsync(
+        Guid taskId,
+        Guid? attemptId,
+        string errorCode,
+        string errorMessage,
+        string workerName,
+        string workerInstanceId,
+        string queue,
+        CancellationToken cancellationToken);
+
     /// <summary>SystemEventLog Error <see cref="OrderProcessingEvents.MessageRejected"/> for a message sent to the DLQ.</summary>
     Task RecordRejectedMessageAsync(
         string? messageId,

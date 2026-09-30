@@ -70,7 +70,7 @@ public sealed class OutboxPublisherService(
                 {
                     // The broker (not the messages) failed: rows were left Pending without counting an attempt.
                     consecutiveBrokerFailures++;
-                    var delay = OutboxBackoff.Compute(
+                    var delay = RetryBackoff.Compute(
                         consecutiveBrokerFailures, _options.InitialBackoff, _options.MaxBackoff, Random.Shared.NextDouble());
                     logger.LogWarning(
                         "RabbitMQ unavailable ({BrokerError}); {Unconfirmed} rows left Pending, next try in {Delay}",
@@ -100,7 +100,7 @@ public sealed class OutboxPublisherService(
             {
                 // E.g. database unavailable. Never let the loop die; back off instead of spinning.
                 consecutiveErrors++;
-                var delay = OutboxBackoff.Compute(consecutiveErrors, _options.PollInterval, _options.MaxBackoff, Random.Shared.NextDouble());
+                var delay = RetryBackoff.Compute(consecutiveErrors, _options.PollInterval, _options.MaxBackoff, Random.Shared.NextDouble());
                 logger.LogError(exception, "Outbox publish batch failed; next try in {Delay}", delay);
 
                 try
@@ -163,7 +163,7 @@ public sealed class OutboxPublisherService(
             }
 
             var error = outcome.Error!;
-            var delay = OutboxBackoff.Compute(
+            var delay = RetryBackoff.Compute(
                 row.PublishAttempts + 1, _options.InitialBackoff, _options.MaxBackoff, Random.Shared.NextDouble());
 
             if (row.RecordPublishFailure(error, completedAt, delay, _options.MaxAttempts))

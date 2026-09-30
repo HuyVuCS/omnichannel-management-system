@@ -15,6 +15,9 @@ public static class RabbitMqServiceCollectionExtensions
             .ValidateOnStart();
         services.AddSingleton<IValidateOptions<RabbitMqOptions>, RabbitMqOptionsValidator>();
         services.AddSingleton<RabbitMqConnectionProvider>();
+        services.AddSingleton<IRetryPublisher, RabbitMqRetryPublisher>();
+        // One per consuming worker.
+        services.AddTransient<ResilientQueueConsumer>();
 
         return services;
     }

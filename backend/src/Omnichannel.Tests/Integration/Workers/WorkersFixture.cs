@@ -31,6 +31,9 @@ public sealed class WorkersFixture : IAsyncLifetime
 
     private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:17").Build();
     private readonly int _amqpHostPort = GetFreeTcpPort();
+
+    // Fixed as well: the broker-outage test restarts the container, which would re-map a random port.
+    private readonly int _managementHostPort = GetFreeTcpPort();
     private readonly RabbitMqContainer _rabbit;
     private IHost? _tools;
     private IConnection? _assertionConnection;
@@ -41,7 +44,7 @@ public sealed class WorkersFixture : IAsyncLifetime
             .WithUsername(RabbitUser)
             .WithPassword(RabbitPassword)
             .WithPortBinding(_amqpHostPort, AmqpPort)
-            .WithPortBinding(ManagementPort, true)
+            .WithPortBinding(_managementHostPort, ManagementPort)
             .Build();
     }
 
@@ -62,13 +65,14 @@ public sealed class WorkersFixture : IAsyncLifetime
 
         Management = new HttpClient
         {
-            BaseAddress = new Uri($"http://{_rabbit.Hostname}:{_rabbit.GetMappedPublicPort(ManagementPort)}/")
+            BaseAddress = new Uri($"http://{_rabbit.Hostname}:{_managementHostPort}/")
         };
         Management.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
             "Basic", Convert.ToBase64String(Encoding.ASCII.GetBytes($"{RabbitUser}:{RabbitPassword}")));
 
         await using var channel = await OpenChannelAsync();
         await RabbitMqTopology.DeclareAsync(channel, CancellationToken.None);
+        await RabbitMqTopology.DeclareAsync(channel, TestRetryDelays, CancellationToken.None);
     }
 
     public async Task DisposeAsync()
@@ -112,6 +116,11 @@ public sealed class WorkersFixture : IAsyncLifetime
             ["RabbitMq:Password"] = RabbitPassword,
             ["RabbitMq:ClientProvidedName"] = $"tests-{instanceId}",
             ["RabbitMq:NetworkRecoveryInterval"] = "00:00:01",
+            // Short retry tiers (their own delay queues: omnichannel.delay.1s ... 4s).
+            ["RabbitMq:RetryDelays:0"] = "00:00:01",
+            ["RabbitMq:RetryDelays:1"] = "00:00:02",
+            ["RabbitMq:RetryDelays:2"] = "00:00:03",
+            ["RabbitMq:RetryDelays:3"] = "00:00:04",
             ["Worker:InstanceId"] = instanceId,
             ["OutboxPublisher:PollInterval"] = "00:00:00.100",
             ["OutboxPublisher:InitialBackoff"] = "00:00:00.200",
@@ -193,7 +202,32 @@ public sealed class WorkersFixture : IAsyncLifetime
             await channel.QueuePurgeAsync(queue);
             await channel.QueuePurgeAsync(RabbitMqTopology.DeadLetterQueueOf(queue));
         }
+
+        foreach (var delayQueue in DelayQueues)
+        {
+            await channel.QueuePurgeAsync(delayQueue);
+        }
     }
+
+    /// <summary>The short retry tiers every test host uses (see <see cref="BuildWorkersHost"/>).</summary>
+    public static readonly TimeSpan[] TestRetryDelays =
+        [TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(4)];
+
+    /// <summary>Delay queues of the test tiers and of the default tiers (both are declared on this broker).</summary>
+    public static IEnumerable<string> DelayQueues =>
+        TestRetryDelays.Concat(RabbitMqTopology.DefaultRetryDelays).Select(RabbitMqTopology.DelayNameOf).Distinct();
+
+    /// <summary>A separate connection to <paramref name="virtualHost"/> (topology tests on a fresh vhost).</summary>
+    public Task<IConnection> ConnectAsync(string virtualHost) =>
+        new ConnectionFactory
+        {
+            HostName = _rabbit.Hostname,
+            Port = _amqpHostPort,
+            VirtualHost = virtualHost,
+            UserName = RabbitUser,
+            Password = RabbitPassword,
+            AutomaticRecoveryEnabled = false
+        }.CreateConnectionAsync();
 
     public Task StopBrokerAsync() => _rabbit.StopAsync();
 

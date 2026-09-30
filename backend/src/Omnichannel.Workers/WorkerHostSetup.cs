@@ -32,7 +32,7 @@ public static class WorkerHostSetup
             .Bind(configuration.GetSection(OrderWorkerOptions.SectionName))
             .ValidateOnStart();
         services.AddSingleton<IValidateOptions<OrderWorkerOptions>, OrderWorkerOptionsValidator>();
-        services.AddSingleton<OrderMessageHandler>();
+        services.AddScoped<OrderMessageHandler>();
 
         // Order matters: the topology is declared before any publisher/consumer starts.
         services.AddHostedService<RabbitMqTopologyInitializer>();

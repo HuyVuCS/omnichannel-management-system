@@ -61,9 +61,62 @@ public static class RabbitMqTopology
         ["x-queue-type"] = "quorum"
     };
 
-    /// <summary>Declares exchanges, queues and bindings. Safe to call repeatedly.</summary>
+    // ---- Delayed retry (task 007) -------------------------------------------------------------------------------------
+
+    /// <summary>
+    /// Direct exchange that expired retry copies are dead-lettered to; every main queue is bound with routing key = its own
+    /// name, so a copy published with routing key = source queue returns to exactly that queue.
+    /// </summary>
+    public const string RetryExchange = "omnichannel.retry";
+
+    public const string DelayPrefix = "omnichannel.delay.";
+
+    /// <summary>Default retry delays (tiers): 5 s, 30 s, 2 min, 10 min.</summary>
+    public static readonly IReadOnlyList<TimeSpan> DefaultRetryDelays =
+        [TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(30), TimeSpan.FromMinutes(2), TimeSpan.FromMinutes(10)];
+
+    /// <summary>
+    /// Name of the delay exchange and queue of a tier, e.g. <c>omnichannel.delay.30s</c>, <c>omnichannel.delay.2m</c>.
+    /// The TTL is part of the name, so a changed tier creates a new pair and never conflicts with an existing queue.
+    /// </summary>
+    public static string DelayNameOf(TimeSpan delay) => DelayPrefix + delay switch
+    {
+        { TotalMilliseconds: var ms } when ms % 60_000 == 0 => $"{(long)delay.TotalMinutes}m",
+        { TotalMilliseconds: var ms } when ms % 1_000 == 0 => $"{(long)delay.TotalSeconds}s",
+        _ => $"{(long)delay.TotalMilliseconds}ms"
+    };
+
+    /// <summary>
+    /// Tier for the retry after failed attempt <paramref name="attemptNo"/>: attempt 1 → first tier, 2 → second, ...,
+    /// attempts beyond the last tier keep using the last (longest) one.
+    /// </summary>
+    public static TimeSpan RetryDelayFor(int attemptNo, IReadOnlyList<TimeSpan> delays)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(attemptNo);
+        ArgumentOutOfRangeException.ThrowIfZero(delays.Count);
+        return delays[Math.Min(attemptNo, delays.Count) - 1];
+    }
+
+    /// <summary>
+    /// Delay queue: messages wait for the TTL and are then dead-lettered to <see cref="RetryExchange"/> keeping their
+    /// routing key (no <c>x-dead-letter-routing-key</c>). One fixed TTL per queue avoids head-of-line blocking.
+    /// </summary>
+    public static IDictionary<string, object?> DelayQueueArguments(TimeSpan delay) => new Dictionary<string, object?>
+    {
+        ["x-queue-type"] = "quorum",
+        ["x-message-ttl"] = (int)delay.TotalMilliseconds,
+        ["x-dead-letter-exchange"] = RetryExchange,
+        ["x-dead-letter-strategy"] = "at-least-once",
+        ["x-overflow"] = "reject-publish"
+    };
+
+    /// <summary>Declares the default topology (default retry delays).</summary>
+    public static Task DeclareAsync(IChannel channel, CancellationToken cancellationToken) =>
+        DeclareAsync(channel, DefaultRetryDelays, cancellationToken);
+
+    /// <summary>Declares exchanges, queues and bindings, including the delay tiers. Safe to call repeatedly.</summary>
     /// <exception cref="RabbitMqTopologyMismatchException">An existing exchange or queue has different settings.</exception>
-    public static async Task DeclareAsync(IChannel channel, CancellationToken cancellationToken)
+    public static async Task DeclareAsync(IChannel channel, IReadOnlyList<TimeSpan> retryDelays, CancellationToken cancellationToken)
     {
         try
         {
@@ -71,6 +124,8 @@ public static class RabbitMqTopology
                 Exchange, ExchangeType.Topic, durable: true, autoDelete: false, cancellationToken: cancellationToken);
             await channel.ExchangeDeclareAsync(
                 DeadLetterExchange, ExchangeType.Direct, durable: true, autoDelete: false, cancellationToken: cancellationToken);
+            await channel.ExchangeDeclareAsync(
+                RetryExchange, ExchangeType.Direct, durable: true, autoDelete: false, cancellationToken: cancellationToken);
 
             foreach (var (queue, routingKey) in Bindings)
             {
@@ -85,6 +140,18 @@ public static class RabbitMqTopology
                     queue, durable: true, exclusive: false, autoDelete: false,
                     arguments: MainQueueArguments(queue), cancellationToken: cancellationToken);
                 await channel.QueueBindAsync(queue, Exchange, routingKey, cancellationToken: cancellationToken);
+                await channel.QueueBindAsync(queue, RetryExchange, queue, cancellationToken: cancellationToken);
+            }
+
+            foreach (var delay in retryDelays.Distinct())
+            {
+                var name = DelayNameOf(delay);
+                await channel.ExchangeDeclareAsync(
+                    name, ExchangeType.Fanout, durable: true, autoDelete: false, cancellationToken: cancellationToken);
+                await channel.QueueDeclareAsync(
+                    name, durable: true, exclusive: false, autoDelete: false,
+                    arguments: DelayQueueArguments(delay), cancellationToken: cancellationToken);
+                await channel.QueueBindAsync(name, name, routingKey: string.Empty, cancellationToken: cancellationToken);
             }
         }
         catch (OperationInterruptedException exception)

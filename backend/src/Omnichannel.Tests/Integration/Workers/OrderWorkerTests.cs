@@ -18,7 +18,7 @@ namespace Omnichannel.Tests.Integration.Workers;
 
 [Collection(WorkersCollection.Name)]
 [Trait("Category", "Integration")]
-public sealed class OrderWorkerTests(WorkersFixture fixture) : IAsyncLifetime
+public sealed partial class OrderWorkerTests(WorkersFixture fixture) : IAsyncLifetime
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(60);
 
@@ -266,9 +266,9 @@ public sealed class OrderWorkerTests(WorkersFixture fixture) : IAsyncLifetime
     {
         var (customerId, products) = await SeedAsync(stock: [10]);
         var taskId = await SubmitAsync(customerId, (products[0].ProductId, 4));
-        var failure = new FailOnce();
+        var failure = new FailureInjection { ReserveFailures = 1 };
 
-        var hosts = StartWorkers(instances: 1, configureServices: services => services.InjectReservationFailure(failure));
+        var hosts = StartWorkers(instances: 1, configureServices: services => services.InjectFailures(failure));
         try
         {
             await WaitForTasksAsync([taskId], ProcessingTaskStatus.Succeeded);
@@ -330,12 +330,16 @@ public sealed class OrderWorkerTests(WorkersFixture fixture) : IAsyncLifetime
         return response.TaskId;
     }
 
-    private List<IHost> StartWorkers(int instances, ushort concurrency = 4, Action<IServiceCollection>? configureServices = null)
+    private List<IHost> StartWorkers(
+        int instances,
+        ushort concurrency = 4,
+        Action<IServiceCollection>? configureServices = null,
+        IDictionary<string, string?>? settings = null)
     {
         var hosts = Enumerable.Range(0, instances)
             .Select(n => fixture.CreateHost(
                 $"order-worker-{n}-{Guid.NewGuid():N}"[..24],
-                new Dictionary<string, string?> { ["OrderWorker:Concurrency"] = concurrency.ToString() },
+                new Dictionary<string, string?>(settings ?? new Dictionary<string, string?>()) { ["OrderWorker:Concurrency"] = concurrency.ToString() },
                 configureServices))
             .ToList();
         Task.WaitAll(hosts.Select(h => h.StartAsync()).ToArray());
@@ -408,45 +412,3 @@ public sealed class OrderWorkerTests(WorkersFixture fixture) : IAsyncLifetime
             .ToListAsync());
 }
 
-/// <summary>Test seam: the first reservation throws a transient-looking error, later ones run normally.</summary>
-internal sealed class FailOnce
-{
-    private int _calls;
-
-    public bool Triggered => Volatile.Read(ref _calls) > 0;
-
-    public bool ShouldFail() => Interlocked.Increment(ref _calls) == 1;
-}
-
-internal static class ReservationFailureInjection
-{
-    public static IServiceCollection InjectReservationFailure(this IServiceCollection services, FailOnce failure)
-    {
-        var original = services.Single(d => d.ServiceType == typeof(IOrderReservationService));
-        services.Remove(original);
-        services.AddScoped<IOrderReservationService>(sp => new FailingReservationService(
-            (IOrderReservationService)ActivatorUtilities.CreateInstance(sp, original.ImplementationType!),
-            failure));
-        return services;
-    }
-
-    private sealed class FailingReservationService(IOrderReservationService inner, FailOnce failure) : IOrderReservationService
-    {
-        public Task<ProcessingTaskStatus?> GetTaskStatusAsync(Guid taskId, CancellationToken cancellationToken) =>
-            inner.GetTaskStatusAsync(taskId, cancellationToken);
-
-        public Task<AttemptStart?> StartAttemptAsync(Guid taskId, string workerName, string workerInstanceId, CancellationToken cancellationToken) =>
-            inner.StartAttemptAsync(taskId, workerName, workerInstanceId, cancellationToken);
-
-        public Task<ReservationResult> ReserveAsync(OrderCreatedPayload order, Guid attemptId, string workerName, CancellationToken cancellationToken) =>
-            failure.ShouldFail()
-                ? throw new TimeoutException("injected transient failure")
-                : inner.ReserveAsync(order, attemptId, workerName, cancellationToken);
-
-        public Task RecordTransientFailureAsync(Guid taskId, Guid attemptId, string errorCode, string errorMessage, CancellationToken cancellationToken) =>
-            inner.RecordTransientFailureAsync(taskId, attemptId, errorCode, errorMessage, cancellationToken);
-
-        public Task RecordRejectedMessageAsync(string? messageId, string? correlationId, Guid? taskId, string reason, string workerName, CancellationToken cancellationToken) =>
-            inner.RecordRejectedMessageAsync(messageId, correlationId, taskId, reason, workerName, cancellationToken);
-    }
-}
