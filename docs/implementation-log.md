@@ -183,3 +183,17 @@ close). Never rely on NACK-requeue being bounded; count failures in the consumer
 | Task search | Attempt-level filters (worker, instance, error code, attempt no) via `EXISTS` | Doc §5.3 |
 | Authorization | Reads AnyStaff; manual retry ManagerOrAdmin | Operators see errors; only managers re-trigger work |
 | Audit | `SystemEventLog` for manual retry and stock import | Doc §6 audit for important operations |
+
+## Task 008 result (reviewed 2026-09-30)
+
+Orders and processing read API, manual retry with fresh attempt budget (`AttemptBudgetStart`, migration `ProcessingTaskAttemptBudget`),
+audit events `processing.retry_requested` / `inventory.imported`; 366/366 tests. Review: `docs/tasks/008-*.review.md`.
+
+## Task 009 plan — user management (2026-09-30)
+
+| Topic | Decision | Reason |
+| --- | --- | --- |
+| Token revocation | `sstamp` claim + `OnTokenValidated` check of security stamp and lockout, cached per user 30 s in `IMemoryCache` | Locked users / changed roles lose access within 30 s instead of up to 60 min; in-process cache only |
+| Roles | Exactly one role per user | Admin/Manager/Staff are hierarchical; simpler UI and policies |
+| Password reset | Admin sets a temporary password (no e-mail infrastructure) | Self-service flows need e-mail (task 024 area) |
+| Guards | `last_admin`, `cannot_modify_self` | Never lock everyone out |
