@@ -57,3 +57,9 @@ Commit: <hash> (or "not committed" + reason)
 ## Manual steps for the user
 <commands the user must run themselves, e.g. those needing secrets>
 ```
+
+## Moving to a fresh chat
+Long chats cost tokens. The repository documents are the memory, so a new chat loses nothing:
+- In Claude Code, `/handoff` writes and commits `docs/handoff.md` (state snapshot, pending steps, next action, resume prompts; never secrets).
+- In a new Claude Code chat, `/resume` reads the handoff and the roadmap and summarises where things stand.
+- In a new Cowork chat, paste the Cowork resume prompt printed by `/handoff`.
