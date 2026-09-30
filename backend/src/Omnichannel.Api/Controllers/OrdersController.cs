@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Omnichannel.Api.Auth;
+using Omnichannel.Application.Common.Paging;
 using Omnichannel.Application.Orders;
 
 namespace Omnichannel.Api.Controllers;
@@ -8,8 +9,25 @@ namespace Omnichannel.Api.Controllers;
 [ApiController]
 [Route("api/orders")]
 [Authorize(Policy = AuthorizationPolicies.AnyStaff)]
-public sealed class OrdersController(IOrderIntakeService orderIntakeService) : ControllerBase
+public sealed class OrdersController(
+    IOrderIntakeService orderIntakeService,
+    IOrderQueryService orderQueryService) : ControllerBase
 {
+    [HttpGet]
+    [ProducesResponseType<PagedResult<OrderSummaryResponse>>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<PagedResult<OrderSummaryResponse>>> List(
+        [FromQuery] OrderListQuery query,
+        CancellationToken cancellationToken) =>
+        Ok(await orderQueryService.ListAsync(query, cancellationToken));
+
+    /// <summary>The order with its lines and every processing task (with all attempts).</summary>
+    [HttpGet("{id:guid}")]
+    [ProducesResponseType<OrderDetailResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<OrderDetailResponse>> Get(Guid id, CancellationToken cancellationToken) =>
+        Ok(await orderQueryService.GetAsync(id, cancellationToken));
+
     /// <summary>Accepts an order for asynchronous processing (202). Resubmitting the same order returns the same task.</summary>
     [HttpPost("{slug}")]
     [ProducesResponseType<SubmitOrderResponse>(StatusCodes.Status202Accepted)]

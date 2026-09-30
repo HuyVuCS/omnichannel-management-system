@@ -20,6 +20,13 @@ public sealed record ImportedInventoryItem(
     int ReservedStock,
     int AvailableStock);
 
+/// <summary>SystemEventLog event types written by inventory operations (audit, doc §6).</summary>
+public static class InventoryEvents
+{
+    /// <summary>A goods-receipt document was applied. Payload: <c>{referenceId, itemCount, totalQuantity}</c>.</summary>
+    public const string Imported = "inventory.imported";
+}
+
 public static class InventoryErrorCodes
 {
     public const string ImportAlreadyApplied = "stock_import_already_applied";

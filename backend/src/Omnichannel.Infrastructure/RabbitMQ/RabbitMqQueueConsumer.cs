@@ -266,11 +266,12 @@ public sealed class RabbitMqQueueConsumer : IAsyncDisposable
                 _logger.LogError("Message {MessageId} rejected to the DLQ: {Reason}", message.MessageId, reject.Reason);
                 return Settlement.Reject;
 
-            case HandlerResult.Retry retry when policy.CanRetry(retry.AttemptNo):
+            case HandlerResult.Retry retry when policy.CanRetry(retry.AttemptInBudget):
                 _logger.LogWarning(
                     "Attempt {AttemptNo} of message {MessageId} failed ({ErrorCode}); scheduling a delayed retry",
                     retry.AttemptNo, message.MessageId, retry.ErrorCode);
-                return await PublishDelayedAsync(message, retry.AttemptNo, new Dictionary<string, object?>
+                // Delay tier by the position in the current budget: after a manual retry the short tiers apply again.
+                return await PublishDelayedAsync(message, retry.AttemptInBudget, new Dictionary<string, object?>
                 {
                     [RabbitMqRetryPublisher.RetryAttemptHeader] = retry.AttemptNo,
                     [RabbitMqRetryPublisher.LastErrorCodeHeader] = retry.ErrorCode

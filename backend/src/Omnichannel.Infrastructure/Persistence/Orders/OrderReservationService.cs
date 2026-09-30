@@ -59,7 +59,7 @@ internal sealed class OrderReservationService(
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
-        return new AttemptStart(attempt.AttemptId, attempt.AttemptNo);
+        return new AttemptStart(attempt.AttemptId, attempt.AttemptNo, task.AttemptBudgetStart);
     }
 
     public async Task<ReservationResult> ReserveAsync(

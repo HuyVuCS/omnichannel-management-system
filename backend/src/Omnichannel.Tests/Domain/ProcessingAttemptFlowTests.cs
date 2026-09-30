@@ -98,5 +98,54 @@ public sealed class ProcessingAttemptFlowTests
         Assert.Throws<InvalidOperationException>(() => task.Succeed(null, Guid.NewGuid(), Now));
     }
 
+    [Fact]
+    public void Manual_retry_of_a_failed_task_resets_the_budget_and_keeps_the_attempts()
+    {
+        var task = NewTask();
+        for (var n = 0; n < 3; n++)
+        {
+            var failing = task.StartAttempt("OrderWorker", "i-1", Now);
+            task.ScheduleRetry(failing.AttemptId, "timeout", "slow", Now);
+        }
+
+        var last = task.StartAttempt("OrderWorker", "i-1", Now);
+        task.Fail(last.AttemptId, "timeout", "slow", Now);
+
+        var previous = task.RequeueForManualRetry("new-message");
+
+        Assert.Equal("msg", previous);
+        Assert.Equal((ProcessingTaskStatus.Pending, "new-message", 4, 4), (task.Status, task.MessageId, task.AttemptBudgetStart, task.Attempts.Count));
+        Assert.Equal(3, task.RetryCount);
+
+        // Attempt numbers keep counting after the manual retry.
+        Assert.Equal(5, task.StartAttempt("OrderWorker", "i-2", Now).AttemptNo);
+    }
+
+    [Theory]
+    [InlineData(ProcessingTaskStatus.Pending)]
+    [InlineData(ProcessingTaskStatus.InProgress)]
+    [InlineData(ProcessingTaskStatus.RetryScheduled)]
+    [InlineData(ProcessingTaskStatus.Succeeded)]
+    public void Only_a_failed_task_can_be_retried_manually(ProcessingTaskStatus status)
+    {
+        var task = NewTask();
+        if (status != ProcessingTaskStatus.Pending)
+        {
+            var attempt = task.StartAttempt("OrderWorker", "i-1", Now);
+            if (status == ProcessingTaskStatus.RetryScheduled)
+            {
+                task.ScheduleRetry(attempt.AttemptId, "timeout", "slow", Now);
+            }
+            else if (status == ProcessingTaskStatus.Succeeded)
+            {
+                task.Succeed(null, attempt.AttemptId, Now);
+            }
+        }
+
+        Assert.Equal(status, task.Status);
+        Assert.Throws<InvalidOperationException>(() => task.RequeueForManualRetry("new-message"));
+        Assert.Equal("msg", task.MessageId);
+    }
+
     private static ProcessingTask NewTask() => new(ProcessingTaskType.OrderProcessing, null, "corr", "msg");
 }

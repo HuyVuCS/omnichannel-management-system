@@ -20,4 +20,7 @@ public static class OrderErrorCodes
 
     /// <summary>The external order id was already submitted on this channel with different content.</summary>
     public const string OrderConflict = "order_conflict";
+
+    /// <summary><c>GET /api/orders/{id}</c>: no such order.</summary>
+    public const string OrderNotFound = "order_not_found";
 }

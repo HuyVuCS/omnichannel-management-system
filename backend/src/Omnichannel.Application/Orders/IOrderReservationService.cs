@@ -62,7 +62,8 @@ public interface IOrderReservationService
         CancellationToken cancellationToken);
 }
 
-public sealed record AttemptStart(Guid AttemptId, int AttemptNo);
+/// <param name="AttemptBudgetStart">The task's <c>AttemptBudgetStart</c> (attempts before the last manual retry).</param>
+public sealed record AttemptStart(Guid AttemptId, int AttemptNo, int AttemptBudgetStart);
 
 public enum ReservationOutcome
 {

@@ -28,7 +28,14 @@ public abstract record HandlerResult
     /// Temporary failure of attempt <paramref name="AttemptNo"/> (from the database). The consumer publishes a delayed retry
     /// copy, or treats it as the final failure when the attempt limit is reached.
     /// </summary>
-    public sealed record Retry(int AttemptNo, string ErrorCode, string ErrorMessage) : HandlerResult;
+    /// <param name="AttemptBudgetStart">
+    /// Attempts that existed at the task's last manual retry; only the attempts after it count toward the limit.
+    /// </param>
+    public sealed record Retry(int AttemptNo, string ErrorCode, string ErrorMessage, int AttemptBudgetStart = 0) : HandlerResult
+    {
+        /// <summary>Position of this attempt in the current budget (1 = first attempt after intake or after a manual retry).</summary>
+        public int AttemptInBudget => RetryPolicy.AttemptInBudget(AttemptNo, AttemptBudgetStart);
+    }
 
     /// <summary>Permanent failure: no retry; final-failure handling, then the DLQ.</summary>
     public sealed record Fail(int? AttemptNo, string ErrorCode, string ErrorMessage) : HandlerResult;
@@ -71,7 +78,21 @@ public sealed record RetryPolicy(int MaxAttempts, int DeliveryLimit)
 {
     public bool IsLastAllowedDelivery(long deliveryCount) => deliveryCount >= DeliveryLimit;
 
+    /// <param name="attemptNo">Attempt (or failure) count within the current budget, see <see cref="AttemptInBudget"/>.</param>
     public bool CanRetry(int attemptNo) => attemptNo < MaxAttempts;
+
+    /// <summary>
+    /// Attempt <paramref name="attemptNo"/> counted from the last manual retry: a manual retry resets the budget while attempt
+    /// numbers keep increasing (the task's <c>AttemptBudgetStart</c> = attempts that existed at that moment).
+    /// </summary>
+    public static int AttemptInBudget(int attemptNo, int attemptBudgetStart)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(attemptNo);
+        ArgumentOutOfRangeException.ThrowIfNegative(attemptBudgetStart);
+
+        // Clamped to 1: an attempt numbered at or before the budget start cannot exist; if it did, it counts as the first one.
+        return Math.Max(1, attemptNo - attemptBudgetStart);
+    }
 }
 
 /// <summary>Settings of a consumer started by <see cref="ResilientQueueConsumer"/>.</summary>

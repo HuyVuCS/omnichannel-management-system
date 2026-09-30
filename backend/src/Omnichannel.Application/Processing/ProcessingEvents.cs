@@ -8,4 +8,10 @@ public static class ProcessingEvents
     /// Payload: <c>{taskId, taskType, attemptNo, errorCode, errorMessage, queue}</c>.
     /// </summary>
     public const string Failed = "processing.failed";
+
+    /// <summary>
+    /// An operator retried a Failed task manually (Information, task's correlation id). Payload:
+    /// <c>{taskId, taskType, requestedBy, previousMessageId, newMessageId, attemptBudgetStart}</c>.
+    /// </summary>
+    public const string RetryRequested = "processing.retry_requested";
 }

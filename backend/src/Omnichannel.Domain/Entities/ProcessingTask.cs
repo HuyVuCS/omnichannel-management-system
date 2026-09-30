@@ -71,6 +71,13 @@ public class ProcessingTask : IHasTimestamps
     public string? MessageId { get; private set; }
     public string? IdempotencyKey { get; private set; }
     public string? RequestHash { get; private set; }
+
+    /// <summary>
+    /// Number of attempts that existed at the last manual retry (0 = never retried manually). The attempt limit applies to
+    /// <c>AttemptNo - AttemptBudgetStart</c>, so a manually retried task gets a fresh budget while attempt numbers keep counting.
+    /// </summary>
+    public int AttemptBudgetStart { get; private set; }
+
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset? UpdatedAt { get; private set; }
 
@@ -151,6 +158,26 @@ public class ProcessingTask : IHasTimestamps
         }
 
         Status = ProcessingTaskStatus.Failed;
+    }
+
+    /// <summary>
+    /// Manual retry of a Failed task by an operator: the task waits for <paramref name="newMessageId"/> (a new outbox row
+    /// carrying the original message) and gets a fresh attempt budget. Attempts are kept. Requires all attempts to be loaded.
+    /// </summary>
+    /// <returns>The message id the task had before (the one that ended in the DLQ).</returns>
+    public string? RequeueForManualRetry(string newMessageId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(newMessageId);
+        if (Status != ProcessingTaskStatus.Failed)
+        {
+            throw new InvalidOperationException($"Task {TaskId} is {Status}; only a Failed task can be retried manually.");
+        }
+
+        var previousMessageId = MessageId;
+        MessageId = newMessageId;
+        Status = ProcessingTaskStatus.Pending;
+        AttemptBudgetStart = _attempts.Count == 0 ? 0 : _attempts.Max(a => a.AttemptNo);
+        return previousMessageId;
     }
 
     private ProcessingAttempt AttemptOf(Guid attemptId) =>

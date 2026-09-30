@@ -100,7 +100,7 @@ public sealed class OrderMessageHandler(
                 logger.LogError(recordException, "Could not record the failure of attempt {AttemptNo}", attempt.AttemptNo);
             }
 
-            return new HandlerResult.Retry(attempt.AttemptNo, error.ErrorCode, error.ErrorMessage);
+            return new HandlerResult.Retry(attempt.AttemptNo, error.ErrorCode, error.ErrorMessage, attempt.AttemptBudgetStart);
         }
 
         using var orderScope = logger.BeginScope(new Dictionary<string, object> { ["OrderId"] = result.OrderId ?? Guid.Empty });

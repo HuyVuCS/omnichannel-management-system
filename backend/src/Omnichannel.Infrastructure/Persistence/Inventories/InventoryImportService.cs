@@ -109,6 +109,18 @@ internal sealed class InventoryImportService(
                 snapshot.AvailableStock);
         }
 
+        // Audit row in the same transaction: it exists exactly when the import was applied.
+        var totalQuantity = request.Items.Sum(i => (long)i.Stock);
+        dbContext.SystemEventLogs.Add(new SystemEventLog(
+            SystemEventLevel.Information,
+            InventoryEvents.Imported,
+            correlationId,
+            taskId: null,
+            orderId: null,
+            workerName: null,
+            MessageJson.Serialize(new { referenceId, itemCount = request.Items.Count, totalQuantity }),
+            now));
+
         try
         {
             await dbContext.SaveChangesAsync(cancellationToken);
@@ -126,7 +138,7 @@ internal sealed class InventoryImportService(
             "Stock import {ReferenceId} applied: {ItemCount} items, {TotalQuantity} units",
             referenceId,
             request.Items.Count,
-            request.Items.Sum(i => (long)i.Stock));
+            totalQuantity);
 
         return new ImportInventoryResponse(referenceId, request.Items.Select(i => results[i.ProductId]).ToList());
     }
