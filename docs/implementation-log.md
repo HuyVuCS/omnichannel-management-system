@@ -253,3 +253,33 @@ product responses (shared predicate, in SQL); route-level code splitting (main c
 | Movement actor | `createdByEmail` on `InventoryMovementResponse` (null for `system:*` actors); `createdBy` unchanged | Audit view must show who imported, not a user id; resolved in the same query |
 | Date filters | Address keeps local dates; requests send local start/end of day with offset; server range inclusive | Shareable links, correct day boundaries in the user's time zone |
 | Route errors | Localised `errorElement` with reload for chunk-load failures | Lazy chunks disappear after a redeploy |
+
+## Task 012 result (reviewed 2026-10-01)
+
+Inventory, stock import and movement history pages; shared `ProductSelect`; `createdByEmail` on movements; camelCase keys for
+every 400; localised field names (`FieldNames` resources as FluentValidation display names); route error page; dialogs closed
+on session end; search box follows the address. Backend 528/528, frontend 120/120, smoke 24/24. Review:
+`docs/tasks/012-*.review.md` (user's manual check pending).
+
+| Topic | Decision | Reason | Revisit when |
+| --- | --- | --- | --- |
+| "Stop if more than X is needed" in a task | Protects the *mechanism* named in the task; adopting the finished mechanism at an existing producer of the same output (e.g. `IdentityUserService.RoleOf` building `RoleUnknown`) is in scope and is reported as a deviation | Leaving such a producer would ship the defect the task removes | — |
+| Frontend test parallelism | `maxWorkers: 4` in `vite.config.ts` as a ceiling; CI may override with `--maxWorkers` | The suite is memory-bound (one jsdom per file); more workers time out while API/Docker run | 025 (CI runner sizing) |
+| Confirmation dialogs | Short yes/no confirmations: `App.useApp().modal.confirm` (texts frozen while open — known limitation). Confirmations that show a data summary: a page `Modal` (follows a language switch, unmounts with the route on session end) | AntD 6 `modal.confirm` keeps its opening texts | — |
+| Cache rules | A successful mutation invalidates every list that displays fields it changed (e.g. product change → inventory list); lists of data the Workers change in the background use `refetchOnMountOrArgChange` | No stale stock or orders after navigation without realtime | 016: realtime push → refetch; keep refetch on SignalR reconnect |
+| Movement actor e-mail | `createdByEmail` visible to every role, Staff included | Internal audit view of internal users | Users outside the company get access |
+| API messages after a language switch | Messages received from the API (field errors, inline alerts, form-level errors) stay in the language they arrived in | Re-requesting to translate is not worth it; consistent since 010 | Users ask for it |
+| Main chunk budget | Every frontend report states the main chunk size and explains growth above 10 kB | 012 grew 70 kB unexplained | — |
+
+## Task 013 plan — order entry, orders list/detail (2026-10-01)
+
+| Topic | Decision | Reason | Revisit when |
+| --- | --- | --- | --- |
+| Order entry layout | Three stacked panels on `/order-entry`, one per seeded slug (`digital-platform`, `website`, `pos`); each has its own form, request and outcome | Doc §3.1: three components on one page, routed by slug, no table per component; stacked panels can be used one after the other without hidden state | A channel needs its own panel |
+| Channel availability | Panel shows the channel's name and status from `GET /api/channels`; inactive or missing → warning only, form usable; the API's 404 `channel_not_found` is shown in the panel | No client-side copy of the server rule | — |
+| External order id | Generated per panel (`DP-`/`WEB-`/`POS-` + local `YYYYMMDD` + 6 random `[A-Z0-9]`), editable, kept after a failed request, replaced only by "New order" or an explicit "new number" | It is the intake idempotency key: a resend after a lost response must be the same order; editable to demonstrate duplicate (202 `duplicate`) and conflict (409 `order_conflict`) | Real channel input (023 webhooks) |
+| Outcome tracking | Poll `GET /api/processing/tasks/{taskId}` every 1.5 s until `Succeeded`/`Failed`, at most 60 s ("Check again" restarts), paused while the tab is hidden (`skipPollingIfUnfocused` + `setupListeners`); then `GET /api/orders/{orderId}` once; invalidate `Order`/`Inventory`/`InventoryMovement`/`Product` once at the terminal state | The order is created asynchronously by the Order Worker; the database is the source of truth; SignalR arrives in 015/016. Bounded polling of one row per open outcome view | 016: push triggers the refetch; decide then whether polling stays as fallback |
+| Amounts in the form | No price or total in the order-entry form; amounts only from the order (price snapshot at intake) | No client arithmetic on business amounts; price can change before intake | Users need a preview |
+| Outbox `lastError` | Never shown in the UI; attempt `errorMessage` (sanitised by the API) may be shown | `lastError` is not sanitised for the UI | 016 if operators need it (Manager-only view) |
+| Manual retry on the order detail | Not in 013 | Only `OrderProcessing` tasks are order-bound today and they are `Succeeded` whenever an order exists | 016 |
+| Local-day date ranges | One helper `shared/utils/dateRange.ts` for movements and orders | Second page with the same rule | — |
