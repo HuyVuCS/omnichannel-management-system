@@ -232,7 +232,7 @@ Frontend scaffold (React 19, AntD 5 → v6 planned in 011, RTK Query, react-rout
 
 Products, Customers, Channels pages; AntD 6; validation messages vi/en through `ValidationMessages` resources; `isLowStock` on
 product responses (shared predicate, in SQL); route-level code splitting (main chunk 1,369 → 153 kB); backend 479/479, frontend
-77/77, smoke 16/16. Review: `docs/tasks/011-*.review.md`. User's manual check pending.
+77/77, smoke 16/16. Review: `docs/tasks/011-*.review.md`. User's manual check passed.
 
 | Topic | Decision | Reason | Revisit when |
 | --- | --- | --- | --- |

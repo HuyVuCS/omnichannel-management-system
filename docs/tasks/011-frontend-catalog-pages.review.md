@@ -1,7 +1,7 @@
 # Review 011 — Frontend: Products, Customers, Channels pages (+ AntD 6, localised validation messages, code splitting)
 
 Reviewer: Cowork, 2026-10-01
-Verdict: **Accepted** — user's manual check (report, "Manual steps for the user") still pending
+Verdict: **Accepted** — user's manual check passed (2026-10-01)
 
 ## Checked
 - Report, commits `e595411` (A3), `ead627a` (A2), `18cead6` (A1), `29ab04e` (A4 + Part B), `ffa513d` / `04df2f8` (report).
@@ -60,4 +60,6 @@ Verdict: **Accepted** — user's manual check (report, "Manual steps for the use
 | P3 | `OrderEndToEndTests` could reuse `RabbitMqBrokerFixture` (open since 008). | Accept; candidate for 025 (CI) |
 
 ## Manual check
-Pending (user): restart the API, `npm ci` in `frontend/`, then the four checks in the report ("Manual steps for the user").
+**Passed (user, 2026-10-01):** API restarted, `npm ci` in `frontend/`, then the four checks in the report ("Manual steps for the user"):
+product create/edit with the bad SKU first and a language switch with the dialog open, customer with a long address, channel
+deactivation with confirmation, Staff without product/channel write actions.
