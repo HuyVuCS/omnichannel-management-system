@@ -49,6 +49,8 @@ public sealed class InventoryMovementListQueryValidator : PageQueryValidator<Inv
         RuleFor(x => x.To)
             .GreaterThanOrEqualTo(x => x.From)
             .When(x => x.From.HasValue && x.To.HasValue)
-            .WithMessage(_ => ValidationMessages.Get(ValidationMessages.Keys.DateRangeInverted));
+            .WithMessage(_ => ValidationMessages.Get(
+                ValidationMessages.Keys.DateRangeInverted,
+                ("From", FieldNames.ForMember(nameof(InventoryMovementListQuery.From)))));
     }
 }

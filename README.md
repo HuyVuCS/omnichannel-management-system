@@ -185,4 +185,8 @@ npm run dev     # http://localhost:5173 - needs the API on http://localhost:5080
   `Omnichannel.Application/Resources/ValidationMessages.resx` (English) and `ValidationMessages.vi.resx`, read through
   `ValidationMessages.Get(...)`. A new custom message needs a key in both files; a unit test fails otherwise, and also
   when a validator carries a literal message.
+- Messages name a field the way the UI labels it, in the request language (`'Ngưỡng cảnh báo tồn kho' phải ...`), never
+  with the technical name. The names are in `Resources/FieldNames.resx` / `FieldNames.vi.resx`, keyed by the JSON member
+  name (`lowStockThreshold`; one key per name, shared by every request that has such a field). A request field with a
+  validation rule needs a name in both files; a unit test fails otherwise.
 - Every operation writes a `user.*` row to `SystemEventLogs` with `targetUserId` and `actorUserId`; logs contain user ids only.

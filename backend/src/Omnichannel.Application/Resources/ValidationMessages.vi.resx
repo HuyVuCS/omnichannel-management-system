@@ -41,8 +41,8 @@
     <comment>Order / stock import lines.</comment>
   </data>
   <data name="DateRangeInverted" xml:space="preserve">
-    <value>'To' không được sớm hơn 'From'.</value>
-    <comment>List filters from/to.</comment>
+    <value>'{PropertyName}' không được sớm hơn '{From}'.</value>
+    <comment>List filters from/to; {From} is the field name of "from".</comment>
   </data>
   <data name="ExternalOrderIdTooLong" xml:space="preserve">
     <value>'{PropertyName}' chỉ được dài tối đa {MaxLength} ký tự.</value>

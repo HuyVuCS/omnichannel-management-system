@@ -321,7 +321,7 @@ internal sealed class IdentityUserService(
                     ValidationConventions.JsonName(memberName),
                     ValidationMessages
                         .Get(ValidationMessages.Keys.RoleUnknown, ("Roles", string.Join(", ", AppRoles.All)))
-                        .Replace("{PropertyName}", ValidationConventions.JsonName(memberName), StringComparison.Ordinal))
+                        .Replace("{PropertyName}", FieldNames.ForMember(memberName), StringComparison.Ordinal))
             ]);
 
     /// <summary>

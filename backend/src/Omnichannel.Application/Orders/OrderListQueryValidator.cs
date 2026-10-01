@@ -15,6 +15,8 @@ public sealed class OrderListQueryValidator : PageQueryValidator<OrderListQuery>
         RuleFor(x => x.To)
             .GreaterThanOrEqualTo(x => x.From)
             .When(x => x.From.HasValue && x.To.HasValue)
-            .WithMessage(_ => ValidationMessages.Get(ValidationMessages.Keys.DateRangeInverted));
+            .WithMessage(_ => ValidationMessages.Get(
+                ValidationMessages.Keys.DateRangeInverted,
+                ("From", FieldNames.ForMember(nameof(OrderListQuery.From)))));
     }
 }

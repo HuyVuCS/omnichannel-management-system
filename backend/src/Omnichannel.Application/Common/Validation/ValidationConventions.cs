@@ -18,6 +18,15 @@ public static class ValidationConventions
     public static void UseJsonPropertyNames() =>
         ValidatorOptions.Global.PropertyNameResolver = ResolvePropertyName;
 
+    /// <summary>
+    /// Sets FluentValidation's global display-name resolver: <c>{PropertyName}</c> in a message is the field's name from
+    /// <see cref="FieldNames"/> in the UI culture of the request. FluentValidation asks for the name each time it builds a
+    /// message, not when the rule is declared, so one validator instance answers in both languages. Process-wide and
+    /// idempotent; called next to <see cref="UseJsonPropertyNames"/>.
+    /// </summary>
+    public static void UseLocalisedFieldNames() =>
+        ValidatorOptions.Global.DisplayNameResolver = ResolveDisplayName;
+
     /// <summary>JSON name of a C# member name (<c>ProductId</c> → <c>productId</c>).</summary>
     public static string JsonName(string memberName) => JsonNamingPolicy.CamelCase.ConvertName(memberName);
 
@@ -39,4 +48,9 @@ public static class ValidationConventions
 
         return member is null ? null : JsonName(member.Name);
     }
+
+    // Null (no member, or a field without a name) falls back to FluentValidation's default; a unit test requires a name
+    // for every validated field.
+    private static string? ResolveDisplayName(Type type, MemberInfo? member, System.Linq.Expressions.LambdaExpression? expression) =>
+        member is null ? null : FieldNames.Find(JsonName(member.Name));
 }
