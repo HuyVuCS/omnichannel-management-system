@@ -3,7 +3,7 @@
 Plan from the current state to the complete system (backend + frontend), following the implementation order in
 the architecture document (section 15). Maintained by Cowork; updated after every task review.
 
-Last updated: 2026-10-01 (after review 009)
+Last updated: 2026-10-01 (after review 010)
 
 ## Conventions
 - One row = one task file `docs/tasks/NNN-*.md`, written by Cowork shortly before it is needed (not all up front),
@@ -27,8 +27,8 @@ Last updated: 2026-10-01 (after review 009)
 | 007 | BE | Shared retry/backoff + DLQ handling for all consumers, max attempts, poison messages | 8 | Done |
 | 008 | BE | `GET /api/orders`, `GET /api/orders/{id}` (with tasks/attempts), `GET /api/processing/tasks`, `POST .../retry`, SystemEventLog writes | 9 | Done |
 | 009 | BE | User management (Admin only): list/create users, assign role, lock/unlock, reset password; no ad-hoc seeder tools | 6 | Done |
-| 010 | FE | Vite + React + TS + Redux Toolkit/RTK Query + Ant Design scaffold; login (sessionStorage), role guards, layout, bilingual vi/en, ProblemDetails handling, **Users page**; BE: lockout fix + request localisation | 3 | Open |
-| 011 | FE | Products, Customers, Channels pages (search, filter, sort, paging) | 3.2 | Planned |
+| 010 | FE | Vite + React + TS + Redux Toolkit/RTK Query + Ant Design scaffold; login (sessionStorage), role guards, layout, bilingual vi/en, ProblemDetails handling, **Users page**; BE: lockout fix + request localisation | 3 | Done |
+| 011 | FE | Products, Customers, Channels pages; Part A: AntD 6, localised custom validation messages, `isLowStock` on products, code splitting | 3.2 | Open |
 | 012 | FE | Inventory list, stock import, movement history pages | 3.2 | Planned |
 | 013 | FE | Order entry page (Digital Platform / Website / POS components) + orders list/detail | 3.1, 3.2 | Planned |
 | 014 | BE | ChannelProduct mapping + Stock Sync Worker (per-channel queues, channel adapters, Polly) | 8 | Planned |

@@ -214,3 +214,16 @@ audit; 428/428 tests. Review: `docs/tasks/009-*.review.md`. Smoke `scripts/smoke
 | Language switch | Changes text only: no reload/remount, state kept, no layout shift (fixed widths, truncation + tooltip), same date/money formats in both languages | User requirement | — |
 | Routing / state | `react-router` v7 (library mode); RTK Query for server state, Redux slices only for auth/UI | Doc §3.3 | — |
 | Dev serving | Vite proxy `/api` → API (5080) | No CORS in dev | Deployment (025) |
+
+## Task 010 result (reviewed 2026-10-01)
+
+Frontend scaffold (React 19, AntD 5 → v6 planned in 011, RTK Query, react-router 7, i18next), Users page, stamp-only revocation,
+`Accept-Language` localisation; backend 433/433, frontend 42/42, smoke 17/17; user's browser check passed. Review: `docs/tasks/010-*.review.md`.
+
+| Topic | Decision | Reason |
+| --- | --- | --- |
+| AntD major | Move to AntD 6 in task 011 (v5 needs a React 19 patch) | Cheapest while only one page exists |
+| Validation texts | All custom validation messages localised (vi/en) through one backend mechanism; `errorCode`/keys unchanged | Bilingual UI must not show English messages |
+| Business rules in the UI | None duplicated client-side (e.g. `isLowStock` comes from the API) | Single source of truth |
+| Test accounts | Created only by smoke scripts (`smoke-*`), no Admin unless required | Dev database hygiene, least privilege |
+| Bundle | Route-level code splitting from task 011 | Main chunk under 500 kB |
