@@ -1,5 +1,3 @@
-// AntD v5 needs this compatibility patch on React 19 (see the AntD v5 documentation).
-import '@ant-design/v5-patch-for-react-19';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './app/App';

@@ -20,7 +20,7 @@ export function ApiErrorNotifier() {
         notification.error({
           key: NOTIFICATION_KEY,
           duration: 0,
-          message: t('errors.unexpectedTitle'),
+          title: t('errors.unexpectedTitle'),
           description: (
             <>
               <div>{translateApiError(t, error)}</div>
