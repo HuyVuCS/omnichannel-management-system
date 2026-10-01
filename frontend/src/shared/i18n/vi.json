@@ -82,6 +82,13 @@
     "forbidden": {
       "title": "Không có quyền truy cập",
       "description": "Vai trò của bạn không được phép mở trang này."
+    },
+    "routeError": {
+      "title": "Không hiển thị được trang",
+      "description": "Trang gặp lỗi khi hiển thị. Hãy tải lại trang; nếu vẫn lỗi, hãy báo cho quản trị viên.",
+      "outdatedTitle": "Không tải được trang",
+      "outdatedDescription": "Có thể ứng dụng vừa có phiên bản mới. Hãy tải lại trang để tiếp tục.",
+      "reload": "Tải lại trang"
     }
   },
   "comingSoon": {

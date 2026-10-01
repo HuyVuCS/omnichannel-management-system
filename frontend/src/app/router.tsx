@@ -1,24 +1,31 @@
-import { lazy, Suspense } from 'react';
+import { Suspense } from 'react';
 import { createBrowserRouter, type RouteObject } from 'react-router';
 import { RequireAuth } from '@/features/auth/RequireAuth';
 import { RequireRole } from '@/features/auth/RequireRole';
 import { LOGIN_PATH } from '@/features/auth/returnUrl';
+import { RouteErrorPage } from '@/pages/RouteErrorPage';
 import { ComingSoon } from '@/shared/components/ComingSoon';
 import { PageLoading } from '@/shared/components/PageLoading';
 import { AppLayout } from './AppLayout';
+import { lazyPage } from './lazyPage';
 import { navigationItems } from './navigation';
 
 // Route-level code splitting: each page is its own chunk, loaded when its route is first opened. The shell (layout,
-// guards, providers) stays in the main chunk. Inside the layout the Suspense boundary is in AppLayout.
-const LoginPage = lazy(() => import('@/features/auth/LoginPage').then((m) => ({ default: m.LoginPage })));
-const DashboardPage = lazy(() => import('@/pages/DashboardPage').then((m) => ({ default: m.DashboardPage })));
-const NotFoundPage = lazy(() => import('@/pages/NotFoundPage').then((m) => ({ default: m.NotFoundPage })));
-const ProductsPage = lazy(() => import('@/features/products/ProductsPage').then((m) => ({ default: m.ProductsPage })));
-const CustomersPage = lazy(() =>
+// guards, providers) stays in the main chunk. Inside the layout the Suspense boundary is in AppLayout. A chunk that
+// cannot be loaded ends on the route error page (see `lazyPage`).
+const LoginPage = lazyPage(() => import('@/features/auth/LoginPage').then((m) => ({ default: m.LoginPage })));
+const DashboardPage = lazyPage(() => import('@/pages/DashboardPage').then((m) => ({ default: m.DashboardPage })));
+const NotFoundPage = lazyPage(() => import('@/pages/NotFoundPage').then((m) => ({ default: m.NotFoundPage })));
+const ProductsPage = lazyPage(() =>
+  import('@/features/products/ProductsPage').then((m) => ({ default: m.ProductsPage })),
+);
+const CustomersPage = lazyPage(() =>
   import('@/features/customers/CustomersPage').then((m) => ({ default: m.CustomersPage })),
 );
-const ChannelsPage = lazy(() => import('@/features/channels/ChannelsPage').then((m) => ({ default: m.ChannelsPage })));
-const UsersPage = lazy(() => import('@/features/users/UsersPage').then((m) => ({ default: m.UsersPage })));
+const ChannelsPage = lazyPage(() =>
+  import('@/features/channels/ChannelsPage').then((m) => ({ default: m.ChannelsPage })),
+);
+const UsersPage = lazyPage(() => import('@/features/users/UsersPage').then((m) => ({ default: m.UsersPage })));
 
 /** Pages that exist; every other menu item renders a placeholder until its task builds it. */
 const builtPages: Record<string, RouteObject['element']> = {
@@ -42,7 +49,13 @@ const pageRoutes: RouteObject[] = navigationItems
     };
   });
 
-/** Route table (react-router in library mode). Everything except the login page needs a session. */
+/**
+ * Route table (react-router in library mode). Everything except the login page needs a session.
+ *
+ * Errors: a page that cannot be loaded or that throws while rendering is replaced by the route error page inside the
+ * layout (the pathless route below), so the menu stays usable. The login page and the shell itself have nothing around
+ * them and use the full-screen variant.
+ */
 export const routes: RouteObject[] = [
   {
     path: LOGIN_PATH,
@@ -51,17 +64,24 @@ export const routes: RouteObject[] = [
         <LoginPage />
       </Suspense>
     ),
+    errorElement: <RouteErrorPage fullScreen />,
   },
   {
     path: '/',
     element: <RequireAuth />,
+    errorElement: <RouteErrorPage fullScreen />,
     children: [
       {
         element: <AppLayout />,
         children: [
-          { index: true, element: <DashboardPage /> },
-          ...pageRoutes,
-          { path: '*', element: <NotFoundPage /> },
+          {
+            errorElement: <RouteErrorPage />,
+            children: [
+              { index: true, element: <DashboardPage /> },
+              ...pageRoutes,
+              { path: '*', element: <NotFoundPage /> },
+            ],
+          },
         ],
       },
     ],
