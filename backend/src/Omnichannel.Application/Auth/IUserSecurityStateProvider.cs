@@ -1,12 +1,12 @@
 namespace Omnichannel.Application.Auth;
 
-/// <summary>What decides whether an already issued access token is still acceptable.</summary>
+/// <summary>
+/// What decides whether an already issued access token is still acceptable. Lockout is deliberately not part of it: a
+/// temporary lockout after failed logins must not end active sessions (anyone who knows an e-mail address could otherwise
+/// kick that user out); an admin lock changes the stamp and so revokes on its own.
+/// </summary>
 /// <param name="SecurityStamp">The user's current Identity security stamp; tokens carry the stamp they were issued with.</param>
-/// <param name="LockoutEnd">End of the current lockout; null when the user is not (or cannot be) locked out.</param>
-public sealed record UserSecurityState(string? SecurityStamp, DateTimeOffset? LockoutEnd)
-{
-    public bool IsLockedOut(DateTimeOffset now) => LockoutEnd is { } end && end >= now;
-}
+public sealed record UserSecurityState(string? SecurityStamp);
 
 /// <summary>
 /// Current security state of a user for access-token revocation. Lookups are cached per user for a short time

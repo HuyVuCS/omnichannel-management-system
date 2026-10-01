@@ -26,11 +26,10 @@ internal sealed class UserSecurityStateProvider(
         var row = await dbContext.Users
             .AsNoTracking()
             .Where(u => u.Id == userId)
-            .Select(u => new { u.SecurityStamp, u.LockoutEnabled, u.LockoutEnd })
+            .Select(u => new { u.SecurityStamp })
             .SingleOrDefaultAsync(cancellationToken);
 
-        // Same rule as UserManager.IsLockedOutAsync: a lockout end only counts when lockout is enabled for the user.
-        var state = row is null ? null : new UserSecurityState(row.SecurityStamp, row.LockoutEnabled ? row.LockoutEnd : null);
+        var state = row is null ? null : new UserSecurityState(row.SecurityStamp);
         if (duration > TimeSpan.Zero)
         {
             cache.Set(KeyOf(userId), new Entry(state), duration);

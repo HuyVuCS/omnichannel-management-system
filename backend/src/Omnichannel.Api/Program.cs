@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.Localization;
 using Omnichannel.Api.Auth;
 using Omnichannel.Api.Filters;
 using Omnichannel.Api.Middleware;
@@ -102,6 +103,17 @@ try
     {
         app.UseHsts();
     }
+
+    // Validation messages in the caller's language (Accept-Language: vi | en, default en). Only the UI culture switches;
+    // formatting and parsing stay "en", and error keys / errorCode values are never translated.
+    app.UseRequestLocalization(options =>
+    {
+        options.SetDefaultCulture("en");
+        options.AddSupportedCultures("en");
+        options.AddSupportedUICultures("en", "vi");
+        options.RequestCultureProviders = [new AcceptLanguageHeaderRequestCultureProvider()];
+        options.ApplyCurrentCultureToResponseHeaders = true;
+    });
 
     app.UseHttpsRedirection();
     app.UseCors(FrontendCorsPolicy);

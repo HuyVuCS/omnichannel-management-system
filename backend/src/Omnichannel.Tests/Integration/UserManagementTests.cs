@@ -259,13 +259,13 @@ public sealed class UserManagementTests(ApiFactory factory)
     }
 
     [Fact]
-    public async Task Lockout_after_failed_logins_also_rejects_the_existing_token_until_an_admin_unlocks()
+    public async Task Lockout_after_failed_logins_blocks_new_logins_but_keeps_the_existing_session()
     {
         var (user, email, password) = await CreateUserAsync(AppRoles.Staff);
         var token = factory.CreateClientWithToken((await LoginAsync(email, password)).AccessToken);
-        Assert.Equal(HttpStatusCode.OK, (await token.GetAsync(AnyAuthenticatedEndpoint)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await token.GetAsync("/api/products")).StatusCode);
 
-        // Identity lockout: 5 failed attempts lock the account for 15 minutes (no new security stamp).
+        // Identity lockout: 5 failed attempts lock the account for 15 minutes. Anyone who knows the e-mail can do this.
         for (var attempt = 0; attempt < 5; attempt++)
         {
             Assert.Equal(HttpStatusCode.Unauthorized, (await TryLoginAsync(email, "Wrong-passw0rd-1")).StatusCode);
@@ -276,17 +276,16 @@ public sealed class UserManagementTests(ApiFactory factory)
         Assert.InRange(lockedOut.LockoutEnd!.Value, DateTimeOffset.UtcNow.AddMinutes(10), DateTimeOffset.UtcNow.AddMinutes(16));
         Assert.Equal(HttpStatusCode.Unauthorized, (await TryLoginAsync(email, password)).StatusCode);
 
-        // The login path does not evict the cached state: the token is rejected within the cache window.
-        await Eventually.WaitAsync(
-            async () => (await token.GetAsync("/api/products")).StatusCode,
-            status => status == HttpStatusCode.Unauthorized,
-            ApiFactory.RevocationCacheDuration + TimeSpan.FromSeconds(10),
-            "token of a locked-out user rejected");
-
-        // Unlock keeps the security stamp, so the same token is accepted again - at once (eviction).
-        Assert.Equal(HttpStatusCode.OK, (await _admin.PostAsync($"/api/users/{user.UserId}/unlock", null)).StatusCode);
+        // The session that existed before is not affected - also not after the cached security state has expired.
+        await Task.Delay(ApiFactory.RevocationCacheDuration + TimeSpan.FromMilliseconds(500));
         Assert.Equal(HttpStatusCode.OK, (await token.GetAsync("/api/products")).StatusCode);
-        await LoginAsync(email, password);
+        var me = await token.GetAsync("/api/auth/me");
+        Assert.Equal(HttpStatusCode.OK, me.StatusCode);
+        Assert.Equal(user.UserId, (await me.ReadAsync<AuthenticatedUser>()).Id);
+
+        // An admin lock on top of it does end the session (new security stamp).
+        Assert.Equal(HttpStatusCode.OK, (await _admin.PostAsync($"/api/users/{user.UserId}/lock", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await token.GetAsync("/api/products")).StatusCode);
     }
 
     [Fact]
