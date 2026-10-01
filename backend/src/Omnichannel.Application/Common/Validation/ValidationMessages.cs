@@ -11,7 +11,8 @@ namespace Omnichannel.Application.Common.Validation;
 /// <para>
 /// In validators use the lambda overload so the text is resolved per request:
 /// <c>.WithMessage(_ =&gt; ValidationMessages.Get(ValidationMessages.Keys.SkuFormat, ("MaxLength", 64)))</c>.
-/// <c>{PropertyName}</c> is filled in by FluentValidation; every other <c>{Name}</c> by the arguments given here.
+/// <c>{PropertyName}</c> is filled in by FluentValidation with the field's name from <see cref="FieldNames"/>; every other
+/// <c>{Name}</c> by the arguments given here (another field's name: <c>("From", FieldNames.ForMember(...))</c>).
 /// </para>
 /// Error keys and <c>errorCode</c> values are never translated.
 /// </summary>

@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="page" xml:space="preserve">
+    <value>Page</value>
+    <comment>Paged lists.</comment>
+  </data>
+  <data name="pageSize" xml:space="preserve">
+    <value>Page size</value>
+    <comment>Paged lists.</comment>
+  </data>
+  <data name="search" xml:space="preserve">
+    <value>Search text</value>
+    <comment>Paged lists.</comment>
+  </data>
+  <data name="sortBy" xml:space="preserve">
+    <value>Sort field</value>
+    <comment>Paged lists.</comment>
+  </data>
+  <data name="sortDir" xml:space="preserve">
+    <value>Sort direction</value>
+    <comment>Paged lists.</comment>
+  </data>
+  <data name="from" xml:space="preserve">
+    <value>From date</value>
+    <comment>List filters: start of the date range.</comment>
+  </data>
+  <data name="to" xml:space="preserve">
+    <value>To date</value>
+    <comment>List filters: end of the date range.</comment>
+  </data>
+  <data name="email" xml:space="preserve">
+    <value>E-mail</value>
+    <comment>Login, users, customers.</comment>
+  </data>
+  <data name="password" xml:space="preserve">
+    <value>Password</value>
+    <comment>Login, new user.</comment>
+  </data>
+  <data name="newPassword" xml:space="preserve">
+    <value>New password</value>
+    <comment>Password reset.</comment>
+  </data>
+  <data name="role" xml:space="preserve">
+    <value>Role</value>
+    <comment>Users.</comment>
+  </data>
+  <data name="name" xml:space="preserve">
+    <value>Name</value>
+    <comment>Product, customer, channel.</comment>
+  </data>
+  <data name="slug" xml:space="preserve">
+    <value>Slug</value>
+    <comment>Channel.</comment>
+  </data>
+  <data name="type" xml:space="preserve">
+    <value>Type</value>
+    <comment>Channel type, movement type.</comment>
+  </data>
+  <data name="status" xml:space="preserve">
+    <value>Status</value>
+    <comment>Channel, order, processing task.</comment>
+  </data>
+  <data name="phone" xml:space="preserve">
+    <value>Phone</value>
+    <comment>Customer.</comment>
+  </data>
+  <data name="address" xml:space="preserve">
+    <value>Address</value>
+    <comment>Customer.</comment>
+  </data>
+  <data name="sku" xml:space="preserve">
+    <value>SKU</value>
+    <comment>Product.</comment>
+  </data>
+  <data name="price" xml:space="preserve">
+    <value>Price</value>
+    <comment>Product.</comment>
+  </data>
+  <data name="lowStockThreshold" xml:space="preserve">
+    <value>Low-stock threshold</value>
+    <comment>Product.</comment>
+  </data>
+  <data name="documentNumber" xml:space="preserve">
+    <value>Document number</value>
+    <comment>Stock import.</comment>
+  </data>
+  <data name="documentSeries" xml:space="preserve">
+    <value>Document series</value>
+    <comment>Stock import.</comment>
+  </data>
+  <data name="items" xml:space="preserve">
+    <value>Lines</value>
+    <comment>Stock import lines, order lines.</comment>
+  </data>
+  <data name="productId" xml:space="preserve">
+    <value>Product</value>
+    <comment>Stock import line, order line, movement filter.</comment>
+  </data>
+  <data name="stock" xml:space="preserve">
+    <value>Quantity</value>
+    <comment>Stock import line, order line.</comment>
+  </data>
+  <data name="referenceType" xml:space="preserve">
+    <value>Reference type</value>
+    <comment>Movement filter.</comment>
+  </data>
+  <data name="referenceId" xml:space="preserve">
+    <value>Reference</value>
+    <comment>Movement filter.</comment>
+  </data>
+  <data name="channel" xml:space="preserve">
+    <value>Channel</value>
+    <comment>Order filter.</comment>
+  </data>
+  <data name="externalOrderId" xml:space="preserve">
+    <value>External order ID</value>
+    <comment>Order intake.</comment>
+  </data>
+  <data name="customerId" xml:space="preserve">
+    <value>Customer</value>
+    <comment>Order intake, order filter.</comment>
+  </data>
+  <data name="taskType" xml:space="preserve">
+    <value>Task type</value>
+    <comment>Processing task filter.</comment>
+  </data>
+  <data name="correlationId" xml:space="preserve">
+    <value>Correlation ID</value>
+    <comment>Processing task filter.</comment>
+  </data>
+  <data name="workerName" xml:space="preserve">
+    <value>Worker name</value>
+    <comment>Processing task filter.</comment>
+  </data>
+  <data name="workerInstanceId" xml:space="preserve">
+    <value>Worker instance</value>
+    <comment>Processing task filter.</comment>
+  </data>
+  <data name="errorCode" xml:space="preserve">
+    <value>Error code</value>
+    <comment>Processing task filter.</comment>
+  </data>
+  <data name="attemptNo" xml:space="preserve">
+    <value>Attempt number</value>
+    <comment>Processing task filter.</comment>
+  </data>
+</root>

@@ -45,10 +45,10 @@ public sealed class RequestLocalisationTests(ApiFactory factory)
         var errors = body.RootElement.GetProperty("errors");
         Assert.Equal(["email", "password"], errors.EnumerateObject().Select(p => p.Name).Order());
 
-        // FluentValidation's own message for "not empty" in that language.
+        // FluentValidation's own message for "not empty" in that language, naming the field in that language too.
         var expected = ValidatorOptions.Global.LanguageManager
             .GetString("NotEmptyValidator", new CultureInfo(expectedLanguage))
-            .Replace("{PropertyName}", "password", StringComparison.Ordinal); // the display name is the JSON name
+            .Replace("{PropertyName}", expectedLanguage == "vi" ? "Mật khẩu" : "Password", StringComparison.Ordinal);
         Assert.Equal(expected, errors.GetProperty("password")[0].GetString());
     }
 
@@ -108,24 +108,67 @@ public sealed class RequestLocalisationTests(ApiFactory factory)
         var skuMessage = await FirstErrorAsync(product, "sku");
         Assert.Equal(
             ValidationMessages.Find(ValidationMessages.Keys.SkuFormat, culture)
-                .Replace("{PropertyName}", "sku", StringComparison.Ordinal)
+                .Replace("{PropertyName}", "SKU", StringComparison.Ordinal)
                 .Replace("{MaxLength}", "64", StringComparison.Ordinal),
             skuMessage);
 
-        // Inverted date range (custom message on a comparison rule).
+        // Inverted date range (custom message on a comparison rule; it names both fields).
         using var orders = new HttpRequestMessage(HttpMethod.Get, "/api/orders?from=2026-09-02T00:00:00Z&to=2026-09-01T00:00:00Z");
-        Assert.Equal(ValidationMessages.Find(ValidationMessages.Keys.DateRangeInverted, culture), await FirstErrorAsync(orders, "to"));
+        Assert.Equal(
+            language == "vi" ? "'Đến ngày' không được sớm hơn 'Từ ngày'." : "'To date' must not be earlier than 'From date'.",
+            await FirstErrorAsync(orders, "to"));
 
         // A sort field outside the whitelist (message with a list argument).
         using var sort = new HttpRequestMessage(HttpMethod.Get, "/api/customers?sortBy=secret");
         Assert.Equal(
             ValidationMessages.Find(ValidationMessages.Keys.SortByNotAllowed, culture)
-                .Replace("{PropertyName}", "sort By", StringComparison.Ordinal) // FluentValidation's display name
+                .Replace("{PropertyName}", language == "vi" ? "Trường sắp xếp" : "Sort field", StringComparison.Ordinal)
                 .Replace("{Fields}", "name, createdAt", StringComparison.Ordinal),
             await FirstErrorAsync(sort, "sortBy"));
 
         // The two languages really differ (guards against comparing English with English).
         Assert.Equal(language == "vi", skuMessage!.Contains("dài tối đa", StringComparison.Ordinal));
+    }
+
+    /// <summary>Task 012 Part A2: messages name fields like the UI does, in the request language - never the technical name.</summary>
+    [Theory]
+    [InlineData("vi", "'Ngưỡng cảnh báo tồn kho'", "'Đến ngày' không được sớm hơn 'Từ ngày'.", "'Số lượng'", "'Số chứng từ'")]
+    [InlineData("en", "'Low-stock threshold'", "'To date' must not be earlier than 'From date'.", "'Quantity'", "'Document number'")]
+    public async Task Field_names_inside_messages_follow_the_requested_language(
+        string language, string threshold, string dateRange, string quantity, string documentNumber)
+    {
+        var manager = factory.CreateClientAs(AppRoles.Manager);
+
+        async Task<JsonElement> ErrorsAsync(HttpRequestMessage request)
+        {
+            request.Headers.TryAddWithoutValidation("Accept-Language", language);
+            var response = await manager.SendAsync(request);
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+            using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            return body.RootElement.GetProperty("errors").Clone();
+        }
+
+        // A built-in FluentValidation message.
+        using var product = new HttpRequestMessage(HttpMethod.Post, "/api/products")
+        {
+            Content = JsonContent.Create(new { sku = $"FLD-{TestData.UniqueSuffix()}", name = "Field names", price = 1, lowStockThreshold = -1 })
+        };
+        var thresholdMessage = (await ErrorsAsync(product)).GetProperty("lowStockThreshold")[0].GetString()!;
+        Assert.StartsWith(threshold + " ", thresholdMessage);
+        Assert.DoesNotContain("low Stock Threshold", thresholdMessage, StringComparison.Ordinal); // the technical name
+
+        // A custom message naming two fields, on a query-string parameter.
+        using var movements = new HttpRequestMessage(HttpMethod.Get, "/api/inventory/movements?from=2026-09-02T00:00:00Z&to=2026-09-01T00:00:00Z");
+        Assert.Equal(dateRange, (await ErrorsAsync(movements)).GetProperty("to")[0].GetString());
+
+        // Fields of the stock-import form, including a line of the collection.
+        using var import = new HttpRequestMessage(HttpMethod.Post, "/api/inventory/import")
+        {
+            Content = JsonContent.Create(new { documentNumber = "", items = new[] { new { productId = Guid.NewGuid(), stock = 0 } } })
+        };
+        var importErrors = await ErrorsAsync(import);
+        Assert.StartsWith(quantity + " ", importErrors.GetProperty("items[0].stock")[0].GetString());
+        Assert.StartsWith(documentNumber + " ", importErrors.GetProperty("documentNumber")[0].GetString());
     }
 
     [Fact]

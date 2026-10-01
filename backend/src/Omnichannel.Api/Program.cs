@@ -24,8 +24,10 @@ try
 {
     var builder = WebApplication.CreateBuilder(args);
 
-    // Validation error keys = JSON names (items[0].productId); process-wide FluentValidation setting.
+    // Validation error keys = JSON names (items[0].productId), field names inside messages = FieldNames resources in the
+    // request language; process-wide FluentValidation settings.
     ValidationConventions.UseJsonPropertyNames();
+    ValidationConventions.UseLocalisedFieldNames();
 
     // Levels/overrides/enrichers come from the "Serilog" config section; the console sink is set here:
     // readable text in Development, structured JSON everywhere else (for log shipping).

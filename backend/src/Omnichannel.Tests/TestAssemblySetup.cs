@@ -6,9 +6,14 @@ namespace Omnichannel.Tests;
 internal static class TestAssemblySetup
 {
     /// <summary>
-    /// FluentValidation's property-name resolver is process-wide. The API sets it at start-up, which in this test process
-    /// happens whenever the first integration test runs; setting it before any test makes validator unit tests deterministic.
+    /// FluentValidation's property-name and display-name resolvers are process-wide. The API sets them at start-up, which
+    /// in this test process happens whenever the first integration test runs; setting them before any test makes validator
+    /// unit tests deterministic.
     /// </summary>
     [ModuleInitializer]
-    internal static void Initialize() => ValidationConventions.UseJsonPropertyNames();
+    internal static void Initialize()
+    {
+        ValidationConventions.UseJsonPropertyNames();
+        ValidationConventions.UseLocalisedFieldNames();
+    }
 }

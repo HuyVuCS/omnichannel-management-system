@@ -65,7 +65,7 @@ try {
     $rangeVi = Get-ValidationMessage GET $range $admin $null 'vi' 'to'
     $rangeEn = Get-ValidationMessage GET $range $admin $null 'en' 'to'
     Assert-Step '04 date range message, vi: Vietnamese text' $true (Test-NonAscii $rangeVi)
-    Assert-Step '05 date range message, en' "'To' must not be earlier than 'From'." $rangeEn
+    Assert-Step '05 date range message, en' "'To date' must not be earlier than 'From date'." $rangeEn
 
     $weak = '{"email":"smoke-011-weak' + $n + '@example.com","password":"weakpass","role":"Staff"}'
     Assert-Step '06 password policy message, vi: Vietnamese text' $true (Test-NonAscii (Get-ValidationMessage POST '/api/users' $admin $weak 'vi' 'password'))
