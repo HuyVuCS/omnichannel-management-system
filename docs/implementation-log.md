@@ -227,3 +227,29 @@ Frontend scaffold (React 19, AntD 5 → v6 planned in 011, RTK Query, react-rout
 | Business rules in the UI | None duplicated client-side (e.g. `isLowStock` comes from the API) | Single source of truth |
 | Test accounts | Created only by smoke scripts (`smoke-*`), no Admin unless required | Dev database hygiene, least privilege |
 | Bundle | Route-level code splitting from task 011 | Main chunk under 500 kB |
+
+## Task 011 result (reviewed 2026-10-01)
+
+Products, Customers, Channels pages; AntD 6; validation messages vi/en through `ValidationMessages` resources; `isLowStock` on
+product responses (shared predicate, in SQL); route-level code splitting (main chunk 1,369 → 153 kB); backend 479/479, frontend
+77/77, smoke 16/16. Review: `docs/tasks/011-*.review.md`. User's manual check pending.
+
+| Topic | Decision | Reason | Revisit when |
+| --- | --- | --- | --- |
+| Validation error keys | **All** keys of a 400 are camelCase JSON paths, query string and model binding included (`to`, `sortBy`, `pageSize`, `items[0].productId`); normalised once in `ValidationProblemResponse`; `$…` body paths of malformed JSON unchanged (task 012 A1) | `ModelStateDictionary` is case-insensitive, so supplied query parameters kept the C# name (`To`); one convention for every client. Alternatives: document the difference (special case in every client), fix only in `ValidationFilter` (misses model-binding errors) | — |
+| Field names in messages | Localised display names from `FieldNames.resx` / `.vi.resx`, keyed by JSON member name, wording = UI label (task 012 A2) | Messages must not show technical English names in the Vietnamese UI | A field name needs different wording per form |
+| Shared form/list pieces | `useListQueryState`, `useFormSubmission`, `useResetFormOnOpen`; no generic CRUD framework | Only what the list pages actually share | — |
+| Form dialogs | Reset on every open (`useResetFormOnOpen`); `destroyOnHidden` alone keeps the previous record during the close animation | Found in the browser: edit B showed A's values | — |
+| Prices in the UI | Whole VND | VND has no minor unit | Another currency |
+| Admin for browser checks | Reuse the locked test Admin `ui-check-61563`, lock it again afterwards; never create another Admin | Dev database hygiene, least privilege | — |
+
+## Task 012 plan — inventory pages (2026-10-01)
+
+| Topic | Decision | Reason |
+| --- | --- | --- |
+| Stock import UI | Own route `/inventory/import` (Manager/Admin, not a menu item), up to 200 lines with `Form.List`, confirmation before submit, result view from the response | A goods receipt can have many lines; the import cannot be undone (no reversal API) |
+| Re-submitted import | No client idempotency key: the document number is the key; 409 `stock_import_already_applied` is shown on the document field and points to the movement history | Server already guarantees once-only application (task 003) |
+| Product picker | Shared `ProductSelect` with server search, reused by order entry (013) | One picker, no client-side product cache |
+| Movement actor | `createdByEmail` on `InventoryMovementResponse` (null for `system:*` actors); `createdBy` unchanged | Audit view must show who imported, not a user id; resolved in the same query |
+| Date filters | Address keeps local dates; requests send local start/end of day with offset; server range inclusive | Shareable links, correct day boundaries in the user's time zone |
+| Route errors | Localised `errorElement` with reload for chunk-load failures | Lazy chunks disappear after a redeploy |
