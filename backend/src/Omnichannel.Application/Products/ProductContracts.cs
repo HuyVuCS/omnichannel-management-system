@@ -3,6 +3,10 @@ using Omnichannel.Application.Common.Paging;
 namespace Omnichannel.Application.Products;
 
 /// <summary>Product with its current stock. Used by the list (order-entry UI) and the detail endpoint.</summary>
+/// <param name="IsLowStock">
+/// The low-stock rule evaluated by the server (<c>AvailableStock &lt;= LowStockThreshold</c>, the same expression as the
+/// inventory list and the alerts). Clients show it; they never re-implement the rule.
+/// </param>
 public sealed record ProductResponse(
     Guid ProductId,
     string Sku,
@@ -13,6 +17,7 @@ public sealed record ProductResponse(
     int TotalStock,
     int ReservedStock,
     int AvailableStock,
+    bool IsLowStock,
     DateTimeOffset CreatedAt,
     DateTimeOffset? UpdatedAt);
 

@@ -5,24 +5,30 @@ using Omnichannel.Application.Common.Paging;
 using Omnichannel.Application.Products;
 using Omnichannel.Domain.Entities;
 using Omnichannel.Infrastructure.Persistence.Configurations;
+using Omnichannel.Infrastructure.Persistence.Inventories;
 
 namespace Omnichannel.Infrastructure.Persistence.Products;
 
 internal sealed class ProductService(OmnichannelDbContext dbContext) : IProductService
 {
     // Every product gets its inventory row on creation; the null branch only guards the LEFT JOIN.
-    private static readonly Expression<Func<Product, ProductResponse>> ToResponse = p => new ProductResponse(
-        p.ProductId,
-        p.Sku,
-        p.Name,
-        p.Price,
-        p.LowStockThreshold,
-        p.ExpiryDate,
-        p.Inventory == null ? 0 : p.Inventory.TotalStock,
-        p.Inventory == null ? 0 : p.Inventory.ReservedStock,
-        p.Inventory == null ? 0 : p.Inventory.AvailableStock,
-        p.CreatedAt,
-        p.UpdatedAt);
+    // IsLowStock is the shared rule (InventoryPredicates), inlined so it runs in SQL: there is no second definition.
+    private static readonly Expression<Func<Product, ProductResponse>> ToResponse =
+        InventoryPredicates.Inline<Product, ProductResponse>(
+            (p, isLowStock) => new ProductResponse(
+                p.ProductId,
+                p.Sku,
+                p.Name,
+                p.Price,
+                p.LowStockThreshold,
+                p.ExpiryDate,
+                p.Inventory == null ? 0 : p.Inventory.TotalStock,
+                p.Inventory == null ? 0 : p.Inventory.ReservedStock,
+                p.Inventory == null ? 0 : p.Inventory.AvailableStock,
+                isLowStock,
+                p.CreatedAt,
+                p.UpdatedAt),
+            InventoryPredicates.IsLowStockProduct);
 
     public async Task<PagedResult<ProductResponse>> ListAsync(ProductListQuery query, CancellationToken cancellationToken)
     {

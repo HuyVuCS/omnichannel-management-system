@@ -14,6 +14,23 @@ public static class InventoryPredicates
         i => i.AvailableStock <= i.Product.LowStockThreshold;
 
     /// <summary>
+    /// <see cref="IsLowStock"/> seen from the product: the same expression applied to the product's inventory row
+    /// (false for a product without one, which cannot exist through the API).
+    /// </summary>
+    public static readonly Expression<Func<Product, bool>> IsLowStockProduct = ForProduct(IsLowStock);
+
+    private static Expression<Func<Product, bool>> ForProduct(Expression<Func<Inventory, bool>> inventoryPredicate)
+    {
+        Expression<Func<Product, Inventory?>> inventoryOf = p => p.Inventory;
+        var product = inventoryOf.Parameters[0];
+        var body = new ParameterReplacer(inventoryPredicate.Parameters[0], inventoryOf.Body).Visit(inventoryPredicate.Body);
+
+        return Expression.Lambda<Func<Product, bool>>(
+            Expression.AndAlso(Expression.NotEqual(inventoryOf.Body, Expression.Constant(null, typeof(Inventory))), body),
+            product);
+    }
+
+    /// <summary>
     /// Inlines <paramref name="predicate"/> (a lambda over the same entity) into <paramref name="template"/>'s second
     /// parameter, so a shared rule can be projected into a DTO and still translate to SQL.
     /// </summary>
