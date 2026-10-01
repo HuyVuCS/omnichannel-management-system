@@ -162,6 +162,9 @@ npm run dev     # http://localhost:5173 - needs the API on http://localhost:5080
 - Every endpoint requires a JWT (`Authorization: Bearer ...`) unless marked `[AllowAnonymous]`.
 - Roles: `Admin`, `Manager`, `Staff`; policies `AdminOnly`, `ManagerOrAdmin`, `AnyStaff`.
 - Errors are RFC 7807 `application/problem+json` with `errorCode` and `correlationId`.
+- Validation errors (400, `errorCode = validation_failed`): every key of `errors` is the camelCase JSON path of the field,
+  for body fields (`items[0].productId`), query-string parameters (`to`, `sortBy`) and model-binding errors (`pageSize`)
+  alike. Only the body paths reported for malformed JSON start with `$` (`$.items[0].stock`).
 - Send `X-Correlation-Id` to correlate a request across logs; the API echoes it (or generates one).
 - Enums are serialised as strings.
 
