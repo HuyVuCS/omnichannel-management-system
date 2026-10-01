@@ -5,8 +5,9 @@ namespace Omnichannel.Api.Auth;
 
 /// <summary>
 /// Revocation check for access tokens (runs after signature, issuer, audience and lifetime were validated). A token is
-/// rejected when its user no longer exists, the user's security stamp differs from the token's <c>sstamp</c> claim (role
-/// change, lock, password reset), or the user is locked out. The lookup is cached per user
+/// rejected when its user no longer exists or the user's security stamp differs from the token's <c>sstamp</c> claim (role
+/// change, admin lock, password reset). A temporary lockout after failed logins does <b>not</b> reject tokens: it only blocks
+/// new logins, so nobody can end another user's session by typing wrong passwords. The lookup is cached per user
 /// (<see cref="IUserSecurityStateProvider"/>), so revocation takes effect within the cache window (30 s by default) on other
 /// API instances and at once on the instance that made the change.
 /// </summary>
@@ -27,13 +28,10 @@ public static class TokenRevocation
 
         var state = await services.GetRequiredService<IUserSecurityStateProvider>()
             .GetAsync(userId, context.HttpContext.RequestAborted);
-        var now = services.GetRequiredService<TimeProvider>().GetUtcNow();
 
-        if (state is null
-            || !string.Equals(state.SecurityStamp, stamp, StringComparison.Ordinal)
-            || state.IsLockedOut(now))
+        if (state is null || !string.Equals(state.SecurityStamp, stamp, StringComparison.Ordinal))
         {
-            // One generic reason: do not tell the caller which of the three it was.
+            // One generic reason: do not tell the caller which of the two it was.
             context.Fail("The token is no longer valid for this user.");
         }
     }

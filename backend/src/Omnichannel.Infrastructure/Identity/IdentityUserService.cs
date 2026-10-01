@@ -197,10 +197,10 @@ internal sealed class IdentityUserService(
         EnsureSucceeded(await userManager.SetLockoutEndDateAsync(user, null));
         EnsureSucceeded(await userManager.ResetAccessFailedCountAsync(user));
 
+        // The security stamp is kept, so there is nothing to evict: tokens revoked by the lock stay revoked.
         AddAuditEvent(UserEvents.Unlocked, new { targetUserId = userId, actorUserId = Actor });
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-        securityStates.Evict(userId);
 
         logger.LogInformation("User {TargetUserId} unlocked by {ActorUserId}", userId, Actor);
         return await GetAsync(userId, cancellationToken);

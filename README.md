@@ -136,6 +136,9 @@ dotnet run --project src/Omnichannel.Workers
   their own role or lock themselves).
 - Access tokens carry the user's security stamp (`sstamp`). A role change, lock or password reset issues a new stamp, so tokens
   issued before are rejected with 401: at once on the API instance that made the change, and within
-  `TokenRevocation:CacheDuration` (default 30 s, max 5 min, `00:00:00` = no cache) on other instances. A locked-out user's tokens
-  are rejected as well. Tokens issued before this feature (no `sstamp`) are not accepted: log in again.
+  `TokenRevocation:CacheDuration` (default 30 s, max 5 min, `00:00:00` = no cache) on other instances. A temporary lockout after
+  failed logins only blocks new logins; it does not end an active session. Tokens issued before this feature (no `sstamp`) are
+  not accepted: log in again.
+- Validation messages are returned in the language of `Accept-Language` (`vi` or `en`, default `en`). Error keys and `errorCode`
+  values are the same in both languages.
 - Every operation writes a `user.*` row to `SystemEventLogs` with `targetUserId` and `actorUserId`; logs contain user ids only.

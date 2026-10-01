@@ -8,6 +8,6 @@ public interface IAuthService
     /// </summary>
     Task<LoginResult?> LoginAsync(LoginRequest request, CancellationToken cancellationToken);
 
-    /// <summary>Loads the user and current roles from the store; null if the user no longer exists or is locked out.</summary>
+    /// <summary>Loads the user and current roles from the store; null if the user no longer exists.</summary>
     Task<AuthenticatedUser?> GetUserAsync(Guid userId, CancellationToken cancellationToken);
 }

@@ -70,8 +70,10 @@ internal sealed class IdentityAuthService(
     {
         cancellationToken.ThrowIfCancellationRequested();
 
+        // No lockout check: the caller's token passed the security-stamp check, which is what ends a session
+        // (an admin lock changes the stamp). A temporary lockout after failed logins only blocks new logins.
         var user = await userManager.FindByIdAsync(userId.ToString());
-        if (user is null || await userManager.IsLockedOutAsync(user))
+        if (user is null)
         {
             return null;
         }

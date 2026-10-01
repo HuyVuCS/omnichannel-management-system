@@ -8,7 +8,10 @@ using Omnichannel.Application.Auth;
 
 namespace Omnichannel.Tests.Auth;
 
-/// <summary>Task 009: which already validated tokens are still rejected (security stamp, lockout, missing user).</summary>
+/// <summary>
+/// Which already validated tokens are still rejected: changed security stamp or missing user (task 009). Lockout is not a
+/// reason (task 010, review 009 option A); that is covered end to end in <c>UserManagementTests</c>.
+/// </summary>
 public sealed class TokenRevocationTests
 {
     private static readonly Guid UserId = Guid.NewGuid();
@@ -16,7 +19,7 @@ public sealed class TokenRevocationTests
     [Fact]
     public async Task Token_with_the_current_stamp_of_an_unlocked_user_is_accepted()
     {
-        var states = new StubStates(new UserSecurityState("stamp-1", null));
+        var states = new StubStates(new UserSecurityState("stamp-1"));
 
         var context = await ValidateAsync(states, UserId.ToString(), "stamp-1");
 
@@ -25,27 +28,9 @@ public sealed class TokenRevocationTests
     }
 
     [Fact]
-    public async Task Expired_lockout_does_not_reject()
-    {
-        var states = new StubStates(new UserSecurityState("stamp-1", DateTimeOffset.UtcNow.AddMinutes(-1)));
-
-        Assert.Null((await ValidateAsync(states, UserId.ToString(), "stamp-1")).Result);
-    }
-
-    [Fact]
     public async Task Changed_stamp_rejects()
     {
-        var states = new StubStates(new UserSecurityState("stamp-2", null));
-
-        AssertRejected(await ValidateAsync(states, UserId.ToString(), "stamp-1"));
-    }
-
-    [Theory]
-    [InlineData(1)]
-    [InlineData(60 * 24 * 365)]
-    public async Task Locked_out_user_rejects(int minutesLeft)
-    {
-        var states = new StubStates(new UserSecurityState("stamp-1", DateTimeOffset.UtcNow.AddMinutes(minutesLeft)));
+        var states = new StubStates(new UserSecurityState("stamp-2"));
 
         AssertRejected(await ValidateAsync(states, UserId.ToString(), "stamp-1"));
     }
@@ -59,7 +44,7 @@ public sealed class TokenRevocationTests
     [Fact]
     public async Task User_without_a_stored_stamp_rejects()
     {
-        AssertRejected(await ValidateAsync(new StubStates(new UserSecurityState(null, null)), UserId.ToString(), "stamp-1"));
+        AssertRejected(await ValidateAsync(new StubStates(new UserSecurityState(null)), UserId.ToString(), "stamp-1"));
     }
 
     [Theory]
@@ -69,21 +54,10 @@ public sealed class TokenRevocationTests
     [InlineData("0199a1b0-0000-7000-8000-000000000001", "")]
     public async Task Token_without_subject_or_stamp_rejects_without_a_lookup(string? subject, string? stamp)
     {
-        var states = new StubStates(new UserSecurityState("stamp-1", null));
+        var states = new StubStates(new UserSecurityState("stamp-1"));
 
         AssertRejected(await ValidateAsync(states, subject, stamp));
         Assert.Empty(states.Lookups);
-    }
-
-    [Fact]
-    public void Lockout_end_counts_until_it_has_passed()
-    {
-        var now = new DateTimeOffset(2026, 10, 1, 12, 0, 0, TimeSpan.Zero);
-
-        Assert.False(new UserSecurityState("s", null).IsLockedOut(now));
-        Assert.False(new UserSecurityState("s", now.AddSeconds(-1)).IsLockedOut(now));
-        Assert.True(new UserSecurityState("s", now).IsLockedOut(now));
-        Assert.True(new UserSecurityState("s", DateTimeOffset.MaxValue).IsLockedOut(now));
     }
 
     private static void AssertRejected(TokenValidatedContext context)
@@ -109,7 +83,6 @@ public sealed class TokenRevocationTests
         {
             RequestServices = new ServiceCollection()
                 .AddSingleton<IUserSecurityStateProvider>(states)
-                .AddSingleton(TimeProvider.System)
                 .BuildServiceProvider()
         };
         var context = new TokenValidatedContext(
