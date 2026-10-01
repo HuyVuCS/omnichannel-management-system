@@ -101,6 +101,48 @@ public sealed class ProductEndpointsTests(ApiFactory factory)
     }
 
     [Fact]
+    public async Task Product_responses_carry_the_low_stock_flag_of_the_shared_rule()
+    {
+        var marker = TestData.UniqueSuffix().ToUpperInvariant();
+        var created = await CreateAsync(NewProduct($"FLAG-{marker}", lowStockThreshold: 5));
+
+        async Task<(bool Detail, bool List, bool Inventory, int Available)> FlagsAsync()
+        {
+            var detail = await (await _manager.GetAsync($"/api/products/{created.ProductId}")).ReadAsync<ProductResponse>();
+            var list = await (await _manager.GetAsync($"/api/products?search=FLAG-{marker}")).ReadAsync<PagedResult<ProductResponse>>();
+            var inventory = await (await _manager.GetAsync($"/api/inventory?search=FLAG-{marker}")).ReadAsync<PagedResult<InventoryItemResponse>>();
+            return (detail.IsLowStock, Assert.Single(list.Items).IsLowStock, Assert.Single(inventory.Items).IsLowStock, detail.AvailableStock);
+        }
+
+        async Task ImportAsync(int stock)
+        {
+            var response = await _manager.PostAsJsonAsync(
+                "/api/inventory/import",
+                new ImportInventoryRequest($"GRN-{TestData.UniqueSuffix()}", null, [new ImportInventoryItem(created.ProductId, stock)]));
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        }
+
+        // Out of stock, threshold 5: low - already in the create response.
+        Assert.True(created.IsLowStock);
+        Assert.Equal((true, true, true, 0), await FlagsAsync());
+
+        // Exactly at the threshold is still low (inclusive rule) ...
+        await ImportAsync(5);
+        Assert.Equal((true, true, true, 5), await FlagsAsync());
+
+        // ... one above it is not. Product list, product detail and inventory list always agree.
+        await ImportAsync(1);
+        Assert.Equal((false, false, false, 6), await FlagsAsync());
+
+        // Raising the threshold makes it low again without any stock change.
+        var updated = await _manager.PutAsJsonAsync(
+            $"/api/products/{created.ProductId}",
+            new UpdateProductRequest(created.Name, created.Price, 6, null));
+        Assert.True((await updated.ReadAsync<ProductResponse>()).IsLowStock);
+        Assert.Equal((true, true, true, 6), await FlagsAsync());
+    }
+
+    [Fact]
     public async Task Sku_is_normalised_to_upper_case()
     {
         var suffix = TestData.UniqueSuffix();
