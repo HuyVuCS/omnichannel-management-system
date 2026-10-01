@@ -1,6 +1,7 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
+import { loggedOut } from '@/features/auth/authSlice';
 import type { AuthUser } from '@/features/auth/session';
 import { chooseOption, columnTexts, expectLanguageSwitchChangesTextOnly, findDialog, rowOf } from '@/test/interactions';
 import { renderApp } from '@/test/renderApp';
@@ -177,6 +178,47 @@ describe('channels page', () => {
     expect(await screen.findByText('Đã cập nhật kênh bán.')).toBeInTheDocument();
     expect(updates).toEqual([{ name: 'Cửa hàng', status: 'Active' }]);
     expect(screen.queryByText('Ngừng kênh bán này?')).not.toBeInTheDocument();
+  });
+});
+
+describe('channels page: session end', () => {
+  /** Opens the edit dialog of the active channel and asks to deactivate it: form dialog + confirmation are open. */
+  async function openDeactivationConfirm(appUser: ReturnType<typeof renderApp>['user']) {
+    await screen.findByText('website');
+    await appUser.click(within(rowOf('website')).getByRole('button', { name: 'Sửa' }));
+    const dialog = await findDialog('Sửa kênh bán');
+    await chooseOption(appUser, within(dialog).getByRole('combobox', { name: 'Trạng thái' }), 'Ngừng hoạt động');
+    await appUser.click(within(dialog).getByRole('button', { name: 'Lưu' }));
+    await findDialog('Ngừng kênh bán này?');
+  }
+
+  it('leaves no dialog over the login page when the user signs out with a confirmation open', async () => {
+    serveChannels([website, pos]);
+    const { user: appUser, location } = renderChannels();
+    await openDeactivationConfirm(appUser);
+
+    await appUser.click(screen.getByRole('button', { name: 'Đăng xuất' }));
+
+    expect(await screen.findByRole('button', { name: 'Đăng nhập' })).toBeInTheDocument();
+    expect(location()).toBe('/login');
+    expect(screen.queryByText('Ngừng kênh bán này?')).not.toBeInTheDocument();
+    expect(screen.queryByText('Sửa kênh bán')).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('leaves no dialog either when the session ends by itself (expired or revoked token)', async () => {
+    serveChannels([website, pos]);
+    const { user: appUser, store } = renderChannels();
+    await openDeactivationConfirm(appUser);
+
+    // What an expired token or a 401 from the API does.
+    act(() => {
+      store.dispatch(loggedOut());
+    });
+
+    expect(await screen.findByRole('button', { name: 'Đăng nhập' })).toBeInTheDocument();
+    expect(screen.queryByText('Ngừng kênh bán này?')).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 });
 
