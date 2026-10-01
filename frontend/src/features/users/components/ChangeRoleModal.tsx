@@ -52,7 +52,7 @@ export function ChangeRoleModal({ user, onClose }: ChangeRoleModalProps) {
       destroyOnHidden
     >
       {formErrors.length > 0 && (
-        <Alert type="error" showIcon message={formErrors.join(' ')} style={{ marginBottom: 16 }} />
+        <Alert type="error" showIcon title={formErrors.join(' ')} style={{ marginBottom: 16 }} />
       )}
       <Typography.Paragraph ellipsis={{ tooltip: user?.email }} strong>
         {user?.email}

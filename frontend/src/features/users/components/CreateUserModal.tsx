@@ -49,7 +49,7 @@ export function CreateUserModal({ open, onClose }: CreateUserModalProps) {
       destroyOnHidden
     >
       {formErrors.length > 0 && (
-        <Alert type="error" showIcon message={formErrors.join(' ')} style={{ marginBottom: 16 }} />
+        <Alert type="error" showIcon title={formErrors.join(' ')} style={{ marginBottom: 16 }} />
       )}
       <Form form={form} layout="vertical" preserve={false} onFinish={(values) => void submit(values)}>
         <Form.Item name="email" label={t('users.createModal.email')} rules={[{ required: true }, { type: 'email' }]}>

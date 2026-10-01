@@ -66,9 +66,9 @@ export function LoginPage() {
         <Typography.Title level={3} style={{ marginTop: 0 }}>
           {t('auth.title')}
         </Typography.Title>
-        {failure && <Alert type="error" showIcon message={t(failure)} style={{ marginBottom: 16 }} />}
+        {failure && <Alert type="error" showIcon title={t(failure)} style={{ marginBottom: 16 }} />}
         {formErrors.length > 0 && (
-          <Alert type="error" showIcon message={formErrors.join(' ')} style={{ marginBottom: 16 }} />
+          <Alert type="error" showIcon title={formErrors.join(' ')} style={{ marginBottom: 16 }} />
         )}
         <Form form={form} layout="vertical" requiredMark={false} onFinish={(values) => void submit(values)}>
           <Form.Item name="email" label={t('auth.email')} rules={[{ required: true }, { type: 'email' }]}>
