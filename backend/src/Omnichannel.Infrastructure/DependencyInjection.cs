@@ -83,6 +83,7 @@ public static class DependencyInjection
                 options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
             })
             .AddRoles<ApplicationRole>()
+            .AddErrorDescriber<LocalizedIdentityErrorDescriber>()
             .AddEntityFrameworkStores<OmnichannelDbContext>();
 
         services.AddScoped<IAuthService, IdentityAuthService>();

@@ -51,6 +51,35 @@ public sealed class RequestLocalisationTests(ApiFactory factory)
         Assert.Equal(expected, errors.GetProperty("password")[0].GetString());
     }
 
+    [Theory]
+    [InlineData("vi", "Mật khẩu phải có ít nhất 12 ký tự.", "Mật khẩu phải có ít nhất một chữ số ('0'-'9').", "Mật khẩu phải có ít nhất một chữ hoa ('A'-'Z').")]
+    [InlineData("en", "Passwords must be at least 12 characters.", "Passwords must have at least one digit ('0'-'9').", "Passwords must have at least one uppercase ('A'-'Z').")]
+    public async Task Password_policy_messages_of_identity_follow_the_requested_language(string language, params string[] expected)
+    {
+        var admin = factory.CreateClientAs(AppRoles.Admin);
+
+        async Task<string[]> MessagesAsync(HttpMethod method, string url, object body, string key)
+        {
+            using var request = new HttpRequestMessage(method, url) { Content = JsonContent.Create(body) };
+            request.Headers.TryAddWithoutValidation("Accept-Language", language);
+            var response = await admin.SendAsync(request);
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            return document.RootElement.GetProperty("errors").GetProperty(key).EnumerateArray().Select(m => m.GetString()!).ToArray();
+        }
+
+        // "weakpass": too short, no digit, no upper-case letter.
+        var email = $"policy.{TestData.UniqueSuffix()}@users.test";
+        Assert.Equal(expected, await MessagesAsync(HttpMethod.Post, "/api/users", new { email, password = "weakpass", role = AppRoles.Staff }, "password"));
+
+        // The same policy on a password reset, under the key of that request's field.
+        var created = await admin.PostAsJsonAsync("/api/users", new { email, password = $"Passw0rd-{Guid.NewGuid():N}", role = AppRoles.Staff });
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        using var user = JsonDocument.Parse(await created.Content.ReadAsStringAsync());
+        var userId = user.RootElement.GetProperty("userId").GetGuid();
+        Assert.Equal(expected, await MessagesAsync(HttpMethod.Post, $"/api/users/{userId}/reset-password", new { newPassword = "weakpass" }, "newPassword"));
+    }
+
     [Fact]
     public void Vietnamese_and_english_messages_differ()
     {
