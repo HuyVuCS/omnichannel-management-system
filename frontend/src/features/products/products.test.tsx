@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 import type { AuthUser } from '@/features/auth/session';
@@ -127,6 +127,38 @@ describe('products page', () => {
     await waitFor(() => expect(requests.at(-1)).toMatchObject({ search: 'tra', page: '1' }));
     expect(requests.length).toBe(before + 1);
     expect(location()).toBe('/products?sortDir=asc&search=tra');
+  });
+
+  it('search box follows the address when it changes from outside (menu link, back), and never writes the old text back', async () => {
+    const { requests } = serveProducts([tea, coffee]);
+    const { user: appUser, location, router } = renderProducts(managerUser, '/products?search=abc&page=2');
+    await screen.findByText('TEA-01');
+    expect(screen.getByRole('searchbox')).toHaveValue('abc');
+    expect(requests).toEqual([{ page: '2', pageSize: '20', search: 'abc' }]);
+
+    // The menu item of the page the user is on: the plain list.
+    await appUser.click(screen.getByRole('link', { name: 'Sản phẩm' }));
+
+    await waitFor(() => expect(requests.at(-1)).toEqual({ page: '1', pageSize: '20' }));
+    expect(location()).toBe('/products');
+    expect(screen.getByRole('searchbox')).toHaveValue('');
+    // Longer than the debounce of the search box: nothing puts "abc" back.
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect(location()).toBe('/products');
+    expect(screen.getByRole('searchbox')).toHaveValue('');
+    expect(requests).toHaveLength(2);
+
+    // Back: the address has the search again, and so has the box.
+    await act(() => router.navigate(-1));
+    await waitFor(() => expect(screen.getByRole('searchbox')).toHaveValue('abc'));
+    expect(location()).toBe('/products?search=abc&page=2');
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect(location()).toBe('/products?search=abc&page=2');
+
+    // Typing still works afterwards, and what is typed is not replaced when its own write reaches the address.
+    await appUser.type(screen.getByRole('searchbox'), 'd');
+    await waitFor(() => expect(location()).toBe('/products?search=abcd'));
+    expect(screen.getByRole('searchbox')).toHaveValue('abcd');
   });
 
   it('creates a product: SKU as typed, whole VND amount, optional expiry date; then refreshes the list', async () => {

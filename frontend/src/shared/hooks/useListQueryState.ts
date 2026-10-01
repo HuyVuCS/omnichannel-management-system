@@ -3,7 +3,6 @@ import type { SorterResult, TableCurrentDataSource } from 'antd/es/table/interfa
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { PAGE_SIZE_SELECT_WIDTH } from '@/shared/components/layout';
-import { useDebouncedValue } from './useDebouncedValue';
 
 export type SortDirection = 'asc' | 'desc';
 
@@ -77,14 +76,35 @@ export function useListQueryState<SortField extends string>({
   );
 
   // Search box: typed text is local; the query string (and with it the request) follows after a pause.
-  const [searchText, setSearchText] = useState(state.search ?? '');
-  const debouncedSearch = useDebouncedValue(searchText.trim(), SEARCH_DEBOUNCE_MS);
-  useEffect(() => {
-    if (debouncedSearch !== (state.search ?? '')) {
-      // A new search term starts on the first page.
-      patchParams({ search: debouncedSearch, page: undefined });
+  const addressSearch = state.search ?? '';
+  const [searchText, setSearchText] = useState(addressSearch);
+
+  // The other direction: when `search` in the address changes and this hook did not write that value itself (a menu
+  // link to the same page, back/forward, an edited address), the box follows the address. `pendingSearch` is the value
+  // this hook has written and not yet seen arrive, so its own write never overwrites what was typed meanwhile.
+  const [seenSearch, setSeenSearch] = useState(addressSearch);
+  const [pendingSearch, setPendingSearch] = useState<string | null>(null);
+  if (addressSearch !== seenSearch) {
+    setSeenSearch(addressSearch);
+    setPendingSearch(null);
+    if (addressSearch !== pendingSearch) {
+      setSearchText(addressSearch);
     }
-  }, [debouncedSearch, state.search, patchParams]);
+  }
+
+  useEffect(() => {
+    const text = searchText.trim();
+    if (text === addressSearch) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setPendingSearch(text);
+      // A new search term starts on the first page.
+      patchParams({ search: text, page: undefined });
+    }, SEARCH_DEBOUNCE_MS);
+    return () => window.clearTimeout(timer);
+  }, [searchText, addressSearch, patchParams]);
 
   /** `onChange` of the AntD table: paging and sorting go to the query string. */
   const onTableChange = useCallback(
