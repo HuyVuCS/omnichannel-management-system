@@ -130,7 +130,9 @@ internal sealed class InventoryQueryService(OmnichannelDbContext dbContext) : II
                 m.DocumentNumber,
                 m.DocumentSeries,
                 m.CreatedAt,
-                m.CreatedBy))
+                m.CreatedBy,
+                // Compared as text: CreatedBy also holds "system:{worker}", which a cast to uuid would reject.
+                dbContext.Users.Where(u => u.Id.ToString() == m.CreatedBy).Select(u => u.Email).FirstOrDefault()))
             .ToListAsync(cancellationToken);
 
         return new PagedResult<InventoryMovementResponse>(items, query.Page, query.PageSize, totalCount);

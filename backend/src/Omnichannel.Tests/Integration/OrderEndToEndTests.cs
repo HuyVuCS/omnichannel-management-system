@@ -6,6 +6,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Omnichannel.Application.Auth;
 using Omnichannel.Application.Common.Messaging;
+using Omnichannel.Application.Common.Paging;
 using Omnichannel.Application.Customers;
 using Omnichannel.Application.Inventory;
 using Omnichannel.Application.Orders;
@@ -91,6 +92,14 @@ public sealed class OrderEndToEndTests(ApiFactory factory) : IAsyncLifetime
 
         var stock = await factory.QueryDbAsync(db => db.Inventories.AsNoTracking().SingleAsync(i => i.ProductId == product.ProductId));
         Assert.Equal((10, 4, 6), (stock.TotalStock, stock.ReservedStock, stock.AvailableStock));
+
+        // Movement history (task 012): the import names the manager, the worker's reservation is a system actor.
+        var movements = (await staff.GetFromJsonAsync<PagedResult<InventoryMovementResponse>>(
+            $"/api/inventory/movements?productId={product.ProductId}", TestData.Json))!.Items;
+        var reserve = Assert.Single(movements, m => m.Type == InventoryMovementType.Reserve);
+        Assert.StartsWith("system:", reserve.CreatedBy);
+        Assert.Null(reserve.CreatedByEmail);
+        Assert.Equal("manager@integration.test", Assert.Single(movements, m => m.Type == InventoryMovementType.Import).CreatedByEmail);
 
         // The order's inventory.changed outbox rows carry the request's correlation id ...
         var reserveOutbox = await factory.QueryDbAsync(db => db.OutboxEvents.AsNoTracking()

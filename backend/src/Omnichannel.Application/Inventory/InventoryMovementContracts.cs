@@ -3,6 +3,10 @@ using Omnichannel.Domain.Enums;
 
 namespace Omnichannel.Application.Inventory;
 
+/// <param name="CreatedBy">Who made the movement: a user id, or <c>system:{worker}</c> for background processing.</param>
+/// <param name="CreatedByEmail">
+/// E-mail of the user behind <paramref name="CreatedBy"/>; null for system actors and for ids that match no user.
+/// </param>
 public sealed record InventoryMovementResponse(
     Guid InventoryMovementId,
     Guid ProductId,
@@ -15,7 +19,8 @@ public sealed record InventoryMovementResponse(
     string? DocumentNumber,
     string? DocumentSeries,
     DateTimeOffset CreatedAt,
-    string? CreatedBy);
+    string? CreatedBy,
+    string? CreatedByEmail);
 
 /// <summary>
 /// Always ordered newest first (<c>CreatedAt desc, InventoryMovementId desc</c>): <c>sortBy</c> is not supported and

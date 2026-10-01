@@ -203,6 +203,36 @@ public sealed class InventoryImportTests(ApiFactory factory)
                 payload.RootElement.GetProperty("totalQuantity").GetInt64()));
     }
 
+    /// <summary>Task 012: the movement history shows who made a movement, not a user id.</summary>
+    [Fact]
+    public async Task Movement_carries_the_email_of_the_user_who_made_it_and_null_for_any_other_actor()
+    {
+        var product = await CreateProductAsync();
+        var imported = await _manager.PostAsJsonAsync(
+            "/api/inventory/import", Import($"GRN-{TestData.UniqueSuffix()}", null, (product.ProductId, 3)));
+        Assert.Equal(HttpStatusCode.OK, imported.StatusCode);
+
+        async Task<InventoryMovementResponse> MovementAsync() =>
+            Assert.Single((await _manager.GetFromJsonAsync<PagedResult<InventoryMovementResponse>>(
+                $"/api/inventory/movements?productId={product.ProductId}", TestData.Json))!.Items);
+
+        var movement = await MovementAsync();
+        Assert.Equal(factory.UserIdOf(AppRoles.Manager).ToString(), movement.CreatedBy);
+        Assert.Equal("manager@integration.test", movement.CreatedByEmail);
+
+        // Actors that are not a user: a system actor, a user id that no longer exists, no actor at all. The query compares
+        // text with text, so none of them is an error (a cast of "system:..." to uuid would be).
+        foreach (var actor in new[] { "system:order-worker", Guid.NewGuid().ToString(), null })
+        {
+            await factory.QueryDbAsync(db => db.Database.ExecuteSqlAsync(
+                $"UPDATE \"InventoryMovements\" SET \"CreatedBy\" = {actor} WHERE \"InventoryMovementId\" = {movement.InventoryMovementId}"));
+
+            var changed = await MovementAsync();
+            Assert.Equal(actor, changed.CreatedBy);
+            Assert.Null(changed.CreatedByEmail);
+        }
+    }
+
     [Fact]
     public async Task Movements_are_filtered_and_paged_newest_first()
     {
