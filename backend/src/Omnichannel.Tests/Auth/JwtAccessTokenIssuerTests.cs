@@ -30,11 +30,12 @@ public sealed class JwtAccessTokenIssuerTests
         var issuer = new JwtAccessTokenIssuer(Options.Create(options), TimeProvider.System);
         var userId = Guid.NewGuid();
 
-        var token = issuer.Issue(userId, "staff@example.com", new[] { "Staff", "Manager" });
+        var token = issuer.Issue(userId, "staff@example.com", new[] { "Staff", "Manager" }, "stamp-1");
         var result = await new JsonWebTokenHandler().ValidateTokenAsync(token.Token, ValidationParameters(options));
 
         Assert.True(result.IsValid, result.Exception?.Message);
         Assert.Equal(userId.ToString(), result.ClaimsIdentity.FindFirst(JwtClaimNames.Subject)?.Value);
+        Assert.Equal("stamp-1", result.ClaimsIdentity.FindFirst(JwtClaimNames.SecurityStamp)?.Value);
         Assert.Equal("staff@example.com", result.ClaimsIdentity.FindFirst(JwtClaimNames.Email)?.Value);
         Assert.Equal(
             new[] { "Manager", "Staff" },
@@ -45,12 +46,22 @@ public sealed class JwtAccessTokenIssuerTests
     public async Task Token_signed_with_a_different_key_is_rejected()
     {
         var issuer = new JwtAccessTokenIssuer(Options.Create(CreateOptions()), TimeProvider.System);
-        var token = issuer.Issue(Guid.NewGuid(), "a@example.com", Array.Empty<string>());
+        var token = issuer.Issue(Guid.NewGuid(), "a@example.com", Array.Empty<string>(), "stamp");
 
         var otherKeyOptions = CreateOptions(new string('x', 48));
         var result = await new JsonWebTokenHandler().ValidateTokenAsync(token.Token, ValidationParameters(otherKeyOptions));
 
         Assert.False(result.IsValid);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData(" ")]
+    public void A_token_without_a_security_stamp_is_never_issued(string securityStamp)
+    {
+        var issuer = new JwtAccessTokenIssuer(Options.Create(CreateOptions()), TimeProvider.System);
+
+        Assert.Throws<ArgumentException>(() => issuer.Issue(Guid.NewGuid(), "a@example.com", Array.Empty<string>(), securityStamp));
     }
 
     [Fact]
@@ -60,7 +71,7 @@ public sealed class JwtAccessTokenIssuerTests
         var issuer = new JwtAccessTokenIssuer(Options.Create(options), TimeProvider.System);
         var before = DateTimeOffset.UtcNow;
 
-        var token = issuer.Issue(Guid.NewGuid(), "a@example.com", Array.Empty<string>());
+        var token = issuer.Issue(Guid.NewGuid(), "a@example.com", Array.Empty<string>(), "stamp");
 
         var expected = before.AddMinutes(options.AccessTokenLifetimeMinutes);
         Assert.InRange(token.ExpiresAt, expected.AddSeconds(-2), expected.AddSeconds(5));

@@ -127,3 +127,15 @@ dotnet run --project src/Omnichannel.Workers
 - Errors are RFC 7807 `application/problem+json` with `errorCode` and `correlationId`.
 - Send `X-Correlation-Id` to correlate a request across logs; the API echoes it (or generates one).
 - Enums are serialised as strings.
+
+### Users and token revocation
+
+- `/api/users` (Admin only): list/search, create (`{email, password, role}`), `PUT {id}/role`, `POST {id}/lock`, `POST {id}/unlock`,
+  `POST {id}/reset-password` (`{newPassword}`, a temporary password set by the admin). Every user has exactly one role.
+- Guards (409): `last_admin` (the last unlocked Admin cannot be demoted or locked), `cannot_modify_self` (an admin cannot change
+  their own role or lock themselves).
+- Access tokens carry the user's security stamp (`sstamp`). A role change, lock or password reset issues a new stamp, so tokens
+  issued before are rejected with 401: at once on the API instance that made the change, and within
+  `TokenRevocation:CacheDuration` (default 30 s, max 5 min, `00:00:00` = no cache) on other instances. A locked-out user's tokens
+  are rejected as well. Tokens issued before this feature (no `sstamp`) are not accepted: log in again.
+- Every operation writes a `user.*` row to `SystemEventLogs` with `targetUserId` and `actorUserId`; logs contain user ids only.

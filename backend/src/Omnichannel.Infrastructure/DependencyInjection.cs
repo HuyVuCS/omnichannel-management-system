@@ -11,6 +11,7 @@ using Omnichannel.Application.Inventory;
 using Omnichannel.Application.Orders;
 using Omnichannel.Application.Processing;
 using Omnichannel.Application.Products;
+using Omnichannel.Application.Users;
 using Omnichannel.Infrastructure.Identity;
 using Omnichannel.Infrastructure.Persistence;
 using Omnichannel.Infrastructure.Persistence.Channels;
@@ -85,6 +86,26 @@ public static class DependencyInjection
             .AddEntityFrameworkStores<OmnichannelDbContext>();
 
         services.AddScoped<IAuthService, IdentityAuthService>();
+
+        services.AddMemoryCache();
+        services.AddOptions<TokenRevocationOptions>()
+            .Configure<IConfiguration>((options, configuration) =>
+            {
+                var configured = configuration[$"{TokenRevocationOptions.SectionName}:{nameof(TokenRevocationOptions.CacheDuration)}"];
+                if (!string.IsNullOrWhiteSpace(configured))
+                {
+                    // An unparsable value becomes negative and fails validation instead of silently using the default.
+                    options.CacheDuration = TimeSpan.TryParse(configured, System.Globalization.CultureInfo.InvariantCulture, out var duration)
+                        ? duration
+                        : TimeSpan.MinValue;
+                }
+            })
+            .Validate(
+                options => options.CacheDuration >= TimeSpan.Zero && options.CacheDuration <= TokenRevocationOptions.MaxCacheDuration,
+                $"{TokenRevocationOptions.SectionName}:{nameof(TokenRevocationOptions.CacheDuration)} must be between 00:00:00 and {TokenRevocationOptions.MaxCacheDuration:c}.")
+            .ValidateOnStart();
+        services.AddScoped<IUserSecurityStateProvider, UserSecurityStateProvider>();
+        services.AddScoped<IUserService, IdentityUserService>();
 
         services.AddOptions<BootstrapAdminOptions>()
             .Configure<IConfiguration>((options, configuration) =>

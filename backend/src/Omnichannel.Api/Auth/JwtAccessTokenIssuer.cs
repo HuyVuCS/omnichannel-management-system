@@ -11,8 +11,10 @@ public sealed class JwtAccessTokenIssuer(IOptions<JwtOptions> options, TimeProvi
 {
     private readonly JsonWebTokenHandler _handler = new();
 
-    public AccessToken Issue(Guid userId, string email, IReadOnlyCollection<string> roles)
+    public AccessToken Issue(Guid userId, string email, IReadOnlyCollection<string> roles, string securityStamp)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(securityStamp);
+
         var jwt = options.Value;
         var now = timeProvider.GetUtcNow();
         // JWT timestamps have second precision; keep the reported expiry identical to the "exp" claim.
@@ -23,7 +25,8 @@ public sealed class JwtAccessTokenIssuer(IOptions<JwtOptions> options, TimeProvi
         {
             new(JwtClaimNames.Subject, userId.ToString()),
             new(JwtClaimNames.Email, email),
-            new(JwtClaimNames.TokenId, Guid.NewGuid().ToString("N"))
+            new(JwtClaimNames.TokenId, Guid.NewGuid().ToString("N")),
+            new(JwtClaimNames.SecurityStamp, securityStamp)
         };
         claims.AddRange(roles.Select(role => new Claim(JwtClaimNames.Role, role)));
 
