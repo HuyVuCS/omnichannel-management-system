@@ -1,17 +1,18 @@
 import { skipToken } from '@reduxjs/toolkit/query';
 import { Select, Typography } from 'antd';
-import { useMemo, useState, type CSSProperties } from 'react';
+import { useMemo, type CSSProperties } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useDebouncedValue } from '@/shared/hooks/useDebouncedValue';
+import { useServerSearchSelect } from '@/shared/hooks/useServerSearchSelect';
 import { formatNumber } from '@/shared/utils/format';
 import { productLabel, useGetProductQuery, useListProductsQuery, type Product } from '../productsApi';
 
-const SEARCH_DEBOUNCE_MS = 300;
 const PAGE_SIZE = 20;
 
 interface ProductOption {
   value: string;
   label: string;
+  /** Full text on hover: the label is cut when it is wider than the dropdown. */
+  title: string;
   disabled: boolean;
   product: Product;
 }
@@ -35,17 +36,15 @@ interface ProductSelectProps {
  * `SKU — name` and the available stock. Nothing is cached in the client beyond the API cache: the options are one page
  * of the product list, loaded when the picker is first opened, and a value set from outside (an id in the address)
  * gets its label from `GET /api/products/{id}`.
+ *
+ * A label that does not fit (the dropdown is as wide as the picker) is cut with an ellipsis; the full text is the
+ * `title` of the option and of the selected value, so hovering shows it.
  */
 export function ProductSelect({ value, onChange, disabledIds, placeholder, ...rest }: ProductSelectProps) {
   const { t } = useTranslation();
-  const [activated, setActivated] = useState(false);
-  const [searchText, setSearchText] = useState('');
-  const search = useDebouncedValue(searchText.trim(), SEARCH_DEBOUNCE_MS);
+  const { activated, search, selectProps, clearSearch } = useServerSearchSelect();
 
-  const list = useListProductsQuery(
-    { page: 1, pageSize: PAGE_SIZE, search: search || undefined },
-    { skip: !activated },
-  );
+  const list = useListProductsQuery({ page: 1, pageSize: PAGE_SIZE, search }, { skip: !activated });
   const listed = list.data?.items;
   const valueIsListed = value !== undefined && (listed?.some((product) => product.productId === value) ?? false);
   // The label of a value that is not among the current options: preselected from the address, or searched away.
@@ -56,6 +55,7 @@ export function ProductSelect({ value, onChange, disabledIds, placeholder, ...re
       (listed ?? []).map((product) => ({
         value: product.productId,
         label: productLabel(product),
+        title: productLabel(product),
         disabled: product.productId !== value && (disabledIds?.includes(product.productId) ?? false),
         product,
       })),
@@ -67,19 +67,13 @@ export function ProductSelect({ value, onChange, disabledIds, placeholder, ...re
   return (
     <Select<string, ProductOption>
       {...rest}
+      {...selectProps}
       value={value}
       placeholder={placeholder ?? t('productSelect.placeholder')}
       options={options}
       loading={list.isFetching || selected.isFetching}
-      // The server searches; the options are already the matches.
-      showSearch={{ filterOption: false, onSearch: setSearchText }}
-      onOpenChange={(open) => {
-        if (open) {
-          setActivated(true);
-        }
-      }}
       onChange={(productId: string | undefined, option) => {
-        setSearchText('');
+        clearSearch();
         onChange?.(productId, Array.isArray(option) ? undefined : option?.product);
       }}
       labelRender={({ value: selectedValue }) =>
