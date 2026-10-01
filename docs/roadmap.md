@@ -3,7 +3,7 @@
 Plan from the current state to the complete system (backend + frontend), following the implementation order in
 the architecture document (section 15). Maintained by Cowork; updated after every task review.
 
-Last updated: 2026-09-30 (after review 008)
+Last updated: 2026-10-01 (after review 009)
 
 ## Conventions
 - One row = one task file `docs/tasks/NNN-*.md`, written by Cowork shortly before it is needed (not all up front),
@@ -26,8 +26,8 @@ Last updated: 2026-09-30 (after review 008)
 | 006 | BE | Order Worker: consume `order.created`, atomic reserve transaction (lock inventory rows in `ProductId` order, same as import), Order/Items/Movements/Outbox, ProcessingAttempt tracking, ACK after commit, oversell tests | 6, 7 | Done |
 | 007 | BE | Shared retry/backoff + DLQ handling for all consumers, max attempts, poison messages | 8 | Done |
 | 008 | BE | `GET /api/orders`, `GET /api/orders/{id}` (with tasks/attempts), `GET /api/processing/tasks`, `POST .../retry`, SystemEventLog writes | 9 | Done |
-| 009 | BE | User management (Admin only): list/create users, assign role, lock/unlock, reset password; no ad-hoc seeder tools | 6 | Open |
-| 010 | FE | Vite + React + TS + Redux Toolkit/RTK Query scaffold; login, token handling, role guard, layout, ProblemDetails handling | 3 | Planned |
+| 009 | BE | User management (Admin only): list/create users, assign role, lock/unlock, reset password; no ad-hoc seeder tools | 6 | Done |
+| 010 | FE | Vite + React + TS + Redux Toolkit/RTK Query + Ant Design scaffold; login (sessionStorage), role guards, layout, bilingual vi/en, ProblemDetails handling, **Users page**; BE: lockout fix + request localisation | 3 | Open |
 | 011 | FE | Products, Customers, Channels pages (search, filter, sort, paging) | 3.2 | Planned |
 | 012 | FE | Inventory list, stock import, movement history pages | 3.2 | Planned |
 | 013 | FE | Order entry page (Digital Platform / Website / POS components) + orders list/detail | 3.1, 3.2 | Planned |
@@ -43,7 +43,7 @@ Last updated: 2026-09-30 (after review 008)
 | 023 | BE | `POST /api/webhooks/{slug}`: signature verification, rate limiting, reuse of order intake | 11 (API) | Planned |
 | 024 | BE | Invoice Worker + Notification (email) Worker with independent task status | 8.4 | Planned |
 | 025 | Ops | Worker Dockerfiles, full docker-compose, CI pipeline (build, unit + integration tests) | 14 | Planned |
-| 026 | All | Security and performance hardening review (OWASP, indexes, load test of reserve path) | 14 | Planned |
+| 026 | All | Security and performance hardening review (OWASP, CSP/security headers, revisit httpOnly-cookie auth, login throttling per account+IP, indexes, load test of reserve path) | 14 | Planned |
 | 027 | All | End-to-end smoke tests against the acceptance criteria (doc section 16) | 14, 16 | Planned |
 
 Expect roughly 2–4 extra tasks for review follow-ups that are too large for a Part A.
