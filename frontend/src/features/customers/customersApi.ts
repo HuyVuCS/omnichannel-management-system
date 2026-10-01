@@ -32,6 +32,11 @@ export interface CustomerRequest {
   address: string | null;
 }
 
+/** The secondary text of a customer in pickers: the phone number, otherwise the e-mail address, when there is one. */
+export function customerContact(customer: Pick<Customer, 'phone' | 'email'>): string | undefined {
+  return customer.phone || customer.email || undefined;
+}
+
 const LIST_TAG = { type: 'Customer', id: 'LIST' } as const;
 
 /** Invalidate the list only when the mutation succeeded: a rejected one changed nothing on the server. */
@@ -47,15 +52,24 @@ export const customersApi = baseApi.injectEndpoints({
       query: (args) => ({ url: 'customers', params: compact({ ...args }) }),
       providesTags: [LIST_TAG],
     }),
+    /** One customer, e.g. to show the label of a customer picker that was opened with an id from the address. */
+    getCustomer: build.query<Customer, string>({
+      query: (customerId) => `customers/${customerId}`,
+      providesTags: (_result, _error, customerId) => [{ type: 'Customer', id: customerId }],
+    }),
     createCustomer: build.mutation<Customer, CustomerRequest>({
       query: (body) => ({ url: 'customers', method: 'POST', body }),
       invalidatesTags: listOnSuccess,
     }),
     updateCustomer: build.mutation<Customer, { customerId: string; changes: CustomerRequest }>({
       query: ({ customerId, changes }) => ({ url: `customers/${customerId}`, method: 'PUT', body: changes }),
-      invalidatesTags: listOnSuccess,
+      invalidatesTags: (result, error, { customerId }) => [
+        ...listOnSuccess(result, error),
+        ...(error ? [] : [{ type: 'Customer' as const, id: customerId }]),
+      ],
     }),
   }),
 });
 
-export const { useListCustomersQuery, useCreateCustomerMutation, useUpdateCustomerMutation } = customersApi;
+export const { useListCustomersQuery, useGetCustomerQuery, useCreateCustomerMutation, useUpdateCustomerMutation } =
+  customersApi;

@@ -161,12 +161,26 @@ npm run dev     # http://localhost:5173 - needs the API on http://localhost:5080
     with "Reload"; inside the layout the menu stays usable;
   - confirmation dialogs are closed when the session ends (`SessionManager`); a confirmation that must follow a
     language switch is a `Modal` of its page, not `modal.confirm`;
-  - products are picked with `ProductSelect` (server-side search, no client-side product list).
-- Pages so far: Inventory (`/inventory`), Stock import (`/inventory/import`, Manager/Admin, reached from the inventory
-  and product lists, no menu item), Inventory movements (`/inventory/movements`), Products, Customers, Channels, Users.
-  The other menu items show a "coming in task NNN" placeholder.
-- Stock on the inventory and movement pages changes in the background (Order Worker): both lists are fetched again
-  whenever the page is opened and on "Refresh". Realtime updates come with SignalR in a later task.
+  - products and customers are picked with `ProductSelect` / `CustomerSelect` (server-side search, no client-side list;
+    shared behaviour in `useServerSearchSelect`). While a search is pending the picker offers no options, so Enter
+    cannot choose an option of an older search; a label that is cut shows its full text as the `title`;
+  - a list whose table shows the API's default order passes `defaultSortDir` to `useListQueryState` (orders: newest
+    first); that order is never written to the address.
+- Pages so far: Order entry (`/order-entry`), Orders (`/orders`), Order detail (`/orders/{id}`, reached from the list
+  and from an order reference in the movement history, no menu item), Inventory (`/inventory`), Stock import
+  (`/inventory/import`, Manager/Admin, reached from the inventory and product lists, no menu item), Inventory movements
+  (`/inventory/movements`), Products, Customers, Channels, Users. The other menu items show a "coming in task NNN"
+  placeholder.
+- Order entry: three panels, one per seeded channel slug (`digital-platform`, `website`, `pos`), each with its own form
+  and outcome. The external order id is the order's idempotency key: it is generated when the form opens
+  (`DP-` / `WEB-` / `POS-` + local date + six characters), can be edited, and stays as it is after a failed request, so a
+  resend is the same order. After the API accepted an order (202) the panel follows its processing task
+  (`GET /api/processing/tasks/{id}` every 1.5 s, at most 60 s, not while the tab is hidden - `app/tabVisibility.ts`),
+  then loads the order once; "Check again" starts another 60 s. The Workers host must be running for an order to get
+  past "waiting" (section 6). There is no price or total in the form: amounts come from the order.
+- Stock and orders change in the background (Order Worker): the inventory, movement and order lists and the order detail
+  are fetched again whenever the page is opened and on "Refresh", and the order-entry page invalidates them once when a
+  task is finished. Realtime updates come with SignalR in a later task.
 - The access token is kept in `sessionStorage` (cleared when the tab closes); the language choice in `localStorage`.
 
 ## API conventions

@@ -73,7 +73,10 @@
     "channel_slug_exists": "Đã có kênh bán với slug này.",
     "channel_not_found": "Kênh bán không tồn tại hoặc đang ngừng hoạt động.",
     "stock_import_already_applied": "Chứng từ này đã được nhập kho. Hãy kiểm tra trong Biến động tồn kho.",
-    "stock_limit_exceeded": "Số lượng nhập làm tồn kho vượt quá giới hạn cho phép."
+    "stock_limit_exceeded": "Số lượng nhập làm tồn kho vượt quá giới hạn cho phép.",
+    "order_conflict": "Mã đơn hàng này đã được dùng trên kênh này với nội dung khác. Hãy tạo số mới cho đơn hàng này.",
+    "order_not_found": "Đơn hàng không tồn tại.",
+    "task_not_found": "Tác vụ xử lý không tồn tại."
   },
   "pages": {
     "dashboard": {
@@ -349,6 +352,158 @@
     },
     "actor": {
       "system": "Hệ thống"
+    }
+  },
+  "customerSelect": {
+    "placeholder": "Chọn khách hàng"
+  },
+  "orderEntry": {
+    "title": "Nhập đơn hàng",
+    "panels": {
+      "digitalPlatform": "Digital Platform Online",
+      "website": "Website",
+      "pos": "POS (tại quầy)"
+    },
+    "channel": {
+      "inactive": "Kênh đang ngừng hoạt động",
+      "notConfigured": "Kênh chưa được cấu hình"
+    },
+    "form": {
+      "externalOrderId": "Mã đơn hàng bên ngoài",
+      "newNumber": "Tạo số mới",
+      "customer": "Khách hàng",
+      "lines": "Các dòng hàng",
+      "product": "Sản phẩm",
+      "quantity": "Số lượng",
+      "productOfLine": "Sản phẩm, dòng {{line}}",
+      "quantityOfLine": "Số lượng, dòng {{line}}",
+      "addLine": "Thêm dòng",
+      "removeLine": "Xoá dòng",
+      "removeLineOf": "Xoá dòng {{line}}",
+      "submit": "Tạo đơn hàng"
+    },
+    "outcome": {
+      "channel": "Kênh bán",
+      "taskStatus": "Trạng thái xử lý",
+      "orderStatus": "Trạng thái đơn hàng",
+      "totalAmount": "Tổng tiền",
+      "duplicate": "Đơn hàng này đã được tiếp nhận trước đó; không có xử lý mới nào được bắt đầu.",
+      "failed": "Xử lý đơn hàng thất bại.",
+      "errorCode": "Mã lỗi:",
+      "reserved": "Đã giữ hàng cho đơn hàng.",
+      "insufficientStock": "Không đủ tồn kho; đơn hàng được ghi nhận nhưng không giữ hàng.",
+      "processed": "Đơn hàng đã được xử lý.",
+      "notSent": "Không gửi được đơn hàng vào hàng đợi xử lý.",
+      "retrying": "Xử lý gặp lỗi tạm thời; hệ thống đang thử lại.",
+      "inProgress": "Đơn hàng đang được xử lý.",
+      "waitingForQueue": "Đơn hàng đang chờ được chuyển vào hàng đợi xử lý.",
+      "queued": "Đơn hàng đang chờ trong hàng đợi xử lý.",
+      "stillProcessing": "Đơn hàng vẫn đang được xử lý; đã dừng tự động kiểm tra.",
+      "checkAgain": "Kiểm tra lại",
+      "newOrder": "Đơn hàng mới",
+      "openOrder": "Mở đơn hàng"
+    }
+  },
+  "orders": {
+    "title": "Đơn hàng",
+    "searchPlaceholder": "Tìm theo mã đơn hoặc khách hàng",
+    "columns": {
+      "createdAt": "Ngày tạo",
+      "externalOrderId": "Mã đơn hàng bên ngoài",
+      "channel": "Kênh bán",
+      "customer": "Khách hàng",
+      "status": "Trạng thái",
+      "itemCount": "Số dòng",
+      "totalAmount": "Tổng tiền"
+    },
+    "statuses": {
+      "Pending": "Chờ xử lý",
+      "Reserved": "Đã giữ hàng",
+      "InsufficientStock": "Không đủ hàng",
+      "Cancelled": "Đã huỷ",
+      "Completed": "Hoàn tất"
+    },
+    "filters": {
+      "channel": "Kênh bán",
+      "status": "Trạng thái",
+      "customer": "Khách hàng",
+      "from": "Từ ngày",
+      "to": "Đến ngày",
+      "clear": "Xoá bộ lọc"
+    },
+    "actions": {
+      "detail": "Chi tiết"
+    }
+  },
+  "orderDetail": {
+    "title": "Đơn hàng {{externalOrderId}}",
+    "loadingTitle": "Đơn hàng",
+    "back": "Quay lại",
+    "movements": "Biến động của đơn này",
+    "notFound": {
+      "title": "Không tìm thấy đơn hàng",
+      "description": "Đơn hàng không tồn tại hoặc địa chỉ không đúng.",
+      "toList": "Về danh sách"
+    },
+    "summary": {
+      "externalOrderId": "Mã đơn hàng bên ngoài",
+      "status": "Trạng thái",
+      "channel": "Kênh bán",
+      "customer": "Khách hàng",
+      "itemCount": "Số dòng",
+      "totalAmount": "Tổng tiền",
+      "createdAt": "Ngày tạo",
+      "orderId": "Mã đơn hàng (hệ thống)"
+    },
+    "lines": {
+      "title": "Các dòng hàng",
+      "sku": "SKU",
+      "productName": "Tên sản phẩm",
+      "quantity": "Số lượng",
+      "unitPrice": "Đơn giá",
+      "lineTotal": "Thành tiền"
+    },
+    "tasks": {
+      "title": "Xử lý",
+      "none": "Đơn hàng chưa có tác vụ xử lý nào.",
+      "noAttempts": "Tác vụ này chưa có lần chạy nào.",
+      "type": "Loại tác vụ",
+      "status": "Trạng thái",
+      "retryCount": "Số lần thử lại",
+      "correlationId": "Mã tương quan",
+      "messageId": "Mã thông điệp",
+      "createdAt": "Ngày tạo",
+      "updatedAt": "Cập nhật lúc"
+    }
+  },
+  "processing": {
+    "taskTypes": {
+      "OrderProcessing": "Xử lý đơn hàng",
+      "StockSync": "Đồng bộ tồn kho",
+      "Invoice": "Hoá đơn",
+      "Email": "E-mail"
+    },
+    "taskStatuses": {
+      "Pending": "Đang chờ",
+      "InProgress": "Đang xử lý",
+      "RetryScheduled": "Chờ thử lại",
+      "Succeeded": "Thành công",
+      "Failed": "Thất bại"
+    },
+    "attemptStatuses": {
+      "Running": "Đang chạy",
+      "Succeeded": "Thành công",
+      "Failed": "Thất bại"
+    },
+    "attempts": {
+      "attemptNo": "Lần",
+      "status": "Trạng thái",
+      "workerName": "Worker",
+      "workerInstanceId": "Phiên bản worker",
+      "errorCode": "Mã lỗi",
+      "errorMessage": "Thông báo lỗi",
+      "startedAt": "Bắt đầu",
+      "finishedAt": "Kết thúc"
     }
   }
 }

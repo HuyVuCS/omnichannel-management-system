@@ -1,0 +1,106 @@
+import { Table, Tag, type TableProps } from 'antd';
+import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
+import { TruncatedText } from '@/shared/components/TruncatedText';
+import { formatDateTime } from '@/shared/utils/format';
+import type { AttemptStatus, ProcessingAttempt } from '../processingApi';
+
+/** One status colour per attempt status. */
+const STATUS_COLORS: Record<AttemptStatus, string> = {
+  Running: 'processing',
+  Succeeded: 'success',
+  Failed: 'error',
+};
+
+/**
+ * The attempts of one processing task, in the order the API sends them (by number): which worker instance ran it, when,
+ * and what went wrong. Long values are one truncated line with the full text as a tooltip. The error message is the one
+ * the API sanitised for display.
+ */
+export function AttemptsTable({ attempts }: { attempts: ProcessingAttempt[] }) {
+  const { t } = useTranslation();
+
+  const columns = useMemo<TableProps<ProcessingAttempt>['columns']>(
+    () => [
+      {
+        key: 'attemptNo',
+        dataIndex: 'attemptNo',
+        title: t('processing.attempts.attemptNo'),
+        width: 80,
+        align: 'right',
+        ellipsis: true,
+      },
+      {
+        key: 'status',
+        dataIndex: 'status',
+        title: t('processing.attempts.status'),
+        width: 130,
+        ellipsis: true,
+        render: (status: AttemptStatus) => (
+          <Tag color={STATUS_COLORS[status] ?? 'default'}>{t(`processing.attemptStatuses.${status}`, status)}</Tag>
+        ),
+      },
+      {
+        key: 'workerName',
+        dataIndex: 'workerName',
+        title: t('processing.attempts.workerName'),
+        width: 160,
+        ellipsis: { showTitle: false },
+        render: (workerName: string) => <TruncatedText text={workerName} />,
+      },
+      {
+        key: 'workerInstanceId',
+        dataIndex: 'workerInstanceId',
+        title: t('processing.attempts.workerInstanceId'),
+        width: 220,
+        ellipsis: { showTitle: false },
+        render: (workerInstanceId: string) => <TruncatedText text={workerInstanceId} />,
+      },
+      {
+        key: 'errorCode',
+        dataIndex: 'errorCode',
+        title: t('processing.attempts.errorCode'),
+        width: 170,
+        ellipsis: { showTitle: false },
+        render: (errorCode: string | null) => <TruncatedText text={errorCode} />,
+      },
+      {
+        key: 'errorMessage',
+        dataIndex: 'errorMessage',
+        title: t('processing.attempts.errorMessage'),
+        width: 280,
+        ellipsis: { showTitle: false },
+        render: (errorMessage: string | null) => <TruncatedText text={errorMessage} />,
+      },
+      {
+        key: 'startedAt',
+        dataIndex: 'startedAt',
+        title: t('processing.attempts.startedAt'),
+        width: 160,
+        ellipsis: true,
+        render: (startedAt: string) => formatDateTime(startedAt),
+      },
+      {
+        key: 'finishedAt',
+        dataIndex: 'finishedAt',
+        title: t('processing.attempts.finishedAt'),
+        width: 160,
+        ellipsis: true,
+        render: (finishedAt: string | null) => formatDateTime(finishedAt),
+      },
+    ],
+    [t],
+  );
+
+  return (
+    <Table<ProcessingAttempt>
+      rowKey="attemptNo"
+      size="small"
+      columns={columns}
+      dataSource={attempts}
+      tableLayout="fixed"
+      scroll={{ x: 1360 }}
+      pagination={false}
+    />
+  );
+}

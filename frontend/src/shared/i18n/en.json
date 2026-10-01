@@ -73,7 +73,10 @@
     "channel_slug_exists": "A channel with this slug already exists.",
     "channel_not_found": "The channel does not exist or is inactive.",
     "stock_import_already_applied": "This document has already been imported. Check it in Inventory movements.",
-    "stock_limit_exceeded": "The import would take the stock beyond the allowed maximum."
+    "stock_limit_exceeded": "The import would take the stock beyond the allowed maximum.",
+    "order_conflict": "This order ID was already used on this channel with different content. Use a new number for this order.",
+    "order_not_found": "The order does not exist.",
+    "task_not_found": "The processing task does not exist."
   },
   "pages": {
     "dashboard": {
@@ -349,6 +352,158 @@
     },
     "actor": {
       "system": "System"
+    }
+  },
+  "customerSelect": {
+    "placeholder": "Select a customer"
+  },
+  "orderEntry": {
+    "title": "Order entry",
+    "panels": {
+      "digitalPlatform": "Digital Platform Online",
+      "website": "Website",
+      "pos": "POS"
+    },
+    "channel": {
+      "inactive": "Channel is inactive",
+      "notConfigured": "Channel is not configured"
+    },
+    "form": {
+      "externalOrderId": "External order ID",
+      "newNumber": "New number",
+      "customer": "Customer",
+      "lines": "Lines",
+      "product": "Product",
+      "quantity": "Quantity",
+      "productOfLine": "Product, line {{line}}",
+      "quantityOfLine": "Quantity, line {{line}}",
+      "addLine": "Add line",
+      "removeLine": "Remove line",
+      "removeLineOf": "Remove line {{line}}",
+      "submit": "Create order"
+    },
+    "outcome": {
+      "channel": "Channel",
+      "taskStatus": "Processing status",
+      "orderStatus": "Order status",
+      "totalAmount": "Total amount",
+      "duplicate": "This order had already been accepted; no new processing was started.",
+      "failed": "Processing the order failed.",
+      "errorCode": "Error code:",
+      "reserved": "Stock was reserved for the order.",
+      "insufficientStock": "Not enough stock; the order was recorded without a reservation.",
+      "processed": "The order was processed.",
+      "notSent": "The order could not be sent to the processing queue.",
+      "retrying": "Processing hit a temporary error; the system is retrying.",
+      "inProgress": "The order is being processed.",
+      "waitingForQueue": "The order is waiting to be handed to the processing queue.",
+      "queued": "The order is waiting in the processing queue.",
+      "stillProcessing": "The order is still being processed; automatic checking has stopped.",
+      "checkAgain": "Check again",
+      "newOrder": "New order",
+      "openOrder": "Open order"
+    }
+  },
+  "orders": {
+    "title": "Orders",
+    "searchPlaceholder": "Search by order ID or customer",
+    "columns": {
+      "createdAt": "Created",
+      "externalOrderId": "External order ID",
+      "channel": "Channel",
+      "customer": "Customer",
+      "status": "Status",
+      "itemCount": "Lines",
+      "totalAmount": "Total amount"
+    },
+    "statuses": {
+      "Pending": "Pending",
+      "Reserved": "Reserved",
+      "InsufficientStock": "Insufficient stock",
+      "Cancelled": "Cancelled",
+      "Completed": "Completed"
+    },
+    "filters": {
+      "channel": "Channel",
+      "status": "Status",
+      "customer": "Customer",
+      "from": "From date",
+      "to": "To date",
+      "clear": "Clear filters"
+    },
+    "actions": {
+      "detail": "Detail"
+    }
+  },
+  "orderDetail": {
+    "title": "Order {{externalOrderId}}",
+    "loadingTitle": "Order",
+    "back": "Back",
+    "movements": "Movements of this order",
+    "notFound": {
+      "title": "Order not found",
+      "description": "The order does not exist or the address is wrong.",
+      "toList": "Back to the list"
+    },
+    "summary": {
+      "externalOrderId": "External order ID",
+      "status": "Status",
+      "channel": "Channel",
+      "customer": "Customer",
+      "itemCount": "Lines",
+      "totalAmount": "Total amount",
+      "createdAt": "Created",
+      "orderId": "Order ID (system)"
+    },
+    "lines": {
+      "title": "Lines",
+      "sku": "SKU",
+      "productName": "Product",
+      "quantity": "Quantity",
+      "unitPrice": "Unit price",
+      "lineTotal": "Line total"
+    },
+    "tasks": {
+      "title": "Processing",
+      "none": "This order has no processing task yet.",
+      "noAttempts": "This task has not been run yet.",
+      "type": "Task type",
+      "status": "Status",
+      "retryCount": "Retries",
+      "correlationId": "Correlation ID",
+      "messageId": "Message ID",
+      "createdAt": "Created",
+      "updatedAt": "Updated"
+    }
+  },
+  "processing": {
+    "taskTypes": {
+      "OrderProcessing": "Order processing",
+      "StockSync": "Stock sync",
+      "Invoice": "Invoice",
+      "Email": "E-mail"
+    },
+    "taskStatuses": {
+      "Pending": "Pending",
+      "InProgress": "In progress",
+      "RetryScheduled": "Retry scheduled",
+      "Succeeded": "Succeeded",
+      "Failed": "Failed"
+    },
+    "attemptStatuses": {
+      "Running": "Running",
+      "Succeeded": "Succeeded",
+      "Failed": "Failed"
+    },
+    "attempts": {
+      "attemptNo": "No.",
+      "status": "Status",
+      "workerName": "Worker",
+      "workerInstanceId": "Worker instance",
+      "errorCode": "Error code",
+      "errorMessage": "Error message",
+      "startedAt": "Started",
+      "finishedAt": "Finished"
     }
   }
 }

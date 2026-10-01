@@ -1,5 +1,6 @@
 import { waitFor } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
+import type { Customer } from '@/features/customers/customersApi';
 import type { Product } from '@/features/products/productsApi';
 import type { PagedResult } from '@/shared/api/types';
 import type { AppUser } from './interactions';
@@ -61,14 +62,17 @@ export function serveProductCatalog(products: Product[]) {
   return { listRequests, detailRequests };
 }
 
-/** The options of the product picker that is open right now. */
-export function productOptions(): HTMLElement[] {
+/** The options of the picker (product, customer, any select) that is open right now. */
+export function openOptions(): HTMLElement[] {
   return [
     ...document.querySelectorAll<HTMLElement>(
       '.ant-select-dropdown:not(.ant-select-dropdown-hidden) .ant-select-item-option',
     ),
   ];
 }
+
+/** The options of the product picker that is open right now. */
+export const productOptions = openOptions;
 
 /** What each product picker of the page shows: the label of its value, or its placeholder. */
 export function pickerTexts(): string[] {
@@ -85,6 +89,71 @@ export async function chooseProduct(user: AppUser, combobox: HTMLElement, label:
     const found = productOptions().find((item) => item.textContent?.startsWith(label));
     if (!found) {
       throw new Error(`No product option "${label}" in the open picker`);
+    }
+
+    return found;
+  });
+
+  await user.click(option);
+}
+
+/** Customer ids are GUIDs too. */
+export const AN_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+export const BINH_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+
+export function customer(overrides: Partial<Customer> & Pick<Customer, 'customerId' | 'name'>): Customer {
+  return {
+    phone: null,
+    email: null,
+    address: null,
+    createdAt: '2026-09-30T03:15:00+00:00',
+    updatedAt: null,
+    ...overrides,
+  };
+}
+
+export const anCustomer = customer({ customerId: AN_ID, name: 'Nguyễn Văn An', phone: '+84 90 123 4567' });
+export const binhCustomer = customer({ customerId: BINH_ID, name: 'Trần Thị Bình', email: 'binh@example.com' });
+
+/**
+ * The customer endpoints a customer picker uses: `GET /api/customers` (the search matches the name, phone or e-mail)
+ * and `GET /api/customers/{id}`. Records the query string of every list request and the id of every detail request.
+ */
+export function serveCustomerCatalog(customers: Customer[]) {
+  const listRequests: Record<string, string>[] = [];
+  const detailRequests: string[] = [];
+  server.use(
+    http.get(api('/customers'), ({ request }) => {
+      const url = new URL(request.url);
+      listRequests.push(Object.fromEntries(url.searchParams));
+      const search = url.searchParams.get('search')?.toLowerCase() ?? '';
+      const items = customers.filter((c) =>
+        [c.name, c.phone, c.email].some((text) => text?.toLowerCase().includes(search)),
+      );
+      const page: PagedResult<Customer> = {
+        items,
+        page: Number(url.searchParams.get('page') ?? 1),
+        pageSize: Number(url.searchParams.get('pageSize') ?? 20),
+        totalCount: items.length,
+      };
+      return HttpResponse.json(page);
+    }),
+    http.get(api('/customers/:id'), ({ params }) => {
+      detailRequests.push(String(params.id));
+      const found = customers.find((c) => c.customerId === params.id);
+      return found ? HttpResponse.json(found) : problem(404, { errorCode: 'not_found' });
+    }),
+  );
+  return { listRequests, detailRequests };
+}
+
+/** Opens a customer picker (its combobox) and picks the option of the customer called `name`. */
+export async function chooseCustomer(user: AppUser, combobox: HTMLElement, name: string) {
+  await user.click(combobox);
+  const option = await waitFor(() => {
+    const found = openOptions().find((item) => item.textContent?.startsWith(name));
+    if (!found) {
+      throw new Error(`No customer option "${name}" in the open picker`);
     }
 
     return found;

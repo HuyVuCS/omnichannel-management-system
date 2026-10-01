@@ -4,6 +4,7 @@ import dayjs from 'dayjs';
 import { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
+import { orderPath } from '@/features/orders/paths';
 import { ProductSelect } from '@/features/products/components/ProductSelect';
 import { problemMessages } from '@/shared/api/problemDetails';
 import {
@@ -16,6 +17,8 @@ import { PageHeader } from '@/shared/components/PageHeader';
 import { TruncatedText } from '@/shared/components/TruncatedText';
 import { useAddressText } from '@/shared/hooks/useAddressText';
 import { useListQueryState } from '@/shared/hooks/useListQueryState';
+import { oneOf } from '@/shared/utils/address';
+import { readLocalDayRange } from '@/shared/utils/dateRange';
 import { API_DATE_FORMAT, DATE_FORMAT, formatDateTime, formatNumber } from '@/shared/utils/format';
 import { isGuid } from '@/shared/utils/guid';
 import {
@@ -42,20 +45,11 @@ const TYPE_COLORS: Record<MovementType, string> = {
   Adjustment: 'warning',
 };
 
-function oneOf<T extends string>(values: readonly T[], raw: string | null): T | undefined {
-  return (values as readonly string[]).includes(raw ?? '') ? (raw as T) : undefined;
-}
-
-/** A calendar date as the address keeps it (`YYYY-MM-DD`); anything else, including impossible dates, is ignored. */
-function localDate(raw: string | null): string | undefined {
-  return raw && dayjs(raw).isValid() && dayjs(raw).format(API_DATE_FORMAT) === raw ? raw : undefined;
-}
-
 /**
  * History of every stock change, always newest first (the API does not sort this list on request). Filters live in the
  * address; values there that are not valid (an unknown type, a bad date, a product id that is no GUID) are ignored and
- * never sent. The date range is a range of local days: the request carries the local start of `from` and the local end
- * of `to` with the UTC offset.
+ * never sent. The date range is a range of local days (see `dateRange.ts`): the request carries the local start of
+ * `from` and the local end of `to` with the UTC offset.
  */
 export function MovementsPage() {
   const { t } = useTranslation();
@@ -68,8 +62,7 @@ export function MovementsPage() {
   const type = oneOf(MOVEMENT_TYPES, searchParams.get('type'));
   const referenceType = oneOf(REFERENCE_TYPES, searchParams.get('referenceType'));
   const referenceId = searchParams.get('referenceId')?.trim() || undefined;
-  const from = localDate(searchParams.get('from'));
-  const to = localDate(searchParams.get('to'));
+  const { from, to, fromInstant, toInstant } = readLocalDayRange(searchParams);
 
   const { data, error, isError, isFetching, refetch } = useListMovementsQuery(
     {
@@ -79,8 +72,8 @@ export function MovementsPage() {
       type,
       referenceType,
       referenceId,
-      from: from ? dayjs(from).startOf('day').format('YYYY-MM-DDTHH:mm:ssZ') : undefined,
-      to: to ? dayjs(to).endOf('day').format('YYYY-MM-DDTHH:mm:ss.SSSZ') : undefined,
+      from: fromInstant,
+      to: toInstant,
     },
     { refetchOnMountOrArgChange: true },
   );
@@ -148,15 +141,22 @@ export function MovementsPage() {
         render: (_: unknown, movement) => {
           const kind = t(`movements.referenceTypes.${movement.referenceType}`, movement.referenceType);
           const text = movement.referenceId ? `${kind}: ${movement.referenceId}` : kind;
-          // A goods-receipt document links to all of its movements. (Order references become links with the orders page.)
-          if (movement.referenceType !== 'StockImport' || !movement.referenceId) {
+          // A goods-receipt document links to all of its movements, an order to its detail page (order ids are GUIDs;
+          // any other value stays text).
+          const target =
+            movement.referenceType === 'StockImport' && movement.referenceId
+              ? movementsPath({ referenceType: 'StockImport', referenceId: movement.referenceId })
+              : movement.referenceType === 'Order' && isGuid(movement.referenceId)
+                ? orderPath(movement.referenceId)
+                : undefined;
+          if (!target) {
             return <TruncatedText text={text} />;
           }
 
           return (
             <Tooltip title={text}>
               <Link
-                to={movementsPath({ referenceType: 'StockImport', referenceId: movement.referenceId })}
+                to={target}
                 style={{
                   display: 'block',
                   overflow: 'hidden',
