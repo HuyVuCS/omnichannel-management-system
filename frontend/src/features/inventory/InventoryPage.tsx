@@ -16,8 +16,8 @@ import { PageHeader } from '@/shared/components/PageHeader';
 import { TruncatedText } from '@/shared/components/TruncatedText';
 import { useListQueryState } from '@/shared/hooks/useListQueryState';
 import { formatDateTime, formatNumber } from '@/shared/utils/format';
-import { INVENTORY_SORT_FIELDS, STOCK_IMPORT_ROLES, useListInventoryQuery, type InventoryItem } from './inventoryApi';
-import { importPath, movementsPath } from './paths';
+import { INVENTORY_SORT_FIELDS, useListInventoryQuery, type InventoryItem } from './inventoryApi';
+import { importPath, movementsPath, STOCK_IMPORT_ROLES } from './paths';
 
 const LOW_STOCK_PARAM = 'lowStockOnly';
 
