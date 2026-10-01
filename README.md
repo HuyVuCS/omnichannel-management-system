@@ -14,7 +14,7 @@ backend/            .NET 10 solution (Omnichannel.slnx)
   src/Omnichannel.Workers         .NET Worker Service host (workers added from step 6)
   src/Omnichannel.Tests           xUnit tests
 docker/             docker-compose (PostgreSQL, RabbitMQ, API), DB init scripts, Dockerfiles
-frontend/           React + TypeScript dashboard (Vite, Redux Toolkit / RTK Query, Ant Design, i18next)
+frontend/           React + TypeScript dashboard (Vite, Redux Toolkit / RTK Query, Ant Design 6, i18next)
 scripts/smoke/      Scripted manual checks per task (PowerShell)
 ```
 
@@ -146,7 +146,15 @@ npm run dev     # http://localhost:5173 - needs the API on http://localhost:5080
   - fixed widths from `src/shared/components/layout.ts` and truncation with a tooltip, so switching the language changes
     text only;
   - API errors: validation errors on the form fields (`applyProblemToForm`), `errorCode` translated under `errors.<code>`,
-    network errors and 5xx as a notification with the correlation id.
+    network errors and 5xx as a notification with the correlation id;
+  - list pages keep paging, sorting and search in the query string (`useListQueryState`), so a reload or a shared link
+    shows the same list;
+  - form dialogs submit through `useFormSubmission` and reset through `useResetFormOnOpen` (a dialog reopened before its
+    close animation ends must not show the previous record);
+  - no business rule is repeated in the client: flags such as `isLowStock` and normalisation such as the SKU come from
+    the API; actions a role may not use are hidden, and the API stays the authority;
+  - each page is its own chunk (`React.lazy` in `src/app/router.tsx`); the shell stays while a page loads.
+- Pages so far: Products, Customers, Channels, Users. The other menu items show a "coming in task NNN" placeholder.
 - The access token is kept in `sessionStorage` (cleared when the tab closes); the language choice in `localStorage`.
 
 ## API conventions
@@ -168,6 +176,10 @@ npm run dev     # http://localhost:5173 - needs the API on http://localhost:5080
   `TokenRevocation:CacheDuration` (default 30 s, max 5 min, `00:00:00` = no cache) on other instances. A temporary lockout after
   failed logins only blocks new logins; it does not end an active session. Tokens issued before this feature (no `sstamp`) are
   not accepted: log in again.
-- Validation messages (FluentValidation's built-in ones and the Identity password policy) are returned in the language of
-  `Accept-Language` (`vi` or `en`, default `en`). Error keys and `errorCode` values are the same in both languages.
+- Validation messages are returned in the language of `Accept-Language` (`vi` or `en`, default `en`). Error keys and
+  `errorCode` values are the same in both languages. FluentValidation localises its built-in messages; every message
+  this application writes itself (custom rules, service-level checks, the Identity password policy) comes from
+  `Omnichannel.Application/Resources/ValidationMessages.resx` (English) and `ValidationMessages.vi.resx`, read through
+  `ValidationMessages.Get(...)`. A new custom message needs a key in both files; a unit test fails otherwise, and also
+  when a validator carries a literal message.
 - Every operation writes a `user.*` row to `SystemEventLogs` with `targetUserId` and `actorUserId`; logs contain user ids only.

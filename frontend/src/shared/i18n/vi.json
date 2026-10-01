@@ -9,7 +9,10 @@
     "create": "Tạo",
     "all": "Tất cả",
     "backToDashboard": "Về trang tổng quan",
-    "loading": "Đang tải..."
+    "loading": "Đang tải...",
+    "edit": "Sửa",
+    "actions": "Thao tác",
+    "createdAt": "Ngày tạo"
   },
   "roles": {
     "Admin": "Quản trị",
@@ -62,7 +65,11 @@
     "user_not_found": "Người dùng không còn tồn tại.",
     "user_email_exists": "Đã có người dùng với địa chỉ e-mail này.",
     "last_admin": "Đây là quản trị viên đang hoạt động cuối cùng. Hệ thống phải còn ít nhất một người.",
-    "cannot_modify_self": "Bạn không thể tự đổi vai trò hoặc tự khoá tài khoản của mình."
+    "cannot_modify_self": "Bạn không thể tự đổi vai trò hoặc tự khoá tài khoản của mình.",
+    "not_found": "Không tìm thấy dữ liệu.",
+    "product_sku_exists": "Đã có sản phẩm với mã SKU này.",
+    "channel_slug_exists": "Đã có kênh bán với slug này.",
+    "channel_not_found": "Kênh bán không tồn tại hoặc đang ngừng hoạt động."
   },
   "pages": {
     "dashboard": {
@@ -135,6 +142,110 @@
       "locked": "Đã khoá người dùng.",
       "unlocked": "Đã mở khoá người dùng.",
       "passwordReset": "Đã đặt lại mật khẩu."
+    }
+  },
+  "products": {
+    "title": "Sản phẩm",
+    "create": "Thêm sản phẩm",
+    "searchPlaceholder": "Tìm theo SKU hoặc tên",
+    "columns": {
+      "sku": "SKU",
+      "name": "Tên sản phẩm",
+      "price": "Giá",
+      "availableStock": "Tồn khả dụng",
+      "stockStatus": "Tình trạng",
+      "expiryDate": "Hạn dùng"
+    },
+    "stock": {
+      "low": "Sắp hết",
+      "ok": "Đủ hàng"
+    },
+    "createModal": {
+      "title": "Thêm sản phẩm"
+    },
+    "editModal": {
+      "title": "Sửa sản phẩm"
+    },
+    "form": {
+      "sku": "SKU",
+      "skuHint": "Chữ A-Z, số, dấu chấm, gạch dưới, gạch nối. Không đổi được sau khi tạo.",
+      "name": "Tên sản phẩm",
+      "price": "Giá (VND)",
+      "lowStockThreshold": "Ngưỡng cảnh báo tồn kho",
+      "lowStockThresholdHint": "0 = chỉ cảnh báo khi hết hàng.",
+      "expiryDate": "Hạn dùng (không bắt buộc)"
+    },
+    "messages": {
+      "created": "Đã thêm sản phẩm.",
+      "updated": "Đã cập nhật sản phẩm."
+    }
+  },
+  "customers": {
+    "title": "Khách hàng",
+    "create": "Thêm khách hàng",
+    "searchPlaceholder": "Tìm theo tên, điện thoại, e-mail",
+    "columns": {
+      "name": "Tên khách hàng",
+      "phone": "Điện thoại",
+      "email": "E-mail",
+      "address": "Địa chỉ"
+    },
+    "createModal": {
+      "title": "Thêm khách hàng"
+    },
+    "editModal": {
+      "title": "Sửa khách hàng"
+    },
+    "form": {
+      "name": "Tên khách hàng",
+      "phone": "Điện thoại",
+      "email": "E-mail",
+      "address": "Địa chỉ"
+    },
+    "messages": {
+      "created": "Đã thêm khách hàng.",
+      "updated": "Đã cập nhật khách hàng."
+    }
+  },
+  "channels": {
+    "title": "Kênh bán",
+    "create": "Thêm kênh bán",
+    "columns": {
+      "name": "Tên kênh",
+      "slug": "Slug",
+      "type": "Loại kênh",
+      "status": "Trạng thái"
+    },
+    "types": {
+      "Website": "Website",
+      "Pos": "Tại quầy (POS)",
+      "DigitalPlatform": "Sàn thương mại điện tử"
+    },
+    "status": {
+      "Active": "Đang hoạt động",
+      "Inactive": "Ngừng hoạt động"
+    },
+    "createModal": {
+      "title": "Thêm kênh bán"
+    },
+    "editModal": {
+      "title": "Sửa kênh bán"
+    },
+    "form": {
+      "name": "Tên kênh",
+      "slug": "Slug",
+      "slugHint": "Chữ thường và số, cách nhau bằng gạch nối, ví dụ: san-thuong-mai. Không đổi được sau khi tạo.",
+      "type": "Loại kênh",
+      "status": "Trạng thái"
+    },
+    "confirm": {
+      "deactivateTitle": "Ngừng kênh bán này?",
+      "deactivateContent": "Đơn hàng gửi tới kênh {{name}} sẽ bị từ chối cho đến khi kênh hoạt động lại.",
+      "deactivateOk": "Ngừng kênh"
+    },
+    "messages": {
+      "created": "Đã thêm kênh bán.",
+      "updated": "Đã cập nhật kênh bán."
     }
   }
 }

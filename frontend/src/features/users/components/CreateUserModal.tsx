@@ -1,9 +1,10 @@
-import { Alert, App as AntApp, Form, Input, Modal } from 'antd';
-import { useState } from 'react';
+import { Form, Input, Modal } from 'antd';
 import { useTranslation } from 'react-i18next';
-import { applyProblemToForm } from '@/shared/api/problemDetails';
 import { FieldHint } from '@/shared/components/FieldHint';
+import { FormErrors } from '@/shared/components/FormErrors';
 import { MODAL_WIDTH } from '@/shared/components/layout';
+import { useFormSubmission } from '@/shared/hooks/useFormSubmission';
+import { useResetFormOnOpen } from '@/shared/hooks/useResetFormOnOpen';
 import { useCreateUserMutation, type CreateUserRequest } from '../usersApi';
 import { RoleSelect } from './RoleSelect';
 
@@ -12,27 +13,23 @@ interface CreateUserModalProps {
   onClose: () => void;
 }
 
+const CODE_FIELDS = { user_email_exists: 'email' };
+
 /**
  * Create-user form. Server errors are shown where they belong: validation errors (including the password policy) on
  * their fields in the API's localised wording, `user_email_exists` on the e-mail field, anything else above the form.
  */
 export function CreateUserModal({ open, onClose }: CreateUserModalProps) {
   const { t } = useTranslation();
-  const { message } = AntApp.useApp();
   const [form] = Form.useForm<CreateUserRequest>();
+  useResetFormOnOpen(form, open);
   const [createUser, { isLoading }] = useCreateUserMutation();
-  const [formErrors, setFormErrors] = useState<string[]>([]);
-
-  const submit = async (values: CreateUserRequest) => {
-    setFormErrors([]);
-    try {
-      await createUser(values).unwrap();
-      message.success(t('users.messages.created'));
-      onClose();
-    } catch (error) {
-      setFormErrors(applyProblemToForm(form, error, t, { codeFields: { user_email_exists: 'email' } }));
-    }
-  };
+  const { submit, formErrors, clearErrors } = useFormSubmission(form, {
+    action: (values) => createUser(values).unwrap(),
+    successKey: 'users.messages.created',
+    onSuccess: onClose,
+    codeFields: CODE_FIELDS,
+  });
 
   return (
     <Modal
@@ -44,13 +41,14 @@ export function CreateUserModal({ open, onClose }: CreateUserModalProps) {
       closable={{ 'aria-label': t('common.close') }}
       confirmLoading={isLoading}
       onOk={() => form.submit()}
-      onCancel={onClose}
-      afterClose={() => setFormErrors([])}
+      onCancel={() => {
+        // Cleared now, not after the close animation: the dialog may be reopened before that.
+        clearErrors();
+        onClose();
+      }}
       destroyOnHidden
     >
-      {formErrors.length > 0 && (
-        <Alert type="error" showIcon title={formErrors.join(' ')} style={{ marginBottom: 16 }} />
-      )}
+      <FormErrors errors={formErrors} />
       <Form form={form} layout="vertical" preserve={false} onFinish={(values) => void submit(values)}>
         <Form.Item name="email" label={t('users.createModal.email')} rules={[{ required: true }, { type: 'email' }]}>
           <Input autoComplete="off" />

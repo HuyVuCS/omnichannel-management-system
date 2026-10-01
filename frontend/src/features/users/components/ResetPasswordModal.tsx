@@ -1,9 +1,10 @@
-import { Alert, App as AntApp, Form, Input, Modal, Typography } from 'antd';
-import { useState } from 'react';
+import { Form, Input, Modal, Typography } from 'antd';
 import { useTranslation } from 'react-i18next';
-import { applyProblemToForm } from '@/shared/api/problemDetails';
 import { FieldHint } from '@/shared/components/FieldHint';
+import { FormErrors } from '@/shared/components/FormErrors';
 import { MODAL_WIDTH } from '@/shared/components/layout';
+import { useFormSubmission } from '@/shared/hooks/useFormSubmission';
+import { useResetFormOnOpen } from '@/shared/hooks/useResetFormOnOpen';
 import { useResetUserPasswordMutation, type User } from '../usersApi';
 
 interface ResetPasswordModalProps {
@@ -15,25 +16,14 @@ interface ResetPasswordModalProps {
 /** Sets a temporary password. Policy errors come back on `newPassword` in the API's localised wording. */
 export function ResetPasswordModal({ user, onClose }: ResetPasswordModalProps) {
   const { t } = useTranslation();
-  const { message } = AntApp.useApp();
   const [form] = Form.useForm<{ newPassword: string }>();
+  useResetFormOnOpen(form, user);
   const [resetPassword, { isLoading }] = useResetUserPasswordMutation();
-  const [formErrors, setFormErrors] = useState<string[]>([]);
-
-  const submit = async ({ newPassword }: { newPassword: string }) => {
-    if (!user) {
-      return;
-    }
-
-    setFormErrors([]);
-    try {
-      await resetPassword({ userId: user.userId, newPassword }).unwrap();
-      message.success(t('users.messages.passwordReset'));
-      onClose();
-    } catch (error) {
-      setFormErrors(applyProblemToForm(form, error, t));
-    }
-  };
+  const { submit, formErrors, clearErrors } = useFormSubmission(form, {
+    action: ({ newPassword }) => resetPassword({ userId: user?.userId ?? '', newPassword }).unwrap(),
+    successKey: 'users.messages.passwordReset',
+    onSuccess: onClose,
+  });
 
   return (
     <Modal
@@ -45,13 +35,14 @@ export function ResetPasswordModal({ user, onClose }: ResetPasswordModalProps) {
       closable={{ 'aria-label': t('common.close') }}
       confirmLoading={isLoading}
       onOk={() => form.submit()}
-      onCancel={onClose}
-      afterClose={() => setFormErrors([])}
+      onCancel={() => {
+        // Cleared now, not after the close animation: the dialog may be reopened before that.
+        clearErrors();
+        onClose();
+      }}
       destroyOnHidden
     >
-      {formErrors.length > 0 && (
-        <Alert type="error" showIcon title={formErrors.join(' ')} style={{ marginBottom: 16 }} />
-      )}
+      <FormErrors errors={formErrors} />
       <Typography.Paragraph ellipsis={{ tooltip: user?.email }} strong>
         {user?.email}
       </Typography.Paragraph>

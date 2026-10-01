@@ -3,6 +3,7 @@ import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 import { LANGUAGE_STORAGE_KEY, readStoredLanguage } from '@/shared/i18n';
 import type { PagedResult } from '@/shared/api/types';
+import { findDialog } from '@/test/interactions';
 import { renderApp } from '@/test/renderApp';
 import { adminUser, api, problem, server, sessionOf } from '@/test/server';
 import type { User } from './usersApi';
@@ -412,5 +413,34 @@ describe('language switch', () => {
     expect(await screen.findByRole('heading', { name: 'Người dùng' })).toBeInTheDocument();
     expect(screen.getByText('20 / trang')).toBeInTheDocument();
     expect(snapshot()).toEqual(before);
+  });
+});
+
+describe('users page: dialog reopened before its close animation has finished', () => {
+  it('shows the role of the user it was opened for, and a create dialog starts empty', async () => {
+    serveUsers([alice, bob]);
+    // Animations on: in jsdom they never finish, so the closed dialog and its form stay mounted.
+    const { user: appUser } = renderApp({ route: '/users', session: sessionOf(adminUser), animations: true });
+    await screen.findByText('alice@example.com');
+
+    await appUser.click(within(rowOf('alice@example.com')).getByRole('button', { name: 'Đổi vai trò' }));
+    let dialog = await findDialog('Đổi vai trò');
+    await waitFor(() => expect(within(dialog).getByText('Quản lý')).toBeInTheDocument());
+    await appUser.click(within(dialog).getByRole('button', { name: 'Huỷ' }));
+
+    await appUser.click(within(rowOf('bob@example.com')).getByRole('button', { name: 'Đổi vai trò' }));
+    dialog = await findDialog('Đổi vai trò');
+    await waitFor(() => expect(within(dialog).getByText('bob@example.com')).toBeInTheDocument());
+    await waitFor(() => expect(within(dialog).getByText('Nhân viên')).toBeInTheDocument());
+    expect(within(dialog).queryByText('Quản lý')).not.toBeInTheDocument();
+    await appUser.click(within(dialog).getByRole('button', { name: 'Huỷ' }));
+
+    await appUser.click(screen.getByRole('button', { name: /Thêm người dùng/ }));
+    dialog = await findDialog('Thêm người dùng');
+    await appUser.type(within(dialog).getByLabelText('E-mail'), 'typed@example.com');
+    await appUser.click(within(dialog).getByRole('button', { name: 'Huỷ' }));
+    await appUser.click(screen.getByRole('button', { name: /Thêm người dùng/ }));
+    dialog = await findDialog('Thêm người dùng');
+    await waitFor(() => expect(within(dialog).getByLabelText('E-mail')).toHaveValue(''));
   });
 });

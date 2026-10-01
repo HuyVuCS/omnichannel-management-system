@@ -1,11 +1,12 @@
 import { LogoutOutlined } from '@ant-design/icons';
 import { Button, Layout, Menu, Tag, theme, Tooltip, Typography } from 'antd';
-import { useMemo, useState } from 'react';
+import { Suspense, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, Outlet, useLocation } from 'react-router';
 import { selectCurrentUser, signedOut } from '@/features/auth/authSlice';
 import { hasAnyRole } from '@/features/auth/session';
 import { LanguageSwitch } from '@/shared/components/LanguageSwitch';
+import { PageLoading } from '@/shared/components/PageLoading';
 import {
   HEADER_HEIGHT,
   ROLE_TAG_WIDTH,
@@ -138,7 +139,11 @@ export function AppLayout() {
           </Tooltip>
         </Header>
         <Content style={{ padding: 24, minWidth: 0 }}>
-          <Outlet />
+          {/* A boundary per page: while the code of a page loads, the spinner fills the content area and the shell
+              stays as it is. Keyed by path only, so query-string changes (list state) never remount the page. */}
+          <Suspense key={location.pathname} fallback={<PageLoading />}>
+            <Outlet />
+          </Suspense>
         </Content>
       </Layout>
     </Layout>
