@@ -1,5 +1,5 @@
 import { skipToken } from '@reduxjs/toolkit/query';
-import { Select, Typography } from 'antd';
+import { Select, Spin, Typography } from 'antd';
 import { useMemo, type CSSProperties } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useServerSearchSelect } from '@/shared/hooks/useServerSearchSelect';
@@ -7,6 +7,7 @@ import { formatNumber } from '@/shared/utils/format';
 import { productLabel, useGetProductQuery, useListProductsQuery, type Product } from '../productsApi';
 
 const PAGE_SIZE = 20;
+const NO_OPTIONS: ProductOption[] = [];
 
 interface ProductOption {
   value: string;
@@ -42,7 +43,7 @@ interface ProductSelectProps {
  */
 export function ProductSelect({ value, onChange, disabledIds, placeholder, ...rest }: ProductSelectProps) {
   const { t } = useTranslation();
-  const { activated, search, selectProps, clearSearch } = useServerSearchSelect();
+  const { activated, search, searchPending, selectProps, clearSearch } = useServerSearchSelect();
 
   const list = useListProductsQuery({ page: 1, pageSize: PAGE_SIZE, search }, { skip: !activated });
   const listed = list.data?.items;
@@ -62,6 +63,8 @@ export function ProductSelect({ value, onChange, disabledIds, placeholder, ...re
     [disabledIds, listed, value],
   );
 
+  // The typed text is not what the options answer yet: the request has not been sent, or is still running.
+  const searching = searchPending || list.isFetching;
   const selectedProduct = listed?.find((product) => product.productId === value) ?? selected.data;
 
   return (
@@ -70,7 +73,9 @@ export function ProductSelect({ value, onChange, disabledIds, placeholder, ...re
       {...selectProps}
       value={value}
       placeholder={placeholder ?? t('productSelect.placeholder')}
-      options={options}
+      // Options that answer an older search are not offered (Enter would choose the first of them).
+      options={searching ? NO_OPTIONS : options}
+      notFoundContent={searching ? <Spin size="small" /> : undefined}
       loading={list.isFetching || selected.isFetching}
       onChange={(productId: string | undefined, option) => {
         clearSearch();

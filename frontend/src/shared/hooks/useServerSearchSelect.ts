@@ -10,11 +10,17 @@ const SEARCH_DEBOUNCE_MS = 300;
  *
  * The picker passes `search` to its list query (skipped while `activated` is false), spreads `selectProps` on the AntD
  * `Select` and calls `clearSearch` when a value is chosen.
+ *
+ * While `searchPending` is true (text was typed that the request does not carry yet) - and while that request is
+ * running - the options on screen answer an older search. The picker must not offer them: Enter would choose the
+ * first of them, i.e. something the user did not search for (found in the browser: typing a SKU and pressing Enter
+ * at once put a different product on the line).
  */
 export function useServerSearchSelect() {
   const [activated, setActivated] = useState(false);
   const [searchText, setSearchText] = useState('');
-  const search = useDebouncedValue(searchText.trim(), SEARCH_DEBOUNCE_MS);
+  const typed = searchText.trim();
+  const search = useDebouncedValue(typed, SEARCH_DEBOUNCE_MS);
 
   const clearSearch = useCallback(() => setSearchText(''), []);
   const selectProps = useMemo(
@@ -29,5 +35,5 @@ export function useServerSearchSelect() {
     [],
   );
 
-  return { activated, search: search || undefined, selectProps, clearSearch };
+  return { activated, search: search || undefined, searchPending: typed !== search, selectProps, clearSearch };
 }

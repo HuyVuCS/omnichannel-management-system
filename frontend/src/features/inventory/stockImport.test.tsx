@@ -1,5 +1,5 @@
 import { screen, waitFor, within } from '@testing-library/react';
-import { http, HttpResponse } from 'msw';
+import { delay, http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 import type { AuthUser } from '@/features/auth/session';
 import { productsApi } from '@/features/products/productsApi';
@@ -422,6 +422,41 @@ describe('product picker', () => {
       return content;
     });
     expect(selected).toHaveAttribute('title', `TEA-GIFT — ${longName}`);
+  });
+
+  it('offers no option while a search is pending, so Enter cannot choose a product that was not searched for', async () => {
+    serveProductCatalog([teaProduct, coffeeProduct, sugarProduct]);
+    const { user: appUser } = renderImport();
+    await screen.findByLabelText('Số chứng từ');
+    await appUser.click(productOfLine(1));
+    await waitFor(() => expect(productOptions()).toHaveLength(3));
+
+    // From here on the server takes its time to answer a search.
+    const searches: string[] = [];
+    server.use(
+      http.get(api('/products'), async ({ request }) => {
+        const search = new URL(request.url).searchParams.get('search') ?? '';
+        searches.push(search);
+        await delay(700);
+        const items = [teaProduct, coffeeProduct, sugarProduct].filter((p) => p.name.toLowerCase().includes(search));
+        return HttpResponse.json({ items, page: 1, pageSize: 20, totalCount: items.length });
+      }),
+    );
+
+    // Typed and confirmed at once: the options on screen were the answer to "no search" (tea first). They are not
+    // offered any more, so nothing is chosen.
+    await appUser.type(productOfLine(1), 'cà{Enter}');
+    expect(productOptions()).toHaveLength(0);
+    expect(pickerTexts()).toEqual(['Chọn sản phẩm']);
+
+    // No option while the request is on its way either; then exactly the match, which can be chosen.
+    await waitFor(() => expect(searches).toEqual(['cà']));
+    expect(productOptions()).toHaveLength(0);
+    expect(pickerTexts()).toEqual(['Chọn sản phẩm']);
+    await waitFor(() => expect(productOptions()).toHaveLength(1));
+    expect(productOptions()[0]).toHaveTextContent('COF-01 — Cà phê');
+    await appUser.click(productOptions()[0]!);
+    await waitFor(() => expect(pickerTexts()).toEqual(['COF-01 — Cà phê']));
   });
 
   it('disables a product that is already on another line', async () => {
