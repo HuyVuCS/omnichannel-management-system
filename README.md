@@ -147,14 +147,26 @@ npm run dev     # http://localhost:5173 - needs the API on http://localhost:5080
     text only;
   - API errors: validation errors on the form fields (`applyProblemToForm`), `errorCode` translated under `errors.<code>`,
     network errors and 5xx as a notification with the correlation id;
-  - list pages keep paging, sorting and search in the query string (`useListQueryState`), so a reload or a shared link
-    shows the same list;
+  - list pages keep paging, sorting, search and filters in the query string (`useListQueryState`), so a reload or a
+    shared link shows the same list; values in the address that are not valid are ignored, never sent; a text box bound
+    to the address (`useAddressText`) follows it when it changes from outside (menu link, back/forward);
+  - date filters keep local dates in the address (`from=YYYY-MM-DD`) and send the local start/end of day with the UTC
+    offset;
   - form dialogs submit through `useFormSubmission` and reset through `useResetFormOnOpen` (a dialog reopened before its
     close animation ends must not show the previous record);
   - no business rule is repeated in the client: flags such as `isLowStock` and normalisation such as the SKU come from
     the API; actions a role may not use are hidden, and the API stays the authority;
-  - each page is its own chunk (`React.lazy` in `src/app/router.tsx`); the shell stays while a page loads.
-- Pages so far: Products, Customers, Channels, Users. The other menu items show a "coming in task NNN" placeholder.
+  - each page is its own chunk (`lazyPage` in `src/app/router.tsx`); the shell stays while a page loads. A chunk that
+    cannot be loaded (a redeploy while the tab is open) or a page that throws ends on the localised route error page
+    with "Reload"; inside the layout the menu stays usable;
+  - confirmation dialogs are closed when the session ends (`SessionManager`); a confirmation that must follow a
+    language switch is a `Modal` of its page, not `modal.confirm`;
+  - products are picked with `ProductSelect` (server-side search, no client-side product list).
+- Pages so far: Inventory (`/inventory`), Stock import (`/inventory/import`, Manager/Admin, reached from the inventory
+  and product lists, no menu item), Inventory movements (`/inventory/movements`), Products, Customers, Channels, Users.
+  The other menu items show a "coming in task NNN" placeholder.
+- Stock on the inventory and movement pages changes in the background (Order Worker): both lists are fetched again
+  whenever the page is opened and on "Refresh". Realtime updates come with SignalR in a later task.
 - The access token is kept in `sessionStorage` (cleared when the tab closes); the language choice in `localStorage`.
 
 ## API conventions

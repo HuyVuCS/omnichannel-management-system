@@ -16,17 +16,32 @@ export const LANGUAGE_SWITCH_WIDTH = 96;
 /** Primary action buttons in page headers ("Thêm người dùng" is the longest so far). */
 export const PAGE_ACTION_WIDTH = 176;
 
+/** A button with a sentence-like label ("Xem biến động của chứng từ này" / "View movements of this document"). */
+export const WIDE_ACTION_WIDTH = 280;
+
+/** Secondary buttons next to it ("Làm mới" / "Refresh", "Xoá bộ lọc" / "Clear filters"). */
+export const SECONDARY_ACTION_WIDTH = 136;
+
 /** Form dialogs. */
 export const MODAL_WIDTH = 480;
 
 /** Table column with one icon action per row. */
 export const SINGLE_ACTION_COLUMN_WIDTH = 88;
 
+/** Table column with two icon actions per row. */
+export const DOUBLE_ACTION_COLUMN_WIDTH = 124;
+
 /** The page-size selector of a table's pagination. */
 export const PAGE_SIZE_SELECT_WIDTH = 120;
 
 export const FILTER_WIDTH = 180;
 export const SEARCH_WIDTH = 280;
+
+/** A product picker (`SKU — name`) used as a filter or in a form line. */
+export const PRODUCT_SELECT_WIDTH = 360;
+
+/** A date-range filter (two `DD/MM/YYYY` inputs). */
+export const DATE_RANGE_WIDTH = 280;
 
 /** The one brand colour (AntD `token.colorPrimary`); status colours are used for states only. */
 export const PRIMARY_COLOR = '#1677ff';

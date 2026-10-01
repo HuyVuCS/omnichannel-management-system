@@ -12,7 +12,9 @@
     "loading": "Đang tải...",
     "edit": "Sửa",
     "actions": "Thao tác",
-    "createdAt": "Ngày tạo"
+    "createdAt": "Ngày tạo",
+    "refresh": "Làm mới",
+    "optional": "Không bắt buộc"
   },
   "roles": {
     "Admin": "Quản trị",
@@ -69,7 +71,9 @@
     "not_found": "Không tìm thấy dữ liệu.",
     "product_sku_exists": "Đã có sản phẩm với mã SKU này.",
     "channel_slug_exists": "Đã có kênh bán với slug này.",
-    "channel_not_found": "Kênh bán không tồn tại hoặc đang ngừng hoạt động."
+    "channel_not_found": "Kênh bán không tồn tại hoặc đang ngừng hoạt động.",
+    "stock_import_already_applied": "Chứng từ này đã được nhập kho. Hãy kiểm tra trong Biến động tồn kho.",
+    "stock_limit_exceeded": "Số lượng nhập làm tồn kho vượt quá giới hạn cho phép."
   },
   "pages": {
     "dashboard": {
@@ -185,6 +189,9 @@
     "messages": {
       "created": "Đã thêm sản phẩm.",
       "updated": "Đã cập nhật sản phẩm."
+    },
+    "actions": {
+      "importStock": "Nhập kho"
     }
   },
   "customers": {
@@ -253,6 +260,95 @@
     "messages": {
       "created": "Đã thêm kênh bán.",
       "updated": "Đã cập nhật kênh bán."
+    }
+  },
+  "productSelect": {
+    "placeholder": "Chọn sản phẩm",
+    "available": "Khả dụng: {{stock}}"
+  },
+  "inventory": {
+    "title": "Tồn kho",
+    "searchPlaceholder": "Tìm theo SKU hoặc tên",
+    "lowStockOnly": "Chỉ hàng sắp hết",
+    "columns": {
+      "sku": "SKU",
+      "name": "Tên sản phẩm",
+      "totalStock": "Tổng tồn",
+      "reservedStock": "Đang giữ",
+      "availableStock": "Khả dụng",
+      "lowStockThreshold": "Ngưỡng cảnh báo",
+      "stockStatus": "Tình trạng",
+      "updatedAt": "Cập nhật lúc"
+    },
+    "actions": {
+      "movements": "Lịch sử biến động",
+      "import": "Nhập kho"
+    }
+  },
+  "stockImport": {
+    "title": "Nhập kho",
+    "form": {
+      "documentNumber": "Số chứng từ",
+      "documentSeries": "Ký hiệu chứng từ",
+      "lines": "Các dòng hàng",
+      "product": "Sản phẩm",
+      "quantity": "Số lượng",
+      "productOfLine": "Sản phẩm, dòng {{line}}",
+      "quantityOfLine": "Số lượng, dòng {{line}}",
+      "addLine": "Thêm dòng",
+      "removeLine": "Xoá dòng",
+      "removeLineOf": "Xoá dòng {{line}}",
+      "submit": "Nhập kho"
+    },
+    "confirm": {
+      "title": "Xác nhận nhập kho?",
+      "lineCount": "Số dòng",
+      "totalQuantity": "Tổng số lượng",
+      "warning": "Không thể hoàn tác thao tác nhập kho. Hãy kiểm tra kỹ trước khi xác nhận.",
+      "ok": "Xác nhận nhập"
+    },
+    "result": {
+      "title": "Đã nhập kho",
+      "reference": "Chứng từ: {{reference}}",
+      "imported": "Số lượng nhập",
+      "viewMovements": "Xem biến động của chứng từ này",
+      "newImport": "Nhập chứng từ khác"
+    }
+  },
+  "movements": {
+    "title": "Biến động tồn kho",
+    "filters": {
+      "product": "Sản phẩm",
+      "type": "Loại biến động",
+      "referenceType": "Loại tham chiếu",
+      "referenceId": "Mã tham chiếu",
+      "from": "Từ ngày",
+      "to": "Đến ngày",
+      "clear": "Xoá bộ lọc"
+    },
+    "columns": {
+      "createdAt": "Thời gian",
+      "sku": "SKU",
+      "productName": "Tên sản phẩm",
+      "type": "Loại",
+      "stock": "Số lượng",
+      "reference": "Tham chiếu",
+      "actor": "Người thực hiện"
+    },
+    "types": {
+      "Import": "Nhập kho",
+      "Reserve": "Giữ hàng",
+      "Release": "Nhả giữ hàng",
+      "Deduct": "Xuất kho",
+      "Adjustment": "Điều chỉnh"
+    },
+    "referenceTypes": {
+      "Order": "Đơn hàng",
+      "StockImport": "Phiếu nhập kho",
+      "ManualAdjustment": "Điều chỉnh thủ công"
+    },
+    "actor": {
+      "system": "Hệ thống"
     }
   }
 }

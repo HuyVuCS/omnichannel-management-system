@@ -22,5 +22,9 @@ export default defineConfig({
     css: false,
     testTimeout: 20_000,
     restoreMocks: true,
+    // Every test file renders the whole application in its own jsdom. With one worker per CPU core the files compete
+    // for memory while the API, PostgreSQL and RabbitMQ run next to them, and first renders time out. Four workers take
+    // about as long in total and are stable.
+    maxWorkers: 4,
   },
 });

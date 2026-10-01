@@ -50,6 +50,10 @@ export function uiSnapshot(location: () => string) {
   const sider = screen.getByTestId('app-sider');
   const header = screen.getByTestId('app-header');
   const dialog = screen.queryByRole('dialog');
+  // Inputs of the page itself (filters, a form that is not a dialog): the same nodes with the same values.
+  const pageInputs = [
+    ...document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('main input, main textarea'),
+  ];
 
   return {
     location: location(),
@@ -58,6 +62,9 @@ export function uiSnapshot(location: () => string) {
     header,
     table: document.querySelector('table'),
     searchInput: screen.queryByRole('searchbox'),
+    pageInputs,
+    pageInputValues: pageInputs.map((input) => input.value),
+    switches: [...document.querySelectorAll('main [role="switch"]')].map((item) => item.getAttribute('aria-checked')),
     dialog,
     dialogInputs: dialog ? [...dialog.querySelectorAll('input, textarea')] : [],
     // Fixed layout: sizes are inline constants, classes are the same.

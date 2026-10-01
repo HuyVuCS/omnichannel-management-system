@@ -312,8 +312,24 @@ describe('products page: roles', () => {
     await screen.findByText('TEA-01');
     expect(screen.queryAllByRole('button', { name: /Thêm sản phẩm/ })).toHaveLength(canWrite ? 1 : 0);
     expect(screen.queryAllByRole('button', { name: 'Sửa' })).toHaveLength(canWrite ? 2 : 0);
+    // Importing stock is for the same roles (task 012).
+    expect(screen.queryAllByRole('button', { name: 'Nhập kho' })).toHaveLength(canWrite ? 2 : 0);
     // The data itself is visible to every role.
     expect(columnTexts('SKU')).toEqual(['TEA-01', 'COF-01']);
+  });
+
+  it('opens the stock-import form with the product of the row pre-filled', async () => {
+    const teaWithId = { ...tea, productId: '11111111-1111-4111-8111-111111111111' };
+    serveProducts([teaWithId, coffee]);
+    server.use(http.get(api('/products/:id'), () => HttpResponse.json(teaWithId)));
+    const { user: appUser, location } = renderProducts(managerUser);
+    await screen.findByText('TEA-01');
+
+    await appUser.click(within(rowOf('TEA-01')).getByRole('button', { name: 'Nhập kho' }));
+
+    expect(await screen.findByRole('heading', { name: 'Nhập kho' })).toBeInTheDocument();
+    expect(location()).toBe('/inventory/import?productId=11111111-1111-4111-8111-111111111111');
+    expect(await screen.findByText('TEA-01 — Trà xanh')).toBeInTheDocument();
   });
 });
 

@@ -3,6 +3,8 @@ import { createBrowserRouter, type RouteObject } from 'react-router';
 import { RequireAuth } from '@/features/auth/RequireAuth';
 import { RequireRole } from '@/features/auth/RequireRole';
 import { LOGIN_PATH } from '@/features/auth/returnUrl';
+import { STOCK_IMPORT_ROLES } from '@/features/inventory/inventoryApi';
+import { INVENTORY_PATH, MOVEMENTS_PATH, STOCK_IMPORT_PATH } from '@/features/inventory/paths';
 import { RouteErrorPage } from '@/pages/RouteErrorPage';
 import { ComingSoon } from '@/shared/components/ComingSoon';
 import { PageLoading } from '@/shared/components/PageLoading';
@@ -26,9 +28,20 @@ const ChannelsPage = lazyPage(() =>
   import('@/features/channels/ChannelsPage').then((m) => ({ default: m.ChannelsPage })),
 );
 const UsersPage = lazyPage(() => import('@/features/users/UsersPage').then((m) => ({ default: m.UsersPage })));
+const InventoryPage = lazyPage(() =>
+  import('@/features/inventory/InventoryPage').then((m) => ({ default: m.InventoryPage })),
+);
+const MovementsPage = lazyPage(() =>
+  import('@/features/inventory/MovementsPage').then((m) => ({ default: m.MovementsPage })),
+);
+const StockImportPage = lazyPage(() =>
+  import('@/features/inventory/StockImportPage').then((m) => ({ default: m.StockImportPage })),
+);
 
 /** Pages that exist; every other menu item renders a placeholder until its task builds it. */
 const builtPages: Record<string, RouteObject['element']> = {
+  [INVENTORY_PATH]: <InventoryPage />,
+  [MOVEMENTS_PATH]: <MovementsPage />,
   '/products': <ProductsPage />,
   '/customers': <CustomersPage />,
   '/channels': <ChannelsPage />,
@@ -48,6 +61,21 @@ const pageRoutes: RouteObject[] = navigationItems
       element: item.roles ? <RequireRole roles={item.roles}>{page}</RequireRole> : page,
     };
   });
+
+/**
+ * Pages without a menu item: reached from another page. The menu highlights the item whose path is their parent
+ * (`activeNavigationPath`).
+ */
+const pagesOutsideMenu: RouteObject[] = [
+  {
+    path: STOCK_IMPORT_PATH,
+    element: (
+      <RequireRole roles={STOCK_IMPORT_ROLES}>
+        <StockImportPage />
+      </RequireRole>
+    ),
+  },
+];
 
 /**
  * Route table (react-router in library mode). Everything except the login page needs a session.
@@ -79,6 +107,7 @@ export const routes: RouteObject[] = [
             children: [
               { index: true, element: <DashboardPage /> },
               ...pageRoutes,
+              ...pagesOutsideMenu,
               { path: '*', element: <NotFoundPage /> },
             ],
           },

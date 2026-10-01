@@ -1,21 +1,28 @@
-import { EditOutlined, PlusOutlined } from '@ant-design/icons';
-import { Button, Input, Space, Table, Tag, Tooltip, type TableProps } from 'antd';
+import { EditOutlined, ImportOutlined, PlusOutlined } from '@ant-design/icons';
+import { Button, Input, Space, Table, Tooltip, type TableProps } from 'antd';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router';
 import { useHasAnyRole } from '@/features/auth/useHasAnyRole';
-import { PAGE_ACTION_WIDTH, SEARCH_WIDTH, SINGLE_ACTION_COLUMN_WIDTH } from '@/shared/components/layout';
+import { importPath } from '@/features/inventory/paths';
+import { DOUBLE_ACTION_COLUMN_WIDTH, PAGE_ACTION_WIDTH, SEARCH_WIDTH } from '@/shared/components/layout';
 import { PageHeader } from '@/shared/components/PageHeader';
 import { TruncatedText } from '@/shared/components/TruncatedText';
 import { useListQueryState } from '@/shared/hooks/useListQueryState';
 import { formatDate, formatDateTime, formatMoney } from '@/shared/utils/format';
 import { ProductFormModal, type ProductFormState } from './components/ProductFormModal';
+import { StockStatusTag } from './components/StockStatusTag';
 import { PRODUCT_SORT_FIELDS, useListProductsQuery, type Product } from './productsApi';
 
-/** The API lets Manager and Admin create and edit products; everyone signed in may read them. */
+/**
+ * The API lets Manager and Admin create and edit products, and import stock (the same roles, so the same check hides
+ * the "import stock" action); everyone signed in may read products.
+ */
 const WRITE_ROLES = ['Admin', 'Manager'] as const;
 
 export function ProductsPage() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const canWrite = useHasAnyRole(WRITE_ROLES);
   const list = useListQueryState({ sortFields: PRODUCT_SORT_FIELDS, defaultSortField: 'sku' });
   const { data, isFetching } = useListProductsQuery({
@@ -75,12 +82,7 @@ export function ProductsPage() {
         width: 140,
         ellipsis: true,
         // The rule is the server's (`isLowStock`); it is only displayed here.
-        render: (_: unknown, product) =>
-          product.isLowStock ? (
-            <Tag color="warning">{t('products.stock.low')}</Tag>
-          ) : (
-            <Tag color="success">{t('products.stock.ok')}</Tag>
-          ),
+        render: (_: unknown, product) => <StockStatusTag isLowStock={product.isLowStock} />,
       },
       {
         key: 'expiryDate',
@@ -106,23 +108,33 @@ export function ProductsPage() {
             {
               key: 'actions',
               title: t('common.actions'),
-              width: SINGLE_ACTION_COLUMN_WIDTH,
+              width: DOUBLE_ACTION_COLUMN_WIDTH,
               ellipsis: true,
               render: (_: unknown, product: Product) => (
-                <Tooltip title={t('common.edit')}>
-                  <Button
-                    type="text"
-                    icon={<EditOutlined />}
-                    aria-label={t('common.edit')}
-                    onClick={() => setFormState({ kind: 'edit', product })}
-                  />
-                </Tooltip>
+                <Space size={4}>
+                  <Tooltip title={t('common.edit')}>
+                    <Button
+                      type="text"
+                      icon={<EditOutlined />}
+                      aria-label={t('common.edit')}
+                      onClick={() => setFormState({ kind: 'edit', product })}
+                    />
+                  </Tooltip>
+                  <Tooltip title={t('products.actions.importStock')}>
+                    <Button
+                      type="text"
+                      icon={<ImportOutlined />}
+                      aria-label={t('products.actions.importStock')}
+                      onClick={() => void navigate(importPath(product.productId))}
+                    />
+                  </Tooltip>
+                </Space>
               ),
             },
           ]
         : []),
     ],
-    [canWrite, sortOrder, t],
+    [canWrite, navigate, sortOrder, t],
   );
 
   return (
@@ -158,7 +170,7 @@ export function ProductsPage() {
         dataSource={data?.items}
         loading={isFetching}
         tableLayout="fixed"
-        scroll={{ x: 1190 + (canWrite ? SINGLE_ACTION_COLUMN_WIDTH : 0) }}
+        scroll={{ x: 1190 + (canWrite ? DOUBLE_ACTION_COLUMN_WIDTH : 0) }}
         sortDirections={['ascend', 'descend']}
         onChange={list.onTableChange}
         pagination={list.pagination(data?.totalCount)}

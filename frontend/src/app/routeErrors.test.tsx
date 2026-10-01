@@ -71,6 +71,10 @@ describe('route error page', () => {
     await user.click(screen.getByRole('button', { name: /Tải lại trang/ }));
     expect(reload).toHaveBeenCalledTimes(1);
 
+    // Fixed widths: the two buttons stand side by side and their texts differ per language.
+    expect(screen.getByRole('button', { name: /Tải lại trang/ })).toHaveStyle({ width: '176px' });
+    expect(screen.getByRole('button', { name: 'Về trang tổng quan' })).toHaveStyle({ width: '176px' });
+
     await user.click(screen.getByRole('button', { name: 'Về trang tổng quan' }));
     expect(await screen.findByRole('heading', { name: 'Tổng quan' })).toBeInTheDocument();
     expect(location()).toBe('/');
