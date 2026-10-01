@@ -67,6 +67,20 @@ export function translateApiError(t: TFunction, error: unknown): string {
   }
 }
 
+/**
+ * The messages of an API error the user can act on (4xx), for a place without form fields (e.g. above a list whose
+ * filters the API rejected): the validation messages as the API sent them (already localised), otherwise the
+ * translated error. Network errors and 5xx return nothing: they are reported globally with the correlation id.
+ */
+export function problemMessages(t: TFunction, error: unknown): string[] {
+  if (!isApiError(error) || isUnexpectedError(error)) {
+    return [];
+  }
+
+  const messages = Object.values(error.problem?.errors ?? {}).flat();
+  return messages.length > 0 ? messages : [translateApiError(t, error)];
+}
+
 export interface ApplyProblemOptions {
   /** Error codes that belong to one field, e.g. `{ user_email_exists: 'email' }`. */
   codeFields?: Record<string, string>;

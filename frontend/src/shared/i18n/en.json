@@ -12,7 +12,9 @@
     "loading": "Loading...",
     "edit": "Edit",
     "actions": "Actions",
-    "createdAt": "Created"
+    "createdAt": "Created",
+    "refresh": "Refresh",
+    "optional": "Optional"
   },
   "roles": {
     "Admin": "Admin",
@@ -69,7 +71,9 @@
     "not_found": "The item was not found.",
     "product_sku_exists": "A product with this SKU already exists.",
     "channel_slug_exists": "A channel with this slug already exists.",
-    "channel_not_found": "The channel does not exist or is inactive."
+    "channel_not_found": "The channel does not exist or is inactive.",
+    "stock_import_already_applied": "This document has already been imported. Check it in Inventory movements.",
+    "stock_limit_exceeded": "The import would take the stock beyond the allowed maximum."
   },
   "pages": {
     "dashboard": {
@@ -185,6 +189,9 @@
     "messages": {
       "created": "Product created.",
       "updated": "Product updated."
+    },
+    "actions": {
+      "importStock": "Import stock"
     }
   },
   "customers": {
@@ -253,6 +260,95 @@
     "messages": {
       "created": "Channel created.",
       "updated": "Channel updated."
+    }
+  },
+  "productSelect": {
+    "placeholder": "Select a product",
+    "available": "Available: {{stock}}"
+  },
+  "inventory": {
+    "title": "Inventory",
+    "searchPlaceholder": "Search by SKU or name",
+    "lowStockOnly": "Low stock only",
+    "columns": {
+      "sku": "SKU",
+      "name": "Name",
+      "totalStock": "Total",
+      "reservedStock": "Reserved",
+      "availableStock": "Available",
+      "lowStockThreshold": "Low-stock threshold",
+      "stockStatus": "Stock status",
+      "updatedAt": "Updated"
+    },
+    "actions": {
+      "movements": "Movement history",
+      "import": "Import stock"
+    }
+  },
+  "stockImport": {
+    "title": "Stock import",
+    "form": {
+      "documentNumber": "Document number",
+      "documentSeries": "Document series",
+      "lines": "Lines",
+      "product": "Product",
+      "quantity": "Quantity",
+      "productOfLine": "Product, line {{line}}",
+      "quantityOfLine": "Quantity, line {{line}}",
+      "addLine": "Add line",
+      "removeLine": "Remove line",
+      "removeLineOf": "Remove line {{line}}",
+      "submit": "Import stock"
+    },
+    "confirm": {
+      "title": "Confirm this stock import?",
+      "lineCount": "Number of lines",
+      "totalQuantity": "Total quantity",
+      "warning": "A stock import cannot be undone. Check it before you confirm.",
+      "ok": "Confirm import"
+    },
+    "result": {
+      "title": "Stock imported",
+      "reference": "Document: {{reference}}",
+      "imported": "Imported",
+      "viewMovements": "View movements of this document",
+      "newImport": "New import"
+    }
+  },
+  "movements": {
+    "title": "Inventory movements",
+    "filters": {
+      "product": "Product",
+      "type": "Movement type",
+      "referenceType": "Reference type",
+      "referenceId": "Reference",
+      "from": "From date",
+      "to": "To date",
+      "clear": "Clear filters"
+    },
+    "columns": {
+      "createdAt": "Time",
+      "sku": "SKU",
+      "productName": "Product",
+      "type": "Type",
+      "stock": "Quantity",
+      "reference": "Reference",
+      "actor": "Made by"
+    },
+    "types": {
+      "Import": "Import",
+      "Reserve": "Reserve",
+      "Release": "Release",
+      "Deduct": "Deduct",
+      "Adjustment": "Adjustment"
+    },
+    "referenceTypes": {
+      "Order": "Order",
+      "StockImport": "Stock import",
+      "ManualAdjustment": "Manual adjustment"
+    },
+    "actor": {
+      "system": "System"
     }
   }
 }

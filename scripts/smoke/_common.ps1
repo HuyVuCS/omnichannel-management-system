@@ -47,6 +47,33 @@ function Invoke-Api([string]$Method, [string]$Path, [string]$Token, $Body, [hash
     }
 }
 
+# Like Invoke-Api, but an error answer keeps its body (the problem document: errorCode, errors), read as UTF-8.
+# $Language sets Accept-Language: validation messages follow it.
+function Invoke-ApiProblem([string]$Method, [string]$Path, [string]$Token, $Body, [string]$Language) {
+    $p = @{ Method = $Method; Uri = "$script:BaseUrl$Path"; UseBasicParsing = $true; ContentType = 'application/json'; Headers = @{} }
+    if ($Token) { $p.Headers.Authorization = "Bearer $Token" }
+    if ($Language) { $p.Headers['Accept-Language'] = $Language }
+    if ($null -ne $Body) { $p.Body = ($Body | ConvertTo-Json -Depth 8) }
+    try {
+        $r = Invoke-WebRequest @p
+        $json = if ($r.Content) { $r.Content | ConvertFrom-Json } else { $null }
+        return [pscustomobject]@{ Status = [int]$r.StatusCode; Body = $json }
+    } catch {
+        $resp = $_.Exception.Response
+        if ($null -eq $resp) { throw }
+        if ($resp -is [System.Net.HttpWebResponse]) {
+            # Windows PowerShell 5.1: read the body as UTF-8 ourselves.
+            $stream = $resp.GetResponseStream()
+            if ($stream.CanSeek) { $stream.Position = 0 }
+            $text = (New-Object System.IO.StreamReader($stream, [System.Text.Encoding]::UTF8)).ReadToEnd()
+        } else {
+            $text = $_.ErrorDetails.Message
+        }
+        $json = if ($text) { $text | ConvertFrom-Json } else { $null }
+        return [pscustomobject]@{ Status = [int]$resp.StatusCode; Body = $json }
+    }
+}
+
 function Get-Token([string]$Email, [string]$Password) {
     $r = Invoke-Api POST '/api/auth/login' $null @{ email = $Email; password = $Password }
     if ($r.Status -ne 200) { throw "Login failed for a test account (HTTP $($r.Status))." }

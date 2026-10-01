@@ -1,21 +1,24 @@
 import type { TablePaginationConfig } from 'antd';
 import type { SorterResult, TableCurrentDataSource } from 'antd/es/table/interface';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router';
 import { PAGE_SIZE_SELECT_WIDTH } from '@/shared/components/layout';
+import { useAddressText } from './useAddressText';
 
 export type SortDirection = 'asc' | 'desc';
 
 export const DEFAULT_PAGE_SIZE = 20;
 export const PAGE_SIZES = [10, 20, 50];
-const SEARCH_DEBOUNCE_MS = 300;
 
+/** For a list the API does not sort on request (e.g. the movement history, always newest first): no options. */
 export interface ListQueryOptions<SortField extends string> {
   /** Sort fields the API accepts (its whitelist). Table columns use the same names as their `key`. */
-  sortFields: readonly SortField[];
+  sortFields?: readonly SortField[];
   /** The API's default sort field; `?sortDir=desc` without `sortBy` applies to it. */
-  defaultSortField: SortField;
+  defaultSortField?: SortField;
 }
+
+const NO_SORT_FIELDS: readonly string[] = [];
 
 function positiveInt(value: string | null, fallback: number): number {
   const parsed = Number(value);
@@ -29,10 +32,10 @@ function positiveInt(value: string | null, fallback: number): number {
  *
  * The values returned here are what the API call needs; the helpers bind an AntD table and a search box to them.
  */
-export function useListQueryState<SortField extends string>({
-  sortFields,
+export function useListQueryState<SortField extends string = never>({
+  sortFields = NO_SORT_FIELDS as readonly SortField[],
   defaultSortField,
-}: ListQueryOptions<SortField>) {
+}: ListQueryOptions<SortField> = {}) {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const state = useMemo(() => {
@@ -75,36 +78,10 @@ export function useListQueryState<SortField extends string>({
     [setSearchParams],
   );
 
-  // Search box: typed text is local; the query string (and with it the request) follows after a pause.
-  const addressSearch = state.search ?? '';
-  const [searchText, setSearchText] = useState(addressSearch);
-
-  // The other direction: when `search` in the address changes and this hook did not write that value itself (a menu
-  // link to the same page, back/forward, an edited address), the box follows the address. `pendingSearch` is the value
-  // this hook has written and not yet seen arrive, so its own write never overwrites what was typed meanwhile.
-  const [seenSearch, setSeenSearch] = useState(addressSearch);
-  const [pendingSearch, setPendingSearch] = useState<string | null>(null);
-  if (addressSearch !== seenSearch) {
-    setSeenSearch(addressSearch);
-    setPendingSearch(null);
-    if (addressSearch !== pendingSearch) {
-      setSearchText(addressSearch);
-    }
-  }
-
-  useEffect(() => {
-    const text = searchText.trim();
-    if (text === addressSearch) {
-      return;
-    }
-
-    const timer = window.setTimeout(() => {
-      setPendingSearch(text);
-      // A new search term starts on the first page.
-      patchParams({ search: text, page: undefined });
-    }, SEARCH_DEBOUNCE_MS);
-    return () => window.clearTimeout(timer);
-  }, [searchText, addressSearch, patchParams]);
+  // Search box: typed text is local; the query string (and with it the request) follows after a pause, and the box
+  // follows the query string when that changes from outside. A new search term starts on the first page.
+  const commitSearch = useCallback((text: string) => patchParams({ search: text, page: undefined }), [patchParams]);
+  const [searchText, setSearchText] = useAddressText(state.search ?? '', commitSearch);
 
   /** `onChange` of the AntD table: paging and sorting go to the query string. */
   const onTableChange = useCallback(

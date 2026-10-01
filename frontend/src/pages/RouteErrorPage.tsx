@@ -3,6 +3,7 @@ import { Button, Result } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useRouteError } from 'react-router';
 import { PageLoadError } from '@/app/lazyPage';
+import { PAGE_ACTION_WIDTH } from '@/shared/components/layout';
 import { browser } from '@/shared/utils/browser';
 
 interface RouteErrorPageProps {
@@ -23,12 +24,18 @@ export function RouteErrorPage({ fullScreen = false }: RouteErrorPageProps) {
   const outdated = useRouteError() instanceof PageLoadError;
 
   const reload = (
-    <Button key="reload" type="primary" icon={<ReloadOutlined />} onClick={() => browser.reload()}>
+    <Button
+      key="reload"
+      type="primary"
+      icon={<ReloadOutlined />}
+      onClick={() => browser.reload()}
+      style={{ width: PAGE_ACTION_WIDTH }}
+    >
       {t('pages.routeError.reload')}
     </Button>
   );
   const toDashboard = (
-    <Button key="dashboard" onClick={() => void navigate('/')}>
+    <Button key="dashboard" onClick={() => void navigate('/')} style={{ width: PAGE_ACTION_WIDTH }}>
       {t('common.backToDashboard')}
     </Button>
   );
