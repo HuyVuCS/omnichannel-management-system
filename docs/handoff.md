@@ -3,10 +3,10 @@
 This file is an index and a snapshot of what is in flight. The repository documents are the memory; follow the links.
 
 ## 1. Snapshot
-- Written: 2026-10-01 19:31 (+07:00).
-- Branch `master` (nothing pushed). HEAD `04df2f8` — "task 011: report (correct two counts)".
+- Written: 2026-10-01 21:20 (+07:00).
+- Branch `master` (nothing pushed). HEAD `50eacdd` — "task 012: report".
 - Working tree: clean.
-- Newest migration: `20260930130908_ProcessingTaskAttemptBudget` (tasks 009–011 added none).
+- Newest migration: `20260930130908_ProcessingTaskAttemptBudget` (tasks 009–012 added none).
 
 ## 2. Project in 5 lines
 Multi-channel order and inventory management: React dashboard → ASP.NET Core API → PostgreSQL (source of truth) →
@@ -34,34 +34,35 @@ Source-of-truth order when documents disagree:
 - 008 — Orders and processing read API, manual retry, audit events — Done
 - 009 — User management (Admin), token revocation — Done
 - 010 — Frontend scaffold: auth, layout, bilingual UI, Users page — Done
-- 011 — Frontend: Products, Customers, Channels pages; AntD 6, localised messages, `isLowStock`, code splitting — **Review**
+- 011 — Frontend: Products, Customers, Channels pages; AntD 6, localised messages, `isLowStock`, code splitting — Done
+- 012 — Frontend: inventory list, stock import, movement history; camelCase error keys, field names, route error page — **Review**
   (the roadmap still says `Open`; Cowork updates it with the review)
-- 012 — Frontend: inventory list, stock import, movement history — Planned
-- 013 — Frontend: order entry + orders list/detail — Planned
+- 013 — Frontend: order entry + orders list/detail, order links in the movement history — Planned
 - 014 — ChannelProduct mapping + Stock Sync Worker — Planned
+- 015 — SignalR hub, worker → API notifications, dashboard summary — Planned
 
 ## 5. In flight
-**Task 011: report written, awaiting Cowork review.** Nothing is half-finished and nothing is uncommitted.
-- Report: [docs/tasks/011-frontend-catalog-pages.report.md](tasks/011-frontend-catalog-pages.report.md).
-- Commits: `e595411` (`isLowStock`), `ead627a` (localised validation messages), `18cead6` (AntD 6),
-  `29ab04e` (code splitting + the three pages + smoke script + README), `ffa513d` / `04df2f8` (report).
-- Last verified: backend build 0 warnings, 479/479 tests (326 unit, 153 integration), 3 runs; frontend typecheck, lint,
-  77/77 tests, build (main chunk 153 kB); `scripts/smoke/task-011.ps1` 16/16.
-- **Question for Cowork** (report, "Blocked / questions"): validation error keys of query-string parameters are PascalCase
-  (`"To"`, `"SortBy"`) while the convention is camelCase. Not changed in 011 because the task said keys stay unchanged.
-  Recommendation: camelCase all keys in `ValidationProblemResponse`.
-- Follow-ups listed in the report: technical property names inside messages (`'low Stock Threshold'`), an open
-  confirmation dialog stays over the login page after logout, optional chunk tuning.
+**Task 012: report written, awaiting Cowork review.** Nothing is half-finished and nothing is uncommitted.
+- Report: [docs/tasks/012-frontend-inventory-pages.report.md](tasks/012-frontend-inventory-pages.report.md).
+- Commits: `a5a3b11` (A1 camelCase keys), `7be93f4` (A2 field names), `f3b7050` (`createdByEmail`), `5c63867` (A3 route error
+  page), `95d42dc` (A4 dialogs closed on session end), `e49eb87` (A5 search box), `884aac8` (the three pages, product picker,
+  smoke script, README), `50eacdd` (report).
+- Last verified: backend build 0 warnings, 528/528 tests (360 unit, 168 integration); frontend typecheck, lint, 120/120
+  tests, build (main chunk 223 kB); `scripts/smoke/task-012.ps1` 24/24; real-browser check done.
+- **For Cowork to confirm** (report, "Deviations"):
+  - item 1: A2 changed one line in `IdentityUserService`, outside the files the task listed;
+  - item 3: frontend tests are capped at 4 workers in `frontend/vite.config.ts` (the suite was flaky with 12 while the API ran);
+  - item 4: the import confirmation is a `Modal` of the page, not `modal.confirm`;
+  - item 6: extra cache rules (product changes invalidate the inventory list; stock lists refetch on open).
+- No blocking question. Follow-ups are listed in the report ("Out of scope / follow-ups").
 
 ## 6. Pending for the user
-- Restart the API so it runs the task-011 code. No migration to apply.
-- In `frontend/` run `npm ci` once (AntD 6 replaced AntD 5).
-- Manual check of task 011 (report, "Manual steps for the user"): create and edit a product (try the SKU `bad sku!` first),
-  create a customer with a long address, deactivate a test channel, look at the pages as Staff, switch `VI | EN` with a
-  dialog open.
-- Test data left in the development database by the checks: products `SMOKE-011-*`, customer `Smoke 011 UI 56579`, channel
-  `smoke-011-ui-53092` (Inactive), locked users `ui-check-61563` (Admin), `ui-check-staff-1`, `smoke-011-ui-68707`,
-  `smoke-010-*`, `smoke-staff*`.
+- Restart the API so it runs the task-012 code. No migration, no new packages.
+- Manual check of task 012 (report, "Manual steps for the user"): low-stock switch on Inventory, a two-line import with
+  confirmation and result, the same document again, movement filters after a reload, `VI | EN`, the pages as Staff.
+- Test data left in the development database: products `SMOKE-012-*`, imports `SMOKE-012-GRN-*`, `UI/UI-012-GRN-1`,
+  `UI-012-GRN-2`; locked users `smoke-012-*` (three Managers from smoke runs), `smoke-012-ui-69399`,
+  `smoke-012-ui-staff-69399`; plus everything listed in report 011. The locked test Admin `ui-check-61563` was not used.
 - Open decisions (roadmap, "Decisions still needed"):
   - before 014: real or simulated channel APIs;
   - before 015: how Workers trigger SignalR pushes;
@@ -92,26 +93,38 @@ Source-of-truth order when documents disagree:
   `--artifacts-path`; `dotnet ef` works with `--configuration Release`. → report 008; review 008.
 - **Workers must run in their own terminal**; migrations run with the migrator role, never on start-up. → README §4, §6.
 - **PowerShell 5.1 misreads UTF-8 scripts without a BOM**, and the repository path contains non-ASCII characters. Smoke scripts
-  are ASCII only and take paths as parameters. → `docs/tasks/README.md`, "Smoke scripts"; `scripts/smoke/_common.ps1`.
+  are ASCII only and resolve paths from `$PSScriptRoot`. → `docs/tasks/README.md`, "Smoke scripts"; `scripts/smoke/_common.ps1`.
+- **`Assert-Step` compares with `-eq`, which ignores case.** Check exact casing with `-ceq` and assert `$true`.
+  → `scripts/smoke/task-012.ps1`.
 - **Login is limited to 10 attempts per minute and IP.** Smoke scripts stay below it; wait a minute between runs.
   → `scripts/smoke/task-010.ps1`.
-- **Access tokens are rejected when the user's security stamp changes** (role change, admin lock, password reset); a temporary
-  lockout does not end sessions. Test tokens must belong to real users. → implementation log, "Frontend decisions"; report 009.
-- **Tests with mocks miss integration defects.** Every frontend task so far found real defects only in the browser against the
-  real API (English Identity messages, dialog height, stale form values on reopen). Keep the real-browser check.
-  → reports 010 and 011, "Real-browser check".
-- **AntD animations never finish in jsdom or in a hidden browser pane.** Tests switch them off, except the "reopened before
-  closed" tests, which rely on it. → `frontend/src/test/renderApp.tsx`; report 011.
-- **Form dialogs must reset on open** (`useResetFormOnOpen`); `destroyOnHidden` alone leaves the previous record's values.
-  → report 011; README "Frontend".
-- **Language switch changes text only**: fixed widths from `frontend/src/shared/components/layout.ts`, nothing keyed by
-  language. → implementation log, "Frontend decisions"; task 010.
-- **Query-string validation keys are PascalCase** (open question above). → report 011.
+- **Access tokens are rejected when the user's security stamp changes**; a temporary lockout does not end sessions. Test
+  tokens must belong to real users. → implementation log, "Frontend decisions"; report 009.
+- **Tests with mocks miss integration defects.** Every frontend task found real defects only in the browser against the real
+  API (012: buttons that moved on a language switch, fields 1.6 px apart). Keep the real-browser check.
+  → reports 010–012, "Real-browser check".
+- **The frontend suite is memory-bound, not CPU-bound**: one jsdom per test file; with the API and Docker running, more than
+  4 parallel workers time out on this machine. → report 012, "Deviations" item 3; `frontend/vite.config.ts`.
+- **FluentValidation 12:** `{PropertyName}` is resolved per validation, `{ComparisonProperty}` once when the rule is built.
+  A message naming a second field passes it as an argument. → report 012, "A2"; `FieldNames.cs`.
+- **AntD 6:** `Modal.destroyAll()` also closes `App.useApp().modal` confirms; a `modal.confirm` keeps the texts it was opened
+  with (use a page `Modal` when it must follow the language). → report 012, "A4" and "Deviations" item 4.
+- **Closed AntD dropdowns stay in the DOM**, in jsdom and in the browser: a test that looks up an option by text must search
+  the open dropdown only. → `frontend/src/test/catalog.ts` (`chooseProduct`).
+- **AntD animations never finish in jsdom.** Tests switch them off, except the "reopened before closed" tests.
+  → `frontend/src/test/renderApp.tsx`; report 011.
+- **Form dialogs must reset on open** (`useResetFormOnOpen`). → report 011; README "Frontend".
+- **Language switch changes text only**: fixed widths from `frontend/src/shared/components/layout.ts`, also for buttons whose
+  text differs per language. → implementation log, "Frontend decisions"; report 012.
+- **The Vite dev server can miss a file written several times within a moment** (it kept serving the intermediate version).
+  Touch the file or reload before measuring in the browser.
 - **In Claude Code's Bash tool, heredocs containing apostrophes can fail to parse.** Write helper scripts to a file first.
 
 ## 9. Next action
-**Cowork:** review task 011 (report + commits above), decide the query-string key question, update `docs/roadmap.md` and
-`docs/implementation-log.md`, and write task 012 (inventory list, stock import, movement history pages).
+**Cowork:** review task 012 (report + commits above), confirm or reject the four deviations in section 5, update
+`docs/roadmap.md` and `docs/implementation-log.md`, and write task 013 (order entry + orders list/detail, reusing
+`ProductSelect`; order links in the movement history).
+In parallel **the user:** restart the API and do the manual check of task 012.
 Then **Claude Code:** `/next-task`.
 
 ## 10. Resume prompts
@@ -124,5 +137,5 @@ docs/handoff.md.")
 
 New Cowork chat:
 ```
-Dự án Management System. Đọc docs/handoff.md, docs/roadmap.md và docs/implementation-log.md trong thư mục đã kết nối, rồi tiếp tục vai trò lập kế hoạch/review theo docs/tasks/README.md. Việc tiếp theo: review task 011 (docs/tasks/011-frontend-catalog-pages.report.md, các commit e595411, ead627a, 18cead6, 29ab04e), quyết định câu hỏi về key lỗi validation của query string (PascalCase hay camelCase), cập nhật roadmap và implementation log, rồi viết task 012 (trang tồn kho, nhập kho, lịch sử biến động).
+Dự án Management System. Đọc docs/handoff.md, docs/roadmap.md và docs/implementation-log.md trong thư mục đã kết nối, rồi tiếp tục vai trò lập kế hoạch/review theo docs/tasks/README.md. Việc tiếp theo: review task 012 (docs/tasks/012-frontend-inventory-pages.report.md, các commit a5a3b11, 7be93f4, f3b7050, 5c63867, 95d42dc, e49eb87, 884aac8), xác nhận hoặc bác bốn điểm lệch nêu ở mục 5 của handoff (một dòng sửa trong IdentityUserService, giới hạn 4 worker cho test frontend, hộp xác nhận nhập kho là Modal của trang, quy tắc cache bổ sung), cập nhật roadmap và implementation log, rồi viết task 013 (trang nhập đơn hàng + danh sách/chi tiết đơn hàng, dùng lại ProductSelect; liên kết đơn hàng trong lịch sử biến động).
 ```
