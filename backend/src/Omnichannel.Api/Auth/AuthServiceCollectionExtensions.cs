@@ -39,6 +39,9 @@ public static class AuthServiceCollectionExtensions
                     NameClaimType = JwtClaimNames.Subject,
                     RoleClaimType = JwtClaimNames.Role
                 };
+
+                // Stateless tokens live for up to an hour: reject those of users whose rights changed meanwhile.
+                bearer.Events = new JwtBearerEvents { OnTokenValidated = TokenRevocation.ValidateAsync };
             });
 
         return services;

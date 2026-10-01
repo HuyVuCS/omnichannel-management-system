@@ -47,9 +47,15 @@ internal sealed class IdentityAuthService(
             await userManager.ResetAccessFailedCountAsync(user);
         }
 
+        if (string.IsNullOrEmpty(user.SecurityStamp))
+        {
+            // Users created through UserManager always have one; a row without it could never be revoked.
+            await userManager.UpdateSecurityStampAsync(user);
+        }
+
         var roles = (await userManager.GetRolesAsync(user)).ToArray();
         var email = user.Email ?? user.UserName ?? string.Empty;
-        var token = tokenIssuer.Issue(user.Id, email, roles);
+        var token = tokenIssuer.Issue(user.Id, email, roles, user.SecurityStamp!);
 
         logger.LogInformation("User {UserId} logged in", user.Id);
 

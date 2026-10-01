@@ -61,8 +61,8 @@ public sealed class ManualRetryEndToEndTests(ApiFactory factory, RabbitMqBrokerF
     [Fact]
     public async Task Failed_task_retried_manually_is_processed_again_and_the_order_is_reserved()
     {
-        var managerId = Guid.NewGuid();
-        var manager = factory.CreateClientAs(AppRoles.Manager, managerId);
+        var managerId = factory.UserIdOf(AppRoles.Manager);
+        var manager = factory.CreateClientAs(AppRoles.Manager);
         var (taskId, productId) = await SubmitOrderAsync(stock: 10, quantity: 4);
         // Attempt 1 hits a permanent error (check violation); afterwards the "bug" is fixed and processing works again.
         var failures = new FailureInjection
