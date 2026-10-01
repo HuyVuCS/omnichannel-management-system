@@ -8,8 +8,10 @@ import {
   coffeeProduct,
   COFFEE_ID,
   pickerTexts,
+  product,
   productOptions,
   serveProductCatalog,
+  SUGAR_ID,
   sugarProduct,
   teaProduct,
   TEA_ID,
@@ -387,6 +389,39 @@ describe('product picker', () => {
       { page: '1', pageSize: '20', search: 'cà' },
     ]);
     expect(productOptions()[0]).toHaveTextContent('COF-01 — Cà phê');
+  });
+
+  it('makes the full text of a long label available on the option and on the selected value', async () => {
+    const longName = 'Trà xanh Thái Nguyên thượng hạng đóng hộp quà tặng cao cấp phiên bản giới hạn mùa xuân';
+    const longLabel = `TEA-THAI-NGUYEN-PREMIUM-GIFT-BOX-2026 — ${longName}`;
+    const long = product({ productId: SUGAR_ID, sku: 'TEA-THAI-NGUYEN-PREMIUM-GIFT-BOX-2026', name: longName });
+    serveProductCatalog([long]);
+    const { user: appUser } = renderImport();
+    await screen.findByLabelText('Số chứng từ');
+
+    // jsdom cannot measure whether a text is cut; what the user can reach on hover is the title.
+    await appUser.click(productOfLine(1));
+    await waitFor(() => expect(productOptions()).toHaveLength(1));
+    expect(productOptions()[0]).toHaveAttribute('title', longLabel);
+
+    await appUser.click(productOptions()[0]!);
+    const selected = productOfLine(1).closest('.ant-select')!.querySelector('.ant-select-content');
+    await waitFor(() => expect(selected).toHaveTextContent(longLabel));
+    expect(selected).toHaveAttribute('title', longLabel);
+  });
+
+  it('shows the full label as the title of a value that came from the address', async () => {
+    const longName = 'Trà xanh Thái Nguyên thượng hạng đóng hộp quà tặng cao cấp phiên bản giới hạn mùa xuân';
+    const long = product({ productId: SUGAR_ID, sku: 'TEA-GIFT', name: longName });
+    serveProductCatalog([long]);
+    renderImport(`/inventory/import?productId=${SUGAR_ID}`);
+
+    const selected = await waitFor(() => {
+      const content = productOfLine(1).closest('.ant-select')!.querySelector('.ant-select-content');
+      expect(content).toHaveTextContent(`TEA-GIFT — ${longName}`);
+      return content;
+    });
+    expect(selected).toHaveAttribute('title', `TEA-GIFT — ${longName}`);
   });
 
   it('disables a product that is already on another line', async () => {
