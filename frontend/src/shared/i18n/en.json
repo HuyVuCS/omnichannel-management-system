@@ -82,6 +82,13 @@
     "forbidden": {
       "title": "No access",
       "description": "Your role does not allow you to open this page."
+    },
+    "routeError": {
+      "title": "This page could not be displayed",
+      "description": "Something went wrong while displaying this page. Reload it; if the problem persists, tell an administrator.",
+      "outdatedTitle": "This page could not be loaded",
+      "outdatedDescription": "A new version of the application may be available. Reload the page to continue.",
+      "reload": "Reload"
     }
   },
   "comingSoon": {
