@@ -1,4 +1,5 @@
 using FluentValidation;
+using Omnichannel.Application.Common.Validation;
 
 namespace Omnichannel.Application.Common.Paging;
 
@@ -17,12 +18,17 @@ public abstract class PageQueryValidator<TQuery> : AbstractValidator<TQuery>
         RuleFor(x => x.SortBy)
             .Must(sortBy => sortFields.Contains(sortBy!, StringComparer.OrdinalIgnoreCase))
             .When(x => x.SortBy is not null)
-            .WithMessage($"'{{PropertyName}}' must be one of: {string.Join(", ", sortFields)}.");
+            .WithMessage(_ => ValidationMessages.Get(
+                ValidationMessages.Keys.SortByNotAllowed,
+                ("Fields", string.Join(", ", sortFields))));
 
         RuleFor(x => x.SortDir)
             .Must(sortDir => string.Equals(sortDir, PageQuery.Ascending, StringComparison.OrdinalIgnoreCase)
                 || string.Equals(sortDir, PageQuery.Descending, StringComparison.OrdinalIgnoreCase))
             .When(x => x.SortDir is not null)
-            .WithMessage($"'{{PropertyName}}' must be '{PageQuery.Ascending}' or '{PageQuery.Descending}'.");
+            .WithMessage(_ => ValidationMessages.Get(
+                ValidationMessages.Keys.SortDirInvalid,
+                ("Ascending", PageQuery.Ascending),
+                ("Descending", PageQuery.Descending)));
     }
 }

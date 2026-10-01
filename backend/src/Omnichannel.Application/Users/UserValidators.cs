@@ -1,12 +1,15 @@
 using FluentValidation;
 using Omnichannel.Application.Auth;
 using Omnichannel.Application.Common.Paging;
+using Omnichannel.Application.Common.Validation;
 
 namespace Omnichannel.Application.Users;
 
 internal static class UserRules
 {
-    public static readonly string RoleMessage = $"'{{PropertyName}}' must be one of: {string.Join(", ", AppRoles.All)}.";
+    /// <summary>Resolved per request (UI culture). <c>{PropertyName}</c> is left for FluentValidation.</summary>
+    public static string RoleMessage() =>
+        ValidationMessages.Get(ValidationMessages.Keys.RoleUnknown, ("Roles", string.Join(", ", AppRoles.All)));
 
     public static bool IsKnownRole(string? role) => AppRoles.TryNormalize(role, out _);
 }
@@ -32,7 +35,7 @@ public sealed class CreateUserRequestValidator : AbstractValidator<CreateUserReq
             .Cascade(CascadeMode.Stop)
             .NotEmpty()
             .Must(UserRules.IsKnownRole)
-            .WithMessage(UserRules.RoleMessage);
+            .WithMessage(_ => UserRules.RoleMessage());
     }
 }
 
@@ -44,7 +47,7 @@ public sealed class ChangeUserRoleRequestValidator : AbstractValidator<ChangeUse
             .Cascade(CascadeMode.Stop)
             .NotEmpty()
             .Must(UserRules.IsKnownRole)
-            .WithMessage(UserRules.RoleMessage);
+            .WithMessage(_ => UserRules.RoleMessage());
     }
 }
 
@@ -66,6 +69,6 @@ public sealed class UserListQueryValidator : PageQueryValidator<UserListQuery>
         RuleFor(x => x.Role)
             .Must(UserRules.IsKnownRole)
             .When(x => !string.IsNullOrWhiteSpace(x.Role))
-            .WithMessage(UserRules.RoleMessage);
+            .WithMessage(_ => UserRules.RoleMessage());
     }
 }

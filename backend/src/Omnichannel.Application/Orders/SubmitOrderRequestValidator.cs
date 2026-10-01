@@ -1,4 +1,5 @@
 using FluentValidation;
+using Omnichannel.Application.Common.Validation;
 
 namespace Omnichannel.Application.Orders;
 
@@ -14,7 +15,9 @@ public sealed class SubmitOrderRequestValidator : AbstractValidator<SubmitOrderR
             .Cascade(CascadeMode.Stop)
             .NotEmpty()
             .Must(id => id.Trim().Length <= MaxExternalOrderIdLength)
-            .WithMessage($"'{{PropertyName}}' must be at most {MaxExternalOrderIdLength} characters.");
+            .WithMessage(_ => ValidationMessages.Get(
+                ValidationMessages.Keys.ExternalOrderIdTooLong,
+                ("MaxLength", MaxExternalOrderIdLength)));
 
         RuleFor(x => x.CustomerId).NotEmpty();
 
@@ -22,11 +25,11 @@ public sealed class SubmitOrderRequestValidator : AbstractValidator<SubmitOrderR
             .Cascade(CascadeMode.Stop)
             .NotEmpty()
             .Must(items => items.Count <= MaxItems)
-            .WithMessage($"'{{PropertyName}}' must contain at most {MaxItems} items.")
+            .WithMessage(_ => ValidationMessages.Get(ValidationMessages.Keys.ItemsTooMany, ("MaxItems", MaxItems)))
             .Must(items => items.All(i => i is not null))
-            .WithMessage("'{PropertyName}' must not contain null items.")
+            .WithMessage(_ => ValidationMessages.Get(ValidationMessages.Keys.ItemsContainNull))
             .Must(items => items.Select(i => i.ProductId).Distinct().Count() == items.Count)
-            .WithMessage("'{PropertyName}' must not contain the same product more than once.");
+            .WithMessage(_ => ValidationMessages.Get(ValidationMessages.Keys.ItemsDuplicateProduct));
 
         RuleForEach(x => x.Items).ChildRules(item =>
         {

@@ -1,6 +1,7 @@
 using FluentValidation;
 using Omnichannel.Application.Channels;
 using Omnichannel.Application.Common.Paging;
+using Omnichannel.Application.Common.Validation;
 
 namespace Omnichannel.Application.Orders;
 
@@ -14,6 +15,6 @@ public sealed class OrderListQueryValidator : PageQueryValidator<OrderListQuery>
         RuleFor(x => x.To)
             .GreaterThanOrEqualTo(x => x.From)
             .When(x => x.From.HasValue && x.To.HasValue)
-            .WithMessage("'To' must not be earlier than 'From'.");
+            .WithMessage(_ => ValidationMessages.Get(ValidationMessages.Keys.DateRangeInverted));
     }
 }

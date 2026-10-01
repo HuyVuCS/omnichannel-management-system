@@ -1,4 +1,5 @@
 using FluentValidation;
+using Omnichannel.Application.Common.Validation;
 
 namespace Omnichannel.Application.Channels;
 
@@ -18,7 +19,7 @@ public sealed class CreateChannelRequestValidator : AbstractValidator<CreateChan
             .NotEmpty()
             .MaximumLength(MaxSlugLength)
             .Matches(SlugPattern)
-            .WithMessage("'{PropertyName}' must be lower-case letters and digits separated by single hyphens.");
+            .WithMessage(_ => ValidationMessages.Get(ValidationMessages.Keys.SlugFormat));
 
         RuleFor(x => x.Type).IsInEnum();
     }

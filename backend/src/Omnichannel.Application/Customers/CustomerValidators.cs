@@ -1,5 +1,6 @@
 using FluentValidation;
 using Omnichannel.Application.Common.Paging;
+using Omnichannel.Application.Common.Validation;
 
 namespace Omnichannel.Application.Customers;
 
@@ -18,7 +19,7 @@ public sealed class CustomerRequestValidator : AbstractValidator<CustomerRequest
         RuleFor(x => x.Phone)
             .MaximumLength(MaxPhoneLength)
             .Matches(PhonePattern)
-            .WithMessage("'{PropertyName}' may only contain digits, spaces and + - ( ).")
+            .WithMessage(_ => ValidationMessages.Get(ValidationMessages.Keys.PhoneCharacters))
             .When(x => !string.IsNullOrWhiteSpace(x.Phone));
 
         RuleFor(x => x.Email)

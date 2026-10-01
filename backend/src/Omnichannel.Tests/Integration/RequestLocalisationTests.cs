@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using FluentValidation;
 using Omnichannel.Application.Auth;
+using Omnichannel.Application.Common.Validation;
 
 namespace Omnichannel.Tests.Integration;
 
@@ -78,6 +79,83 @@ public sealed class RequestLocalisationTests(ApiFactory factory)
         using var user = JsonDocument.Parse(await created.Content.ReadAsStringAsync());
         var userId = user.RootElement.GetProperty("userId").GetGuid();
         Assert.Equal(expected, await MessagesAsync(HttpMethod.Post, $"/api/users/{userId}/reset-password", new { newPassword = "weakpass" }, "newPassword"));
+    }
+
+    [Theory]
+    [InlineData("vi")]
+    [InlineData("en")]
+    public async Task Custom_validation_messages_follow_the_requested_language(string language)
+    {
+        var culture = new CultureInfo(language);
+        var manager = factory.CreateClientAs(AppRoles.Manager);
+
+        async Task<string?> FirstErrorAsync(HttpRequestMessage request, string key)
+        {
+            request.Headers.TryAddWithoutValidation("Accept-Language", language);
+            var response = await manager.SendAsync(request);
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+            Assert.Equal(language, Assert.Single(response.Content.Headers.ContentLanguage));
+            using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            Assert.Equal("validation_failed", body.RootElement.GetProperty("errorCode").GetString());
+            // Keys of query-string parameters currently keep the casing of the C# property ("To", "SortBy") when the
+            // parameter was supplied; body keys are camelCase. Looked up case-insensitively here (see report 011).
+            var errors = body.RootElement.GetProperty("errors");
+            var messages = errors.EnumerateObject().FirstOrDefault(p => string.Equals(p.Name, key, StringComparison.OrdinalIgnoreCase));
+            Assert.True(messages.Value.ValueKind == JsonValueKind.Array, $"No error for key \"{key}\" in {errors.GetRawText()}");
+            return messages.Value[0].GetString();
+        }
+
+        // SKU format (custom Must rule).
+        using var product = new HttpRequestMessage(HttpMethod.Post, "/api/products")
+        {
+            Content = JsonContent.Create(new { sku = "bad sku!", name = "Localised", price = 1, lowStockThreshold = 0 })
+        };
+        var skuMessage = await FirstErrorAsync(product, "sku");
+        Assert.Equal(
+            ValidationMessages.Find(ValidationMessages.Keys.SkuFormat, culture)
+                .Replace("{PropertyName}", "sku", StringComparison.Ordinal)
+                .Replace("{MaxLength}", "64", StringComparison.Ordinal),
+            skuMessage);
+
+        // Inverted date range (custom message on a comparison rule).
+        using var orders = new HttpRequestMessage(HttpMethod.Get, "/api/orders?from=2026-09-02T00:00:00Z&to=2026-09-01T00:00:00Z");
+        Assert.Equal(ValidationMessages.Find(ValidationMessages.Keys.DateRangeInverted, culture), await FirstErrorAsync(orders, "to"));
+
+        // A sort field outside the whitelist (message with a list argument).
+        using var sort = new HttpRequestMessage(HttpMethod.Get, "/api/customers?sortBy=secret");
+        Assert.Equal(
+            ValidationMessages.Find(ValidationMessages.Keys.SortByNotAllowed, culture)
+                .Replace("{PropertyName}", "sort By", StringComparison.Ordinal) // FluentValidation's display name
+                .Replace("{Fields}", "name, createdAt", StringComparison.Ordinal),
+            await FirstErrorAsync(sort, "sortBy"));
+
+        // The two languages really differ (guards against comparing English with English).
+        Assert.Equal(language == "vi", skuMessage!.Contains("dài tối đa", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Service_level_validation_failures_are_localised_too()
+    {
+        var staff = factory.CreateClientAs(AppRoles.Staff);
+        var unknownCustomer = Guid.NewGuid();
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/orders/website")
+        {
+            Content = JsonContent.Create(new
+            {
+                externalOrderId = $"LOC-{TestData.UniqueSuffix()}",
+                customerId = unknownCustomer,
+                items = new[] { new { productId = Guid.NewGuid(), stock = 1 } }
+            })
+        };
+        request.Headers.TryAddWithoutValidation("Accept-Language", "vi");
+
+        var response = await staff.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var errors = body.RootElement.GetProperty("errors");
+        Assert.Equal($"Khách hàng '{unknownCustomer}' không tồn tại.", errors.GetProperty("customerId")[0].GetString());
+        Assert.StartsWith("Sản phẩm '", errors.GetProperty("items[0].productId")[0].GetString());
     }
 
     [Fact]

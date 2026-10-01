@@ -319,7 +319,9 @@ internal sealed class IdentityUserService(
             [
                 new ValidationFailure(
                     ValidationConventions.JsonName(memberName),
-                    $"Role must be one of: {string.Join(", ", AppRoles.All)}.")
+                    ValidationMessages
+                        .Get(ValidationMessages.Keys.RoleUnknown, ("Roles", string.Join(", ", AppRoles.All)))
+                        .Replace("{PropertyName}", ValidationConventions.JsonName(memberName), StringComparison.Ordinal))
             ]);
 
     /// <summary>
@@ -356,7 +358,7 @@ internal sealed class IdentityUserService(
                 // Own message: Identity's description echoes the submitted value.
                 failures.Add(new ValidationFailure(
                     ValidationConventions.JsonName(nameof(CreateUserRequest.Email)),
-                    "The e-mail address is not valid or contains characters that are not allowed."));
+                    ValidationMessages.Get(ValidationMessages.Keys.EmailInvalid)));
             }
         }
 
