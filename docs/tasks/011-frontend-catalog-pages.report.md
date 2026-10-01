@@ -26,12 +26,12 @@ Commits: `e595411` (A3 `isLowStock`), `ead627a` (A2 localised messages), `18cead
 ### A2 — Localised validation messages (`ead627a`)
 - **One mechanism:** `Application/Resources/ValidationMessages.resx` (English, default) and `ValidationMessages.vi.resx`, read
   by `Application/Common/Validation/ValidationMessages.Get(key, (name, value)…)` in the UI culture of the request.
-- 20 keys. All 15 `WithMessage` texts in the validators, the 5 validation failures raised by services (role, e-mail,
+- 20 keys. All 18 `WithMessage` calls in the validators, the 5 validation failures raised by services (role, e-mail,
   product/customer not found) and the 6 Identity password messages now come from it.
 - Error keys and `errorCode` values are unchanged.
 - Tests:
   - `ValidationMessagesTests`: every key has an English and a Vietnamese text with the same placeholders.
-  - Same class, reflective: for each of the 19 request validators, no rule has the same message in `en` and `vi`. A literal
+  - Same class, reflective: for each of the 18 request validators, no rule has the same message in `en` and `vi`. A literal
     `.WithMessage("…")` fails this test.
   - `RequestLocalisationTests`: SKU format, inverted date range and a non-whitelisted sort field come back in Vietnamese for
     `Accept-Language: vi` and in English for `en`; a service-level failure (unknown customer/product) is Vietnamese too.
