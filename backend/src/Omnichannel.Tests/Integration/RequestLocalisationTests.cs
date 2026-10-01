@@ -97,12 +97,7 @@ public sealed class RequestLocalisationTests(ApiFactory factory)
             Assert.Equal(language, Assert.Single(response.Content.Headers.ContentLanguage));
             using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
             Assert.Equal("validation_failed", body.RootElement.GetProperty("errorCode").GetString());
-            // Keys of query-string parameters currently keep the casing of the C# property ("To", "SortBy") when the
-            // parameter was supplied; body keys are camelCase. Looked up case-insensitively here (see report 011).
-            var errors = body.RootElement.GetProperty("errors");
-            var messages = errors.EnumerateObject().FirstOrDefault(p => string.Equals(p.Name, key, StringComparison.OrdinalIgnoreCase));
-            Assert.True(messages.Value.ValueKind == JsonValueKind.Array, $"No error for key \"{key}\" in {errors.GetRawText()}");
-            return messages.Value[0].GetString();
+            return body.RootElement.GetProperty("errors").GetProperty(key)[0].GetString();
         }
 
         // SKU format (custom Must rule).
