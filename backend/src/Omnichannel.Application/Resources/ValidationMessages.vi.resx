@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="SlugFormat" xml:space="preserve">
+    <value>'{PropertyName}' chỉ gồm chữ thường và chữ số, các từ cách nhau bằng một dấu gạch nối.</value>
+    <comment>Channel slug, e.g. digital-platform.</comment>
+  </data>
+  <data name="SortByNotAllowed" xml:space="preserve">
+    <value>'{PropertyName}' phải là một trong các giá trị: {Fields}.</value>
+    <comment>Paged lists: sortBy outside the whitelist of the endpoint.</comment>
+  </data>
+  <data name="SortDirInvalid" xml:space="preserve">
+    <value>'{PropertyName}' phải là '{Ascending}' hoặc '{Descending}'.</value>
+    <comment>Paged lists: sortDir.</comment>
+  </data>
+  <data name="PhoneCharacters" xml:space="preserve">
+    <value>'{PropertyName}' chỉ được chứa chữ số, dấu cách và các ký tự + - ( ).</value>
+    <comment>Customer phone number.</comment>
+  </data>
+  <data name="ItemsTooMany" xml:space="preserve">
+    <value>'{PropertyName}' chỉ được chứa tối đa {MaxItems} dòng.</value>
+    <comment>Order / stock import lines.</comment>
+  </data>
+  <data name="ItemsContainNull" xml:space="preserve">
+    <value>'{PropertyName}' không được chứa dòng rỗng (null).</value>
+    <comment>Order / stock import lines.</comment>
+  </data>
+  <data name="ItemsDuplicateProduct" xml:space="preserve">
+    <value>'{PropertyName}' không được chứa cùng một sản phẩm nhiều lần.</value>
+    <comment>Order / stock import lines.</comment>
+  </data>
+  <data name="DateRangeInverted" xml:space="preserve">
+    <value>'To' không được sớm hơn 'From'.</value>
+    <comment>List filters from/to.</comment>
+  </data>
+  <data name="ExternalOrderIdTooLong" xml:space="preserve">
+    <value>'{PropertyName}' chỉ được dài tối đa {MaxLength} ký tự.</value>
+    <comment>Order intake.</comment>
+  </data>
+  <data name="SkuFormat" xml:space="preserve">
+    <value>'{PropertyName}' dài tối đa {MaxLength} ký tự, chỉ gồm A-Z, 0-9, '.', '_' hoặc '-', bắt đầu bằng chữ cái hoặc chữ số (không phân biệt hoa thường).</value>
+    <comment>Product SKU.</comment>
+  </data>
+  <data name="RoleUnknown" xml:space="preserve">
+    <value>'{PropertyName}' phải là một trong các vai trò: {Roles}.</value>
+    <comment>User role.</comment>
+  </data>
+  <data name="EmailInvalid" xml:space="preserve">
+    <value>Địa chỉ e-mail không hợp lệ hoặc chứa ký tự không được phép.</value>
+    <comment>User e-mail rejected by Identity (format or characters).</comment>
+  </data>
+  <data name="ProductNotFound" xml:space="preserve">
+    <value>Sản phẩm '{ProductId}' không tồn tại.</value>
+    <comment>A referenced product does not exist (order line, stock import line).</comment>
+  </data>
+  <data name="CustomerNotFound" xml:space="preserve">
+    <value>Khách hàng '{CustomerId}' không tồn tại.</value>
+    <comment>The customer of an order does not exist.</comment>
+  </data>
+  <data name="PasswordTooShort" xml:space="preserve">
+    <value>Mật khẩu phải có ít nhất {Length} ký tự.</value>
+    <comment>Identity password policy.</comment>
+  </data>
+  <data name="PasswordRequiresDigit" xml:space="preserve">
+    <value>Mật khẩu phải có ít nhất một chữ số ('0'-'9').</value>
+    <comment>Identity password policy.</comment>
+  </data>
+  <data name="PasswordRequiresLower" xml:space="preserve">
+    <value>Mật khẩu phải có ít nhất một chữ thường ('a'-'z').</value>
+    <comment>Identity password policy.</comment>
+  </data>
+  <data name="PasswordRequiresUpper" xml:space="preserve">
+    <value>Mật khẩu phải có ít nhất một chữ hoa ('A'-'Z').</value>
+    <comment>Identity password policy.</comment>
+  </data>
+  <data name="PasswordRequiresNonAlphanumeric" xml:space="preserve">
+    <value>Mật khẩu phải có ít nhất một ký tự không phải chữ hoặc số.</value>
+    <comment>Identity password policy.</comment>
+  </data>
+  <data name="PasswordRequiresUniqueChars" xml:space="preserve">
+    <value>Mật khẩu phải có ít nhất {UniqueChars} ký tự khác nhau.</value>
+    <comment>Identity password policy.</comment>
+  </data>
+</root>

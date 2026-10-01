@@ -1,5 +1,6 @@
 using FluentValidation;
 using Omnichannel.Application.Common.Paging;
+using Omnichannel.Application.Common.Validation;
 
 namespace Omnichannel.Application.Inventory;
 
@@ -21,11 +22,11 @@ public sealed class ImportInventoryRequestValidator : AbstractValidator<ImportIn
             .Cascade(CascadeMode.Stop)
             .NotEmpty()
             .Must(items => items.Count <= MaxItems)
-            .WithMessage($"'{{PropertyName}}' must contain at most {MaxItems} items.")
+            .WithMessage(_ => ValidationMessages.Get(ValidationMessages.Keys.ItemsTooMany, ("MaxItems", MaxItems)))
             .Must(items => items.All(i => i is not null))
-            .WithMessage("'{PropertyName}' must not contain null items.")
+            .WithMessage(_ => ValidationMessages.Get(ValidationMessages.Keys.ItemsContainNull))
             .Must(items => items.Select(i => i.ProductId).Distinct().Count() == items.Count)
-            .WithMessage("'{PropertyName}' must not contain the same product more than once.");
+            .WithMessage(_ => ValidationMessages.Get(ValidationMessages.Keys.ItemsDuplicateProduct));
 
         RuleForEach(x => x.Items).ChildRules(item =>
         {
@@ -48,6 +49,6 @@ public sealed class InventoryMovementListQueryValidator : PageQueryValidator<Inv
         RuleFor(x => x.To)
             .GreaterThanOrEqualTo(x => x.From)
             .When(x => x.From.HasValue && x.To.HasValue)
-            .WithMessage("'To' must not be earlier than 'From'.");
+            .WithMessage(_ => ValidationMessages.Get(ValidationMessages.Keys.DateRangeInverted));
     }
 }

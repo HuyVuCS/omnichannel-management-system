@@ -107,7 +107,7 @@ internal sealed class OrderIntakeService(
         {
             failures.Add(new ValidationFailure(
                 ValidationConventions.JsonName(nameof(SubmitOrderRequest.CustomerId)),
-                $"Customer '{request.CustomerId}' does not exist."));
+                ValidationMessages.Get(ValidationMessages.Keys.CustomerNotFound, ("CustomerId", request.CustomerId))));
         }
 
         var productIds = request.Items.Select(i => i.ProductId).ToList();
@@ -123,7 +123,7 @@ internal sealed class OrderIntakeService(
             {
                 failures.Add(new ValidationFailure(
                     ValidationConventions.ItemPath(nameof(SubmitOrderRequest.Items), index, nameof(SubmitOrderItem.ProductId)),
-                    $"Product '{productId}' does not exist."));
+                    ValidationMessages.Get(ValidationMessages.Keys.ProductNotFound, ("ProductId", productId))));
             }
         }
 

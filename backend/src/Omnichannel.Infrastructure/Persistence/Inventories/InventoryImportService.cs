@@ -70,7 +70,7 @@ internal sealed class InventoryImportService(
                 [
                     new ValidationFailure(
                         ValidationConventions.ItemPath(nameof(request.Items), index, nameof(ImportInventoryItem.ProductId)),
-                        $"Product '{item.ProductId}' does not exist.")
+                        ValidationMessages.Get(ValidationMessages.Keys.ProductNotFound, ("ProductId", item.ProductId)))
                 ]);
             }
 

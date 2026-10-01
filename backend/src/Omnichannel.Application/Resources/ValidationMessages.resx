@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="SlugFormat" xml:space="preserve">
+    <value>'{PropertyName}' must be lower-case letters and digits separated by single hyphens.</value>
+    <comment>Channel slug, e.g. digital-platform.</comment>
+  </data>
+  <data name="SortByNotAllowed" xml:space="preserve">
+    <value>'{PropertyName}' must be one of: {Fields}.</value>
+    <comment>Paged lists: sortBy outside the whitelist of the endpoint.</comment>
+  </data>
+  <data name="SortDirInvalid" xml:space="preserve">
+    <value>'{PropertyName}' must be '{Ascending}' or '{Descending}'.</value>
+    <comment>Paged lists: sortDir.</comment>
+  </data>
+  <data name="PhoneCharacters" xml:space="preserve">
+    <value>'{PropertyName}' may only contain digits, spaces and + - ( ).</value>
+    <comment>Customer phone number.</comment>
+  </data>
+  <data name="ItemsTooMany" xml:space="preserve">
+    <value>'{PropertyName}' must contain at most {MaxItems} items.</value>
+    <comment>Order / stock import lines.</comment>
+  </data>
+  <data name="ItemsContainNull" xml:space="preserve">
+    <value>'{PropertyName}' must not contain null items.</value>
+    <comment>Order / stock import lines.</comment>
+  </data>
+  <data name="ItemsDuplicateProduct" xml:space="preserve">
+    <value>'{PropertyName}' must not contain the same product more than once.</value>
+    <comment>Order / stock import lines.</comment>
+  </data>
+  <data name="DateRangeInverted" xml:space="preserve">
+    <value>'To' must not be earlier than 'From'.</value>
+    <comment>List filters from/to.</comment>
+  </data>
+  <data name="ExternalOrderIdTooLong" xml:space="preserve">
+    <value>'{PropertyName}' must be at most {MaxLength} characters.</value>
+    <comment>Order intake.</comment>
+  </data>
+  <data name="SkuFormat" xml:space="preserve">
+    <value>'{PropertyName}' must be at most {MaxLength} characters of A-Z, 0-9, '.', '_' or '-', starting with a letter or digit (case-insensitive).</value>
+    <comment>Product SKU.</comment>
+  </data>
+  <data name="RoleUnknown" xml:space="preserve">
+    <value>'{PropertyName}' must be one of: {Roles}.</value>
+    <comment>User role.</comment>
+  </data>
+  <data name="EmailInvalid" xml:space="preserve">
+    <value>The e-mail address is not valid or contains characters that are not allowed.</value>
+    <comment>User e-mail rejected by Identity (format or characters).</comment>
+  </data>
+  <data name="ProductNotFound" xml:space="preserve">
+    <value>Product '{ProductId}' does not exist.</value>
+    <comment>A referenced product does not exist (order line, stock import line).</comment>
+  </data>
+  <data name="CustomerNotFound" xml:space="preserve">
+    <value>Customer '{CustomerId}' does not exist.</value>
+    <comment>The customer of an order does not exist.</comment>
+  </data>
+  <data name="PasswordTooShort" xml:space="preserve">
+    <value>Passwords must be at least {Length} characters.</value>
+    <comment>Identity password policy.</comment>
+  </data>
+  <data name="PasswordRequiresDigit" xml:space="preserve">
+    <value>Passwords must have at least one digit ('0'-'9').</value>
+    <comment>Identity password policy.</comment>
+  </data>
+  <data name="PasswordRequiresLower" xml:space="preserve">
+    <value>Passwords must have at least one lowercase ('a'-'z').</value>
+    <comment>Identity password policy.</comment>
+  </data>
+  <data name="PasswordRequiresUpper" xml:space="preserve">
+    <value>Passwords must have at least one uppercase ('A'-'Z').</value>
+    <comment>Identity password policy.</comment>
+  </data>
+  <data name="PasswordRequiresNonAlphanumeric" xml:space="preserve">
+    <value>Passwords must have at least one non alphanumeric character.</value>
+    <comment>Identity password policy.</comment>
+  </data>
+  <data name="PasswordRequiresUniqueChars" xml:space="preserve">
+    <value>Passwords must use at least {UniqueChars} different characters.</value>
+    <comment>Identity password policy.</comment>
+  </data>
+</root>
