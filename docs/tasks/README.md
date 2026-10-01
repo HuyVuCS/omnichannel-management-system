@@ -63,3 +63,13 @@ Long chats cost tokens. The repository documents are the memory, so a new chat l
 - In Claude Code, `/handoff` writes and commits `docs/handoff.md` (state snapshot, pending steps, next action, resume prompts; never secrets).
 - In a new Claude Code chat, `/resume` reads the handoff and the roadmap and summarises where things stand.
 - In a new Cowork chat, paste the Cowork resume prompt printed by `/handoff`.
+
+## Smoke scripts instead of typed manual checks
+Every task whose acceptance criteria include a manual check also delivers `scripts/smoke/task-NNN.ps1` (Windows PowerShell 5.1
+compatible, ASCII only), built on `scripts/smoke/_common.ps1`:
+- reads the admin credentials from `backend/src/Omnichannel.Api/.env` (git-ignored) and never prints secrets; test users get random passwords;
+- uses a running API or builds and starts it, and stops what it started;
+- records each check with `Assert-Step` and ends with `Complete-Smoke` (table + exit code 0/1).
+Claude Code runs the script when the environment is up and puts the table in the report; otherwise the user runs
+`powershell -ExecutionPolicy Bypass -File scripts\smoke\task-NNN.ps1` and pastes the table. Checks that need Docker control
+(stopping PostgreSQL, locking a table) or the Workers host belong in the script too when they can be automated safely.
