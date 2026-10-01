@@ -1,0 +1,140 @@
+{
+  "app": {
+    "name": "Omnichannel"
+  },
+  "common": {
+    "cancel": "Huỷ",
+    "close": "Đóng",
+    "save": "Lưu",
+    "create": "Tạo",
+    "all": "Tất cả",
+    "backToDashboard": "Về trang tổng quan",
+    "loading": "Đang tải..."
+  },
+  "roles": {
+    "Admin": "Quản trị",
+    "Manager": "Quản lý",
+    "Staff": "Nhân viên",
+    "none": "Chưa có vai trò"
+  },
+  "nav": {
+    "dashboard": "Tổng quan",
+    "orderEntry": "Nhập đơn hàng",
+    "orders": "Đơn hàng",
+    "inventory": "Tồn kho",
+    "inventoryMovements": "Biến động tồn kho",
+    "products": "Sản phẩm",
+    "customers": "Khách hàng",
+    "channels": "Kênh bán",
+    "processing": "Đồng bộ & xử lý",
+    "alerts": "Cảnh báo",
+    "logs": "Nhật ký / kiểm toán",
+    "reports": "Báo cáo",
+    "users": "Người dùng"
+  },
+  "layout": {
+    "language": "Ngôn ngữ",
+    "logout": "Đăng xuất",
+    "menu": "Menu chính"
+  },
+  "auth": {
+    "title": "Đăng nhập",
+    "email": "E-mail",
+    "password": "Mật khẩu",
+    "submit": "Đăng nhập",
+    "invalidCredentials": "E-mail hoặc mật khẩu không đúng, hoặc tài khoản đang tạm khoá.",
+    "tooManyAttempts": "Đăng nhập quá nhiều lần. Vui lòng chờ một phút rồi thử lại."
+  },
+  "errors": {
+    "generic": "Không thể hoàn tất yêu cầu.",
+    "network": "Không kết nối được máy chủ. Hãy kiểm tra mạng và thử lại.",
+    "server": "Máy chủ báo lỗi. Vui lòng thử lại sau.",
+    "unexpectedTitle": "Đã xảy ra lỗi",
+    "correlationId": "Mã tham chiếu",
+    "correlationHint": "Hãy gửi kèm mã này khi báo lỗi.",
+    "unauthorized": "Phiên làm việc đã kết thúc. Vui lòng đăng nhập lại.",
+    "forbidden": "Bạn không có quyền thực hiện thao tác này.",
+    "notFound": "Không tìm thấy dữ liệu.",
+    "conflict": "Dữ liệu đã bị người khác thay đổi. Hãy tải lại rồi thử lại.",
+    "tooManyRequests": "Quá nhiều yêu cầu. Vui lòng thử lại sau giây lát.",
+    "validation_failed": "Một số trường chưa hợp lệ. Hãy kiểm tra rồi thử lại.",
+    "concurrency_conflict": "Dữ liệu đã bị người khác thay đổi. Hãy tải lại rồi thử lại.",
+    "user_not_found": "Người dùng không còn tồn tại.",
+    "user_email_exists": "Đã có người dùng với địa chỉ e-mail này.",
+    "last_admin": "Đây là quản trị viên đang hoạt động cuối cùng. Hệ thống phải còn ít nhất một người.",
+    "cannot_modify_self": "Bạn không thể tự đổi vai trò hoặc tự khoá tài khoản của mình."
+  },
+  "pages": {
+    "dashboard": {
+      "title": "Tổng quan"
+    },
+    "notFound": {
+      "title": "Không tìm thấy trang",
+      "description": "Địa chỉ không tồn tại hoặc trang đã được chuyển đi."
+    },
+    "forbidden": {
+      "title": "Không có quyền truy cập",
+      "description": "Vai trò của bạn không được phép mở trang này."
+    }
+  },
+  "comingSoon": {
+    "title": "Chưa có",
+    "description": "Trang này sẽ có ở task {{task}}."
+  },
+  "users": {
+    "title": "Người dùng",
+    "create": "Thêm người dùng",
+    "searchPlaceholder": "Tìm theo e-mail",
+    "filterRole": "Vai trò",
+    "filterStatus": "Trạng thái",
+    "columns": {
+      "email": "E-mail",
+      "role": "Vai trò",
+      "status": "Trạng thái",
+      "failedAttempts": "Đăng nhập sai",
+      "actions": "Thao tác"
+    },
+    "status": {
+      "active": "Hoạt động",
+      "locked": "Đã khoá",
+      "lockedByAdmin": "Bị khoá cho đến khi quản trị viên mở khoá.",
+      "lockedUntil": "Bị khoá đến {{time}} (đăng nhập sai quá nhiều lần)."
+    },
+    "actions": {
+      "changeRole": "Đổi vai trò",
+      "lock": "Khoá",
+      "unlock": "Mở khoá",
+      "resetPassword": "Đặt lại mật khẩu"
+    },
+    "createModal": {
+      "title": "Thêm người dùng",
+      "email": "E-mail",
+      "password": "Mật khẩu",
+      "role": "Vai trò",
+      "passwordHint": "Ít nhất 12 ký tự, có chữ số, chữ thường và chữ hoa."
+    },
+    "roleModal": {
+      "title": "Đổi vai trò",
+      "role": "Vai trò",
+      "hint": "Người dùng sẽ bị đăng xuất và phải đăng nhập lại."
+    },
+    "resetModal": {
+      "title": "Đặt lại mật khẩu",
+      "newPassword": "Mật khẩu mới",
+      "hint": "Hãy gửi mật khẩu tạm cho người dùng. Các phiên đang mở sẽ bị đăng xuất."
+    },
+    "confirm": {
+      "lockTitle": "Khoá người dùng này?",
+      "lockContent": "{{email}} sẽ bị đăng xuất và không đăng nhập được cho đến khi mở khoá.",
+      "unlockTitle": "Mở khoá người dùng này?",
+      "unlockContent": "{{email}} sẽ đăng nhập lại được."
+    },
+    "messages": {
+      "created": "Đã tạo người dùng.",
+      "roleChanged": "Đã đổi vai trò.",
+      "locked": "Đã khoá người dùng.",
+      "unlocked": "Đã mở khoá người dùng.",
+      "passwordReset": "Đã đặt lại mật khẩu."
+    }
+  }
+}

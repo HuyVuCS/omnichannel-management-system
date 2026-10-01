@@ -1,0 +1,10 @@
+/* AntD styles its own components (CSS-in-JS); only the page itself is reset here. */
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+}

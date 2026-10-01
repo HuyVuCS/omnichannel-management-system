@@ -1,0 +1,140 @@
+{
+  "app": {
+    "name": "Omnichannel"
+  },
+  "common": {
+    "cancel": "Cancel",
+    "close": "Close",
+    "save": "Save",
+    "create": "Create",
+    "all": "All",
+    "backToDashboard": "Back to dashboard",
+    "loading": "Loading..."
+  },
+  "roles": {
+    "Admin": "Admin",
+    "Manager": "Manager",
+    "Staff": "Staff",
+    "none": "No role"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "orderEntry": "Order entry",
+    "orders": "Orders",
+    "inventory": "Inventory",
+    "inventoryMovements": "Inventory movements",
+    "products": "Products",
+    "customers": "Customers",
+    "channels": "Channels",
+    "processing": "Sync & processing",
+    "alerts": "Alerts",
+    "logs": "Logs / audit",
+    "reports": "Reports",
+    "users": "Users"
+  },
+  "layout": {
+    "language": "Language",
+    "logout": "Log out",
+    "menu": "Main menu"
+  },
+  "auth": {
+    "title": "Sign in",
+    "email": "E-mail",
+    "password": "Password",
+    "submit": "Sign in",
+    "invalidCredentials": "The e-mail or password is incorrect, or the account is temporarily locked.",
+    "tooManyAttempts": "Too many sign-in attempts. Please wait a minute and try again."
+  },
+  "errors": {
+    "generic": "The request could not be completed.",
+    "network": "Cannot reach the server. Check your connection and try again.",
+    "server": "The server reported an error. Please try again later.",
+    "unexpectedTitle": "Something went wrong",
+    "correlationId": "Reference code",
+    "correlationHint": "Quote this code when you report the problem.",
+    "unauthorized": "Your session has ended. Please sign in again.",
+    "forbidden": "You do not have permission to do this.",
+    "notFound": "The item was not found.",
+    "conflict": "The data was changed by someone else. Reload and try again.",
+    "tooManyRequests": "Too many requests. Please try again in a moment.",
+    "validation_failed": "Some fields are not valid. Check them and try again.",
+    "concurrency_conflict": "The data was changed by someone else. Reload and try again.",
+    "user_not_found": "The user no longer exists.",
+    "user_email_exists": "A user with this e-mail address already exists.",
+    "last_admin": "This is the last active administrator. The system must keep at least one.",
+    "cannot_modify_self": "You cannot change your own role or lock your own account."
+  },
+  "pages": {
+    "dashboard": {
+      "title": "Dashboard"
+    },
+    "notFound": {
+      "title": "Page not found",
+      "description": "The address does not exist or the page was moved."
+    },
+    "forbidden": {
+      "title": "No access",
+      "description": "Your role does not allow you to open this page."
+    }
+  },
+  "comingSoon": {
+    "title": "Not available yet",
+    "description": "This page is coming in task {{task}}."
+  },
+  "users": {
+    "title": "Users",
+    "create": "New user",
+    "searchPlaceholder": "Search by e-mail",
+    "filterRole": "Role",
+    "filterStatus": "Status",
+    "columns": {
+      "email": "E-mail",
+      "role": "Role",
+      "status": "Status",
+      "failedAttempts": "Failed sign-ins",
+      "actions": "Actions"
+    },
+    "status": {
+      "active": "Active",
+      "locked": "Locked",
+      "lockedByAdmin": "Locked until an administrator unlocks the account.",
+      "lockedUntil": "Locked until {{time}} (too many failed sign-ins)."
+    },
+    "actions": {
+      "changeRole": "Change role",
+      "lock": "Lock",
+      "unlock": "Unlock",
+      "resetPassword": "Reset password"
+    },
+    "createModal": {
+      "title": "New user",
+      "email": "E-mail",
+      "password": "Password",
+      "role": "Role",
+      "passwordHint": "At least 12 characters with a digit, a lower-case and an upper-case letter."
+    },
+    "roleModal": {
+      "title": "Change role",
+      "role": "Role",
+      "hint": "The user is signed out and must sign in again."
+    },
+    "resetModal": {
+      "title": "Reset password",
+      "newPassword": "New password",
+      "hint": "Give the temporary password to the user. Existing sessions are signed out."
+    },
+    "confirm": {
+      "lockTitle": "Lock this user?",
+      "lockContent": "{{email}} will be signed out and cannot sign in until unlocked.",
+      "unlockTitle": "Unlock this user?",
+      "unlockContent": "{{email}} will be able to sign in again."
+    },
+    "messages": {
+      "created": "User created.",
+      "roleChanged": "Role changed.",
+      "locked": "User locked.",
+      "unlocked": "User unlocked.",
+      "passwordReset": "Password reset."
+    }
+  }
+}

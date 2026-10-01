@@ -14,13 +14,15 @@ backend/            .NET 10 solution (Omnichannel.slnx)
   src/Omnichannel.Workers         .NET Worker Service host (workers added from step 6)
   src/Omnichannel.Tests           xUnit tests
 docker/             docker-compose (PostgreSQL, RabbitMQ, API), DB init scripts, Dockerfiles
-frontend/           React + TypeScript (not scaffolded yet)
+frontend/           React + TypeScript dashboard (Vite, Redux Toolkit / RTK Query, Ant Design, i18next)
+scripts/smoke/      Scripted manual checks per task (PowerShell)
 ```
 
 ## Prerequisites
 
 - .NET SDK 10.0.1xx or later (`dotnet --version`)
 - Docker Desktop
+- Node.js 22.12 or later for the frontend (`frontend/.nvmrc` pins 24)
 
 ## First-time setup (PowerShell, from the repository root)
 
@@ -120,6 +122,33 @@ dotnet run --project src/Omnichannel.Workers
   (`OrderWorker:MaxAttempts` new attempts; attempt numbers keep counting), and `processing.retry_requested` is logged. The copy in
   the DLQ is left there for inspection. Look up the result with `GET /api/processing/tasks/{id}` or `GET /api/orders/{orderId}`.
 
+## Frontend
+
+React dashboard in `frontend/` (Vietnamese by default, English switchable in the header).
+
+```powershell
+cd frontend
+npm ci          # first time, and after package.json changes
+npm run dev     # http://localhost:5173 - needs the API on http://localhost:5080 (section 5)
+```
+
+- `npm run dev` proxies `/api` to the API, so the browser only talks to its own origin (no CORS involved).
+- Sign in with a user of the API (the bootstrap admin, or one created on the Users page).
+- Other scripts: `npm run typecheck`, `npm run lint` (ESLint + Prettier check), `npm test` (Vitest, no API needed: requests
+  are answered by MSW), `npm run build` (output in `frontend/dist`), `npm run preview`, `npm run format`.
+- Structure: `src/app` (store, router, providers, layout), `src/shared` (API layer, components, i18n, helpers),
+  `src/features/<feature>` (RTK Query endpoints, pages), `src/pages` (dashboard placeholder, 403, 404).
+- Conventions every page follows:
+  - server data through RTK Query endpoints injected into `baseApi` (tags per resource); Redux slices only for client state
+    (the session);
+  - every text through i18n (`src/shared/i18n/vi.json` and `en.json` must have the same keys; a test checks this and also
+    fails on hard-coded text in components);
+  - fixed widths from `src/shared/components/layout.ts` and truncation with a tooltip, so switching the language changes
+    text only;
+  - API errors: validation errors on the form fields (`applyProblemToForm`), `errorCode` translated under `errors.<code>`,
+    network errors and 5xx as a notification with the correlation id.
+- The access token is kept in `sessionStorage` (cleared when the tab closes); the language choice in `localStorage`.
+
 ## API conventions
 
 - Every endpoint requires a JWT (`Authorization: Bearer ...`) unless marked `[AllowAnonymous]`.
@@ -139,6 +168,6 @@ dotnet run --project src/Omnichannel.Workers
   `TokenRevocation:CacheDuration` (default 30 s, max 5 min, `00:00:00` = no cache) on other instances. A temporary lockout after
   failed logins only blocks new logins; it does not end an active session. Tokens issued before this feature (no `sstamp`) are
   not accepted: log in again.
-- Validation messages are returned in the language of `Accept-Language` (`vi` or `en`, default `en`). Error keys and `errorCode`
-  values are the same in both languages.
+- Validation messages (FluentValidation's built-in ones and the Identity password policy) are returned in the language of
+  `Accept-Language` (`vi` or `en`, default `en`). Error keys and `errorCode` values are the same in both languages.
 - Every operation writes a `user.*` row to `SystemEventLogs` with `targetUserId` and `actorUserId`; logs contain user ids only.
