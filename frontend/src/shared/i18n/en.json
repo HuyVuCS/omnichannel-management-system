@@ -9,7 +9,10 @@
     "create": "Create",
     "all": "All",
     "backToDashboard": "Back to dashboard",
-    "loading": "Loading..."
+    "loading": "Loading...",
+    "edit": "Edit",
+    "actions": "Actions",
+    "createdAt": "Created"
   },
   "roles": {
     "Admin": "Admin",
@@ -62,7 +65,11 @@
     "user_not_found": "The user no longer exists.",
     "user_email_exists": "A user with this e-mail address already exists.",
     "last_admin": "This is the last active administrator. The system must keep at least one.",
-    "cannot_modify_self": "You cannot change your own role or lock your own account."
+    "cannot_modify_self": "You cannot change your own role or lock your own account.",
+    "not_found": "The item was not found.",
+    "product_sku_exists": "A product with this SKU already exists.",
+    "channel_slug_exists": "A channel with this slug already exists.",
+    "channel_not_found": "The channel does not exist or is inactive."
   },
   "pages": {
     "dashboard": {
@@ -135,6 +142,110 @@
       "locked": "User locked.",
       "unlocked": "User unlocked.",
       "passwordReset": "Password reset."
+    }
+  },
+  "products": {
+    "title": "Products",
+    "create": "New product",
+    "searchPlaceholder": "Search by SKU or name",
+    "columns": {
+      "sku": "SKU",
+      "name": "Name",
+      "price": "Price",
+      "availableStock": "Available",
+      "stockStatus": "Stock status",
+      "expiryDate": "Expiry date"
+    },
+    "stock": {
+      "low": "Low stock",
+      "ok": "In stock"
+    },
+    "createModal": {
+      "title": "New product"
+    },
+    "editModal": {
+      "title": "Edit product"
+    },
+    "form": {
+      "sku": "SKU",
+      "skuHint": "Letters A-Z, digits, dot, underscore, hyphen. Cannot be changed later.",
+      "name": "Name",
+      "price": "Price (VND)",
+      "lowStockThreshold": "Low-stock threshold",
+      "lowStockThresholdHint": "0 = warn only when out of stock.",
+      "expiryDate": "Expiry date (optional)"
+    },
+    "messages": {
+      "created": "Product created.",
+      "updated": "Product updated."
+    }
+  },
+  "customers": {
+    "title": "Customers",
+    "create": "New customer",
+    "searchPlaceholder": "Search by name, phone, e-mail",
+    "columns": {
+      "name": "Name",
+      "phone": "Phone",
+      "email": "E-mail",
+      "address": "Address"
+    },
+    "createModal": {
+      "title": "New customer"
+    },
+    "editModal": {
+      "title": "Edit customer"
+    },
+    "form": {
+      "name": "Name",
+      "phone": "Phone",
+      "email": "E-mail",
+      "address": "Address"
+    },
+    "messages": {
+      "created": "Customer created.",
+      "updated": "Customer updated."
+    }
+  },
+  "channels": {
+    "title": "Channels",
+    "create": "New channel",
+    "columns": {
+      "name": "Name",
+      "slug": "Slug",
+      "type": "Type",
+      "status": "Status"
+    },
+    "types": {
+      "Website": "Website",
+      "Pos": "Point of sale",
+      "DigitalPlatform": "Digital platform"
+    },
+    "status": {
+      "Active": "Active",
+      "Inactive": "Inactive"
+    },
+    "createModal": {
+      "title": "New channel"
+    },
+    "editModal": {
+      "title": "Edit channel"
+    },
+    "form": {
+      "name": "Name",
+      "slug": "Slug",
+      "slugHint": "Lower-case letters and digits separated by hyphens, e.g. digital-platform. Cannot be changed later.",
+      "type": "Type",
+      "status": "Status"
+    },
+    "confirm": {
+      "deactivateTitle": "Deactivate this channel?",
+      "deactivateContent": "Orders sent to channel {{name}} will be rejected until it is active again.",
+      "deactivateOk": "Deactivate"
+    },
+    "messages": {
+      "created": "Channel created.",
+      "updated": "Channel updated."
     }
   }
 }

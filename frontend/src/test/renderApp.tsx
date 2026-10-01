@@ -12,10 +12,15 @@ interface RenderAppOptions {
   route?: string;
   /** Stored session to start with (as after a page reload while signed in); signed out when omitted. */
   session?: Session;
+  /**
+   * Keep AntD animations on. They never finish in jsdom, so a closed dialog stays mounted — the situation of a dialog
+   * that is reopened before its close animation has ended.
+   */
+  animations?: boolean;
 }
 
 /** Renders the whole application the way `main.tsx` does, with a memory router and a fresh store. */
-export function renderApp({ route = '/', session }: RenderAppOptions = {}) {
+export function renderApp({ route = '/', session, animations = false }: RenderAppOptions = {}) {
   if (session) {
     saveSession(session);
   }
@@ -25,7 +30,7 @@ export function renderApp({ route = '/', session }: RenderAppOptions = {}) {
   // Animations never finish in jsdom (no transition events), so closed dialogs and dropdowns would stay in the DOM.
   // The app's own ConfigProvider inherits this token; nothing else differs from production.
   const view = render(
-    <ConfigProvider theme={{ token: { motion: false } }}>
+    <ConfigProvider theme={{ token: { motion: animations } }}>
       <App store={store} router={router} />
     </ConfigProvider>,
   );

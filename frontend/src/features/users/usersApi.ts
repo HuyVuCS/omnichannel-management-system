@@ -1,6 +1,7 @@
 import type { Role } from '@/features/auth/session';
 import { baseApi } from '@/shared/api/baseApi';
 import type { PagedResult } from '@/shared/api/types';
+import type { SortDirection } from '@/shared/hooks/useListQueryState';
 
 export interface User {
   userId: string;
@@ -12,8 +13,6 @@ export interface User {
   lockoutEnd: string | null;
   accessFailedCount: number;
 }
-
-export type SortDirection = 'asc' | 'desc';
 
 /** Query string of `GET /api/users` (sorting is by e-mail only). */
 export interface UserListArgs {

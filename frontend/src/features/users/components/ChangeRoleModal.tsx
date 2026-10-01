@@ -1,10 +1,11 @@
-import { Alert, App as AntApp, Form, Modal, Typography } from 'antd';
-import { useState } from 'react';
+import { Form, Modal, Typography } from 'antd';
 import { useTranslation } from 'react-i18next';
 import type { Role } from '@/features/auth/session';
-import { applyProblemToForm } from '@/shared/api/problemDetails';
 import { FieldHint } from '@/shared/components/FieldHint';
+import { FormErrors } from '@/shared/components/FormErrors';
 import { MODAL_WIDTH } from '@/shared/components/layout';
+import { useFormSubmission } from '@/shared/hooks/useFormSubmission';
+import { useResetFormOnOpen } from '@/shared/hooks/useResetFormOnOpen';
 import { useChangeUserRoleMutation, type User } from '../usersApi';
 import { RoleSelect } from './RoleSelect';
 
@@ -17,25 +18,14 @@ interface ChangeRoleModalProps {
 /** Changes a user's role. `last_admin` and `cannot_modify_self` from the API are shown translated above the form. */
 export function ChangeRoleModal({ user, onClose }: ChangeRoleModalProps) {
   const { t } = useTranslation();
-  const { message } = AntApp.useApp();
   const [form] = Form.useForm<{ role: Role }>();
+  useResetFormOnOpen(form, user);
   const [changeRole, { isLoading }] = useChangeUserRoleMutation();
-  const [formErrors, setFormErrors] = useState<string[]>([]);
-
-  const submit = async ({ role }: { role: Role }) => {
-    if (!user) {
-      return;
-    }
-
-    setFormErrors([]);
-    try {
-      await changeRole({ userId: user.userId, role }).unwrap();
-      message.success(t('users.messages.roleChanged'));
-      onClose();
-    } catch (error) {
-      setFormErrors(applyProblemToForm(form, error, t));
-    }
-  };
+  const { submit, formErrors, clearErrors } = useFormSubmission(form, {
+    action: ({ role }) => changeRole({ userId: user?.userId ?? '', role }).unwrap(),
+    successKey: 'users.messages.roleChanged',
+    onSuccess: onClose,
+  });
 
   return (
     <Modal
@@ -47,13 +37,14 @@ export function ChangeRoleModal({ user, onClose }: ChangeRoleModalProps) {
       closable={{ 'aria-label': t('common.close') }}
       confirmLoading={isLoading}
       onOk={() => form.submit()}
-      onCancel={onClose}
-      afterClose={() => setFormErrors([])}
+      onCancel={() => {
+        // Cleared now, not after the close animation: the dialog may be reopened before that.
+        clearErrors();
+        onClose();
+      }}
       destroyOnHidden
     >
-      {formErrors.length > 0 && (
-        <Alert type="error" showIcon title={formErrors.join(' ')} style={{ marginBottom: 16 }} />
-      )}
+      <FormErrors errors={formErrors} />
       <Typography.Paragraph ellipsis={{ tooltip: user?.email }} strong>
         {user?.email}
       </Typography.Paragraph>

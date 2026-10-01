@@ -27,8 +27,9 @@ export default tseslint.config(
     },
   },
   {
-    // Test helpers export render utilities next to components; fast refresh does not matter there.
-    files: ['src/test/**', '**/*.test.{ts,tsx}'],
+    // Test helpers export render utilities next to components; the route table declares the lazy page components
+    // next to the routes. Fast refresh does not matter for either.
+    files: ['src/test/**', '**/*.test.{ts,tsx}', 'src/app/router.tsx'],
     rules: { 'react-refresh/only-export-components': 'off' },
   },
   prettier,

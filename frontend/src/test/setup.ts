@@ -1,8 +1,12 @@
 import '@testing-library/jest-dom/vitest';
-import { cleanup } from '@testing-library/react';
+import { cleanup, configure } from '@testing-library/react';
 import { afterAll, afterEach, beforeAll, vi } from 'vitest';
 import i18n, { DEFAULT_LANGUAGE } from '@/shared/i18n';
 import { server } from './server';
+
+// Pages are separate chunks (React.lazy): the first render of a page in a test file also loads and transforms its
+// modules, which can take longer than the default 1 s when several test files run in parallel.
+configure({ asyncUtilTimeout: 5000 });
 
 // jsdom has no layout engine: the browser APIs AntD probes for are stubbed.
 Object.defineProperty(window, 'matchMedia', {

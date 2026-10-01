@@ -16,8 +16,14 @@ export const LANGUAGE_SWITCH_WIDTH = 96;
 /** Primary action buttons in page headers ("Thêm người dùng" is the longest so far). */
 export const PAGE_ACTION_WIDTH = 176;
 
-/** Form dialogs (create user, change role, reset password). */
+/** Form dialogs. */
 export const MODAL_WIDTH = 480;
+
+/** Table column with one icon action per row. */
+export const SINGLE_ACTION_COLUMN_WIDTH = 88;
+
+/** The page-size selector of a table's pagination. */
+export const PAGE_SIZE_SELECT_WIDTH = 120;
 
 export const FILTER_WIDTH = 180;
 export const SEARCH_WIDTH = 280;

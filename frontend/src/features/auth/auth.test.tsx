@@ -133,9 +133,9 @@ describe('route guards', () => {
   });
 
   it('renders a localised placeholder for pages of later tasks and a 404 page for unknown addresses', async () => {
-    const { router } = renderApp({ route: '/products', session: sessionOf(staffUser) });
+    const { router } = renderApp({ route: '/inventory', session: sessionOf(staffUser) });
 
-    expect(await screen.findByText('Trang này sẽ có ở task 011.')).toBeInTheDocument();
+    expect(await screen.findByText('Trang này sẽ có ở task 012.')).toBeInTheDocument();
 
     await router.navigate('/no-such-page');
     expect(await screen.findByText('Không tìm thấy trang')).toBeInTheDocument();
@@ -179,16 +179,16 @@ describe('session end', () => {
   });
 
   it('logs out when the access token expires while the page is open', async () => {
-    const { location } = renderApp({ route: '/products', session: sessionOf(staffUser, 400) });
+    const { location } = renderApp({ route: '/inventory', session: sessionOf(staffUser, 400) });
 
-    expect(await screen.findByText('Trang này sẽ có ở task 011.')).toBeInTheDocument();
+    expect(await screen.findByText('Trang này sẽ có ở task 012.')).toBeInTheDocument();
 
-    await waitFor(() => expect(location()).toBe('/login?returnUrl=%2Fproducts'), { timeout: 3000 });
+    await waitFor(() => expect(location()).toBe('/login?returnUrl=%2Finventory'), { timeout: 3000 });
     expect(storedSession()).toBeNull();
   });
 
   it('goes to the plain login page on logout', async () => {
-    const { user, location } = renderApp({ route: '/products', session: sessionOf(staffUser) });
+    const { user, location } = renderApp({ route: '/inventory', session: sessionOf(staffUser) });
 
     await user.click(await screen.findByRole('button', { name: 'Đăng xuất' }));
 

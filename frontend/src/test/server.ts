@@ -9,6 +9,7 @@ export function api(path: string): string {
 }
 
 export const adminUser: AuthUser = { id: 'user-admin', email: 'admin@example.com', roles: ['Admin'] };
+export const managerUser: AuthUser = { id: 'user-manager', email: 'manager@example.com', roles: ['Manager'] };
 export const staffUser: AuthUser = { id: 'user-staff', email: 'staff@example.com', roles: ['Staff'] };
 
 /** A session as stored after login; valid for an hour unless `expiresInMs` says otherwise. */
@@ -30,6 +31,7 @@ export function problem(status: number, body: Partial<ProblemDetails> = {}) {
 
 const users: Record<string, AuthUser> = {
   [`Bearer ${sessionOf(adminUser).accessToken}`]: adminUser,
+  [`Bearer ${sessionOf(managerUser).accessToken}`]: managerUser,
   [`Bearer ${sessionOf(staffUser).accessToken}`]: staffUser,
 };
 
