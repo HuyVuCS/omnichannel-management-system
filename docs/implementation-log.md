@@ -197,3 +197,20 @@ audit events `processing.retry_requested` / `inventory.imported`; 366/366 tests.
 | Roles | Exactly one role per user | Admin/Manager/Staff are hierarchical; simpler UI and policies |
 | Password reset | Admin sets a temporary password (no e-mail infrastructure) | Self-service flows need e-mail (task 024 area) |
 | Guards | `last_admin`, `cannot_modify_self` | Never lock everyone out |
+
+## Task 009 result (reviewed 2026-10-01)
+
+User management API, security-stamp token revocation (≤ 30 s across instances, immediate on the changing instance), guards,
+audit; 428/428 tests. Review: `docs/tasks/009-*.review.md`. Smoke `scripts/smoke/task-009.ps1` passed (user).
+
+## Frontend decisions (user, 2026-10-01) — task 010
+
+| Topic | Decision | Reason | Revisit when |
+| --- | --- | --- | --- |
+| Lockout vs. sessions | Token check and `/me` rely on the security stamp only; temporary (failed-login) lockout blocks new logins but does not kill sessions | Prevents kicking users out by typing wrong passwords for their e-mail | — |
+| UI library | Ant Design v5 | Data-heavy admin UI (tables, filters, forms), Vietnamese locale | — |
+| Token storage | `sessionStorage`, 60-min token, no refresh token | Survives reload, cleared on tab close | Hardening (026): CSP, httpOnly cookie |
+| Language | Bilingual vi (default) / en with i18next; API messages localised via `Accept-Language`; `errorCode` translated on the client | User requirement | — |
+| Language switch | Changes text only: no reload/remount, state kept, no layout shift (fixed widths, truncation + tooltip), same date/money formats in both languages | User requirement | — |
+| Routing / state | `react-router` v7 (library mode); RTK Query for server state, Redux slices only for auth/UI | Doc §3.3 | — |
+| Dev serving | Vite proxy `/api` → API (5080) | No CORS in dev | Deployment (025) |
