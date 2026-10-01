@@ -3,7 +3,7 @@
 Plan from the current state to the complete system (backend + frontend), following the implementation order in
 the architecture document (section 15). Maintained by Cowork; updated after every task review.
 
-Last updated: 2026-10-01 (after review 012)
+Last updated: 2026-10-02 (after review 013)
 
 ## Conventions
 - One row = one task file `docs/tasks/NNN-*.md`, written by Cowork shortly before it is needed (not all up front),
@@ -30,10 +30,10 @@ Last updated: 2026-10-01 (after review 012)
 | 010 | FE | Vite + React + TS + Redux Toolkit/RTK Query + Ant Design scaffold; login (sessionStorage), role guards, layout, bilingual vi/en, ProblemDetails handling, **Users page**; BE: lockout fix + request localisation | 3 | Done |
 | 011 | FE | Products, Customers, Channels pages; Part A: AntD 6, localised custom validation messages, `isLowStock` on products, code splitting | 3.2 | Done |
 | 012 | FE | Inventory list, stock import, movement history pages (+ `createdByEmail` on movements); Part A: camelCase error keys, localised field names, route error page, dialogs closed on logout, search box follows the address | 3.2 | Done |
-| 013 | FE | Order entry page (Digital Platform / Website / POS panels, reusing `ProductSelect`; outcome tracked by polling the processing task) + orders list/detail; order links in the movement history; Part A: picker tooltips, deterministic expiry test, main-chunk growth | 3.1, 3.2 | Open |
-| 014 | BE | ChannelProduct mapping + Stock Sync Worker (per-channel queues, channel adapters, Polly); Part A: expected 23505 conflicts not logged as errors by EF Core | 8 | Planned |
+| 013 | FE | Order entry page (Digital Platform / Website / POS panels, reusing `ProductSelect`; outcome tracked by polling the processing task) + orders list/detail; order links in the movement history; Part A: picker tooltips, deterministic expiry test, main-chunk growth | 3.1, 3.2 | Done |
+| 014 | BE | ChannelProduct mapping API + Stock Sync Worker (per-channel queues, **simulated** channel adapters, Polly timeout/circuit breaker, directed `stock.sync.requested` for initial sync and manual retry); Part A: expected 23505 conflicts not logged as errors by EF Core, stale list error in the stock-import form | 8 | Open |
 | 015 | BE | SignalR hub, worker → API notifications, `GET /api/dashboard/summary` | 10 | Planned |
-| 016 | FE | Dashboard overview + realtime (reconnect → refetch) + Sync & Processing page (tasks, attempts, errors, retry); order-entry outcome by push instead of polling; revisit refetch-on-open of stock lists | 3.2, 12 | Planned |
+| 016 | FE | Dashboard overview + realtime (reconnect → refetch) + Sync & Processing page (tasks, attempts, errors, retry; filter by channel) + channel product mappings on the Channels page; order-entry outcome by push instead of polling; revisit refetch-on-open of stock lists; Part A (review 013): pickers hide only stale answers (`currentData`), panel title repetition, orders table width at 1280 px, load only the active language | 3.2, 12 | Planned |
 | 017 | BE | Alerts: low-stock (shared predicate) and processing failures, `GET /api/alerts`, `low_stock.created` event | 11 | Planned |
 | 018 | FE | Alerts page + Logs/Audit page | 3.2 | Planned |
 | 019 | BE+FE | S3 product images: presigned upload `POST /api/products/{id}/image/presign`, private bucket, UI upload | 12 | Planned |
@@ -52,7 +52,7 @@ Expect roughly 2–4 extra tasks for review follow-ups that are too large for a 
 
 | Needed before | Question | Options to discuss |
 | --- | --- | --- |
-| 014 | Are marketplace/channel APIs real integrations or simulated? | Simulated adapters behind an interface (default) · real sandbox APIs |
+| ~~014~~ | ~~Are marketplace/channel APIs real integrations or simulated?~~ | **Decided 2026-10-02 (user): simulated adapters** behind `IChannelStockClient`, in-process in the Workers host; see implementation log "Task 014 plan" |
 | 015 | How do Workers (separate process) trigger SignalR pushes in the API? | RabbitMQ notification queue consumed by the API · PostgreSQL `LISTEN/NOTIFY` |
 | 017 | Where are alerts stored? The ERD has no ALERT table. | New `Alert` table (open/acknowledged) · `SystemEventLog` only |
 | 019 | S3 in development | Real AWS bucket with dev credentials · local S3-compatible emulator |
