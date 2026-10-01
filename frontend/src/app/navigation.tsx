@@ -31,8 +31,8 @@ export interface NavigationItem {
 /** Every page of the dashboard (architecture doc §3.2), in menu order. The single source for menu and routes. */
 export const navigationItems: readonly NavigationItem[] = [
   { path: '/', labelKey: 'nav.dashboard', icon: <DashboardOutlined /> },
-  { path: '/order-entry', labelKey: 'nav.orderEntry', icon: <FormOutlined />, plannedTask: '013' },
-  { path: '/orders', labelKey: 'nav.orders', icon: <ShoppingCartOutlined />, plannedTask: '013' },
+  { path: '/order-entry', labelKey: 'nav.orderEntry', icon: <FormOutlined /> },
+  { path: '/orders', labelKey: 'nav.orders', icon: <ShoppingCartOutlined /> },
   { path: '/inventory', labelKey: 'nav.inventory', icon: <InboxOutlined /> },
   { path: '/inventory/movements', labelKey: 'nav.inventoryMovements', icon: <SwapOutlined /> },
   { path: '/products', labelKey: 'nav.products', icon: <AppstoreOutlined /> },

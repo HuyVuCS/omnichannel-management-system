@@ -7,7 +7,7 @@ import { ProductSelect } from '@/features/products/components/ProductSelect';
 import { productLabel, useGetProductQuery, type Product } from '@/features/products/productsApi';
 import { applyProblemToForm } from '@/shared/api/problemDetails';
 import { FormErrors } from '@/shared/components/FormErrors';
-import { MODAL_WIDTH, PAGE_ACTION_WIDTH, PRODUCT_SELECT_WIDTH } from '@/shared/components/layout';
+import { MODAL_WIDTH, PAGE_ACTION_WIDTH, PRODUCT_SELECT_WIDTH, QUANTITY_INPUT_WIDTH } from '@/shared/components/layout';
 import { formatNumber } from '@/shared/utils/format';
 import { useImportInventoryMutation, type ImportInventoryRequest } from '../inventoryApi';
 
@@ -43,8 +43,6 @@ interface StockImportFormProps {
   onImported: (outcome: ImportOutcome) => void;
 }
 
-// Wide enough for the API's message under it ("'Số lượng' phải có giá trị trong khoảng từ 1 đến 1000000 ...").
-const QUANTITY_WIDTH = 240;
 const DOCUMENT_SERIES_WIDTH = 240;
 
 /**
@@ -169,7 +167,7 @@ export function StockImportForm({ initialProductId, onImported }: StockImportFor
                     name={[field.name, 'stock']}
                     rules={[{ required: true }]}
                     messageVariables={{ label: t('stockImport.form.quantity') }}
-                    style={{ width: QUANTITY_WIDTH }}
+                    style={{ width: QUANTITY_INPUT_WIDTH }}
                   >
                     <InputNumber<number>
                       min={1}

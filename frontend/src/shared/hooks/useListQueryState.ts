@@ -16,6 +16,12 @@ export interface ListQueryOptions<SortField extends string> {
   sortFields?: readonly SortField[];
   /** The API's default sort field; `?sortDir=desc` without `sortBy` applies to it. */
   defaultSortField?: SortField;
+  /**
+   * The direction of the API's default order, for a list whose table shows it (orders: newest first). With it, the
+   * default field's column shows this direction while the address has no sort, and choosing exactly this order in the
+   * table is the default again: nothing is written to the address.
+   */
+  defaultSortDir?: SortDirection;
 }
 
 const NO_SORT_FIELDS: readonly string[] = [];
@@ -35,6 +41,7 @@ function positiveInt(value: string | null, fallback: number): number {
 export function useListQueryState<SortField extends string = never>({
   sortFields = NO_SORT_FIELDS as readonly SortField[],
   defaultSortField,
+  defaultSortDir,
 }: ListQueryOptions<SortField> = {}) {
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -95,16 +102,19 @@ export function useListQueryState<SortField extends string = never>({
       const sortDir: SortDirection | undefined =
         sort?.order === 'descend' ? 'desc' : sort?.order === 'ascend' ? 'asc' : undefined;
       const sortBy = sortDir ? String(sort?.columnKey ?? defaultSortField) : undefined;
+      // The table reports the default order it shows like a chosen one (also on a page change); it stays out of the
+      // address.
+      const isDefaultOrder = defaultSortDir !== undefined && sortBy === defaultSortField && sortDir === defaultSortDir;
 
       patchParams({
         // A new sort order starts on the first page.
         page: extra.action === 'paginate' && pagination.current !== 1 ? pagination.current : undefined,
         pageSize: pagination.pageSize === DEFAULT_PAGE_SIZE ? undefined : pagination.pageSize,
         sortBy: sortBy === defaultSortField ? undefined : sortBy,
-        sortDir,
+        sortDir: isDefaultOrder ? undefined : sortDir,
       });
     },
-    [defaultSortField, patchParams],
+    [defaultSortDir, defaultSortField, patchParams],
   );
 
   /** `pagination` of the AntD table. */
@@ -122,9 +132,19 @@ export function useListQueryState<SortField extends string = never>({
 
   /** `sortOrder` of a sortable column. */
   const sortOrder = useCallback(
-    (field: SortField): 'ascend' | 'descend' | null =>
-      state.sortBy === field ? (state.sortDir === 'desc' ? 'descend' : 'ascend') : null,
-    [state.sortBy, state.sortDir],
+    (field: SortField): 'ascend' | 'descend' | null => {
+      if (state.sortBy === field) {
+        return state.sortDir === 'desc' ? 'descend' : 'ascend';
+      }
+
+      // No sort in the address: the API's default order, shown when the page says which direction that is.
+      if (state.sortBy === undefined && field === defaultSortField && defaultSortDir) {
+        return defaultSortDir === 'desc' ? 'descend' : 'ascend';
+      }
+
+      return null;
+    },
+    [defaultSortDir, defaultSortField, state.sortBy, state.sortDir],
   );
 
   return { ...state, searchParams, patchParams, searchText, setSearchText, onTableChange, pagination, sortOrder };

@@ -40,6 +40,21 @@ export const SEARCH_WIDTH = 280;
 /** A product picker (`SKU — name`) used as a filter or in a form line. */
 export const PRODUCT_SELECT_WIDTH = 360;
 
+/**
+ * A quantity input of a form line. Wide enough for the API's message under it ("'Số lượng' phải có giá trị trong
+ * khoảng từ 1 đến 1000000 ...").
+ */
+export const QUANTITY_INPUT_WIDTH = 240;
+
+/** The label column of a summary (`Descriptions`): fixed, so the values start at the same place in both languages. */
+export const SUMMARY_LABEL_WIDTH = 220;
+
+/**
+ * The same for a summary whose labels are all short (a processing task): the values get the room, so an id (a GUID
+ * with its copy button) stays on one line in a two-column summary.
+ */
+export const SHORT_SUMMARY_LABEL_WIDTH = 160;
+
 /** A date-range filter (two `DD/MM/YYYY` inputs). */
 export const DATE_RANGE_WIDTH = 280;
 

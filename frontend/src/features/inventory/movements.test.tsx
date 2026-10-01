@@ -266,12 +266,12 @@ describe('movement history', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
-  it('a stock-import reference filters the history by that document; other references are plain text', async () => {
-    const { requests } = serveMovements([reserved, imported]);
+  it('a stock-import reference filters the history by that document; a manual adjustment is plain text', async () => {
+    const { requests } = serveMovements([adjusted, imported]);
     const { user: appUser, location } = renderMovements(`/inventory/movements?type=Import&page=2`);
     await screen.findByText('manager@example.com');
 
-    expect(screen.queryByRole('link', { name: /Đơn hàng:/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Điều chỉnh thủ công/ })).not.toBeInTheDocument();
     await appUser.click(screen.getByRole('link', { name: 'Phiếu nhập kho: S1/GRN-1' }));
 
     await waitFor(() =>
@@ -288,6 +288,40 @@ describe('movement history', () => {
     expect(screen.getByRole('combobox', { name: 'Loại tham chiếu' }).closest('.ant-select')).toHaveTextContent(
       'Phiếu nhập kho',
     );
+  });
+
+  it('an order reference leads to the order; a reference that is not an order id stays text', async () => {
+    const orderId = reserved.referenceId!;
+    const legacy = movement({
+      inventoryMovementId: 'm-legacy',
+      type: 'Release',
+      referenceType: 'Order',
+      referenceId: 'ORD-OLD-17',
+      createdBy: 'system:order-worker',
+    });
+    serveMovements([reserved, legacy, imported]);
+    const orderRequests: string[] = [];
+    server.use(
+      http.get(api('/orders/:id'), ({ params }) => {
+        orderRequests.push(String(params.id));
+        return problem(404, { errorCode: 'order_not_found' });
+      }),
+    );
+    const { user: appUser, location } = renderMovements();
+    await screen.findByText('manager@example.com');
+
+    // Not a GUID: no link, the text as before.
+    expect(screen.getByText('Đơn hàng: ORD-OLD-17')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Đơn hàng: ORD-OLD-17' })).not.toBeInTheDocument();
+
+    const link = screen.getByRole('link', { name: `Đơn hàng: ${orderId}` });
+    expect(link).toHaveAttribute('href', `/orders/${orderId}`);
+    await appUser.click(link);
+
+    // The order detail page opens for exactly that order (here the API does not know it).
+    expect(await screen.findByText('Không tìm thấy đơn hàng')).toBeInTheDocument();
+    expect(location()).toBe(`/orders/${orderId}`);
+    expect(orderRequests).toEqual([orderId]);
   });
 
   it('asks the API again on "Refresh"', async () => {

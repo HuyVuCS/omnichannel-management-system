@@ -4,6 +4,7 @@ import { RequireAuth } from '@/features/auth/RequireAuth';
 import { RequireRole } from '@/features/auth/RequireRole';
 import { LOGIN_PATH } from '@/features/auth/returnUrl';
 import { INVENTORY_PATH, MOVEMENTS_PATH, STOCK_IMPORT_PATH, STOCK_IMPORT_ROLES } from '@/features/inventory/paths';
+import { ORDER_DETAIL_ROUTE, ORDER_ENTRY_PATH, ORDERS_PATH } from '@/features/orders/paths';
 import { RouteErrorPage } from '@/pages/RouteErrorPage';
 import { ComingSoon } from '@/shared/components/ComingSoon';
 import { PageLoading } from '@/shared/components/PageLoading';
@@ -36,9 +37,18 @@ const MovementsPage = lazyPage(() =>
 const StockImportPage = lazyPage(() =>
   import('@/features/inventory/StockImportPage').then((m) => ({ default: m.StockImportPage })),
 );
+const OrderEntryPage = lazyPage(() =>
+  import('@/features/orders/OrderEntryPage').then((m) => ({ default: m.OrderEntryPage })),
+);
+const OrdersPage = lazyPage(() => import('@/features/orders/OrdersPage').then((m) => ({ default: m.OrdersPage })));
+const OrderDetailPage = lazyPage(() =>
+  import('@/features/orders/OrderDetailPage').then((m) => ({ default: m.OrderDetailPage })),
+);
 
 /** Pages that exist; every other menu item renders a placeholder until its task builds it. */
 const builtPages: Record<string, RouteObject['element']> = {
+  [ORDER_ENTRY_PATH]: <OrderEntryPage />,
+  [ORDERS_PATH]: <OrdersPage />,
   [INVENTORY_PATH]: <InventoryPage />,
   [MOVEMENTS_PATH]: <MovementsPage />,
   '/products': <ProductsPage />,
@@ -66,6 +76,7 @@ const pageRoutes: RouteObject[] = navigationItems
  * (`activeNavigationPath`).
  */
 const pagesOutsideMenu: RouteObject[] = [
+  { path: ORDER_DETAIL_ROUTE, element: <OrderDetailPage /> },
   {
     path: STOCK_IMPORT_PATH,
     element: (
