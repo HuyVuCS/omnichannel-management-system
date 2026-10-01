@@ -2,9 +2,6 @@ import { baseApi } from '@/shared/api/baseApi';
 import type { PagedResult } from '@/shared/api/types';
 import type { SortDirection } from '@/shared/hooks/useListQueryState';
 
-/** The API lets Manager and Admin import stock; everyone signed in may read stock and movements. */
-export const STOCK_IMPORT_ROLES = ['Admin', 'Manager'] as const;
-
 export interface InventoryItem {
   productId: string;
   sku: string;
