@@ -50,7 +50,7 @@ Anything listed under "Deviations" differs from, or adds to, the architecture do
 
 - ~~Flow 8.1 vs. reliability (step 5)~~ — decided 2026-09-29, option A (see "Steps 4–5").
 - **Reservation SQL (step 7):** use one conditional `UPDATE ... SET "ReservedStock" = "ReservedStock" + @qty WHERE "ProductId" = @id AND "AvailableStock" >= @qty` per item inside the transaction; raw SQL bypasses the audit interceptor, so set `UpdatedAt/UpdatedBy` explicitly. Do not enable `EnableRetryOnFailure` without wrapping the transaction in the execution strategy.
-- **StockSync per channel (step 8):** `ProcessingTask` has no `ChannelId` yet; add it when stock-sync tasks are introduced.
+- ~~**StockSync per channel (step 8):** `ProcessingTask` has no `ChannelId` yet; add it when stock-sync tasks are introduced.~~ — planned in 014 (deviation 13).
 - **Integration tests:** concurrency/oversell and idempotency tests need a real PostgreSQL (Testcontainers or the compose database). Not added yet.
 - **User management:** only the bootstrap admin exists; endpoints to create Manager/Staff users are not in the API contract yet.
 
@@ -269,7 +269,7 @@ on session end; search box follows the address. Backend 528/528, frontend 120/12
 | Cache rules | A successful mutation invalidates every list that displays fields it changed (e.g. product change → inventory list); lists of data the Workers change in the background use `refetchOnMountOrArgChange` | No stale stock or orders after navigation without realtime | 016: realtime push → refetch; keep refetch on SignalR reconnect |
 | Movement actor e-mail | `createdByEmail` visible to every role, Staff included | Internal audit view of internal users | Users outside the company get access |
 | API messages after a language switch | Messages received from the API (field errors, inline alerts, form-level errors) stay in the language they arrived in | Re-requesting to translate is not worth it; consistent since 010 | Users ask for it |
-| Main chunk budget | Every frontend report states the main chunk size and explains growth above 10 kB | 012 grew 70 kB unexplained | — |
+| ~~Main chunk budget~~ | ~~Every frontend report states the main chunk size and explains growth above 10 kB~~ — superseded by "Bundle metric" (review 013) | 012 grew 70 kB unexplained | — |
 
 ## Task 013 plan — order entry, orders list/detail (2026-10-01)
 
@@ -283,3 +283,42 @@ on session end; search box follows the address. Backend 528/528, frontend 120/12
 | Outbox `lastError` | Never shown in the UI; attempt `errorMessage` (sanitised by the API) may be shown | `lastError` is not sanitised for the UI | 016 if operators need it (Manager-only view) |
 | Manual retry on the order detail | Not in 013 | Only `OrderProcessing` tasks are order-bound today and they are `Succeeded` whenever an order exists | 016 |
 | Local-day date ranges | One helper `shared/utils/dateRange.ts` for movements and orders | Second page with the same rule | — |
+
+## Task 013 result (reviewed 2026-10-02)
+
+Order entry (three channel panels, outcome by polling the processing task), orders list and detail, order links in the
+movement history, `CustomerSelect`, processing API slice; Part A: picker titles, deterministic expiry test, main-chunk
+analysis. Frontend 167/167, smoke 31/31, 38/38 mutations; backend unchanged. Review: `docs/tasks/013-*.review.md`
+(user's manual check pending).
+
+| Topic | Decision | Reason | Revisit when |
+| --- | --- | --- | --- |
+| Tab visibility for polling | `setupListeners` with a custom handler (`app/tabVisibility.ts`), mounted from `App.tsx`: only `visibilitychange`, and the API's `focused` flag is corrected whenever it differs from the real visibility | RTK's default handler registers once per page load (module flag) and `resetApiState` resets `focused` to its page-load value — polling would stay off after logout + login in a background-opened tab | A query needs `refetchOnFocus` / `refetchOnReconnect` |
+| Cache after an order task finished | Invalidate the order *list* tag, `Inventory`, `InventoryMovement`, `Product` once; not single orders | The order being loaded would be fetched twice; orders do not change after creation yet; the detail refetches on open | Orders get state changes after creation (cancel, payment) |
+| Server-search pickers | Offer no option while the typed text is not what the options answer (debounce pending or request running) | Enter chose the first option of an older search: wrong product on a line (since 012) | — |
+| Default sort shown in a table | `useListQueryState({ defaultSortDir })`: the default field's column shows the API's default direction; choosing exactly that order writes nothing to the address | AntD reports a shown default order like a chosen one | — |
+| Bundle metric | Every frontend report states the **first-load set** (entry + static imports), raw and gzip, and explains growth above 10 kB raw; the main chunk is listed but not judged alone. No `manualChunks` for now | The main chunk moves by tens of kB when the bundler regroups shared vendor code (012 +67 kB, 013 +33 kB, no new code) | The first-load set must shrink (026); cheapest step: load only the active language (016 Part A) |
+
+## Task 014 plan — channel product mapping and stock sync (2026-10-02)
+
+| Topic | Decision | Reason | Revisit when |
+| --- | --- | --- | --- |
+| Channel APIs | **Simulated (user, 2026-10-02):** `IChannelStockClient` (Application) with `SimulatedChannelStockClient` (Infrastructure/ExternalChannels), in-process in the Workers host; per-channel mode (`Succeed` / `TransientError` / `PermanentError` / `Timeout`) and latency in configuration (live reload), plus Development-only external-SKU prefixes for deterministic failures | No real channel accounts exist; retry/DLQ must be demonstrable without code changes; a real adapter replaces the simulated one without touching the worker. Alternatives: real sandbox API (blocked on credentials, flaky tests), HTTP mock service (extra infrastructure) | A real channel is integrated; 022 needs readable channel-side stock (simulator state) |
+| Channel ↔ queue | Fixed map by slug: `website` → `stock.sync.website`, `pos` → `stock.sync.pos`, `digital-platform` → `stock.sync.marketplace` (doc §10). Other channels can have mappings but are not synced | Doc topology has exactly these queues; one queue per channel keeps channels independent (doc §13) | Channels are added at runtime and need sync |
+| Stock-sync task | One `ProcessingTask(StockSync)` per (channel, `inventory.changed` message) with `IdempotencyKey = stocksync:{channelId:N}:{messageId}`, `ChannelId` and `ProductId` set, `OrderId` null; the correlation id of the change links it to the order or import | Exact history per change and channel; duplicate deliveries hit the unique key; an order detail is not flooded with sync tasks | Sync volume needs coalescing per (channel, product) |
+| No mapping | Product without an Active mapping on the channel, or channel Inactive → ACK, no task | Every movement reaches every channel queue; tasks only for real work | — |
+| Pushed value | The **current** `AvailableStock`, re-read before the push (never the message snapshot); after a push it is read again and pushed again while it differs (at most `MaxPushesPerAttempt`, default 3); consumer concurrency 1 per channel queue per instance | Messages arrive out of order (delayed retries) and several instances may push the same product; re-read + verify converges to the central value without locks or holding a transaction during an external call | Real channel rate limits make extra pushes expensive |
+| Directed messages | Event `stock.sync.requested` (payload `taskId`, `channelId`, `productId`; envelope `taskId` = aggregate id), published with `OutboxEvent.RoutingKey` = the channel's queue name; each stock-sync queue is additionally bound to its own name on `omnichannel.topic` | Initial sync, manual retry and later reconciliation must reach one channel only; `inventory.changed` fans out to all three | — |
+| Manual retry of a stock-sync task | Creates a directed `stock.sync.requested` for the task's channel instead of copying the fanned-out `inventory.changed` | A copy would reach all channels and create unrelated tasks; the retried task would stay `Pending` | — |
+| Initial sync | Creating a mapping, re-activating it, or changing its external ids while Active creates a `StockSync` task + directed message in the same transaction (only for an Active channel with a sync queue) | A mapped product without later movements would never reach the channel | 022 reconciliation |
+| Resilience | Polly v8 pipeline per channel: attempt timeout (10 s) + circuit breaker on transient failures; **no Polly retry** — retries are the broker delay tiers, each recorded as an attempt | Retries inside an attempt would hide tries from the attempt history | — |
+| Error classes | Channel timeout, 5xx/unavailable, 429, open circuit, transient DB errors → retry; channel rejection (unknown external product, invalid value) → permanent; shared `ProcessingErrorClassifier` | Same retry/DLQ model as orders (task 007) | — |
+| Expected unique violations | 23505 on a constraint that a service maps to 409 / an idempotent outcome is not logged at Warning/Error by EF Core; every other database failure still is. One registry of these constraint names, used by the catch clauses and the log filter | Operators must not see business conflicts as errors (review 012); unexpected violations stay loud | — |
+
+### Deviations / additions to the architecture document
+11. `OutboxEvent.RoutingKey` (nullable; null = event type) — directed messages to one channel queue.
+12. Event type `stock.sync.requested` and one extra binding per stock-sync queue (routing key = queue name).
+13. `ProcessingTask.ChannelId`, `ProcessingTask.ProductId` (nullable FKs; required for `StockSync`) — closes the open point
+    "StockSync per channel" of steps 1–3.
+14. Endpoints `GET/POST /api/channels/{channelId}/products`, `PUT /api/channels/{channelId}/products/{channelProductId}`
+    (doc §7.1 `ChannelService`: "Channel và ChannelProduct mapping"; not in the §11 table).
