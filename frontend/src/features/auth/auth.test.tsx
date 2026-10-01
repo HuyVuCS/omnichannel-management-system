@@ -1,6 +1,6 @@
-import { screen, waitFor } from '@testing-library/react';
+import { act, screen, waitFor } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { PagedResult } from '@/shared/api/types';
 import type { User } from '@/features/users/usersApi';
 import { renderApp } from '@/test/renderApp';
@@ -179,12 +179,32 @@ describe('session end', () => {
   });
 
   it('logs out when the access token expires while the page is open', async () => {
-    const { location } = renderApp({ route: '/alerts', session: sessionOf(staffUser, 400) });
+    // A controlled clock instead of a session of a few hundred real milliseconds: the expiry timer and `Date` are
+    // fake and jump on request, so the test does not depend on how fast the page renders. `shouldAdvanceTime` keeps
+    // the fake clock moving with real time in between, which the rest of the application needs to behave as usual.
+    vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    try {
+      const session = sessionOf(staffUser, 30 * 60 * 1000);
+      const { location } = renderApp({ route: '/alerts', session });
+      expect(await screen.findByText('Trang này sẽ có ở task 018.')).toBeInTheDocument();
 
-    expect(await screen.findByText('Trang này sẽ có ở task 018.')).toBeInTheDocument();
+      // One minute before the token expires the user is still signed in ...
+      const remaining = Date.parse(session.expiresAt) - Date.now();
+      act(() => {
+        vi.advanceTimersByTime(remaining - 60 * 1000);
+      });
+      expect(location()).toBe('/alerts');
+      expect(storedSession()).not.toBeNull();
 
-    await waitFor(() => expect(location()).toBe('/login?returnUrl=%2Falerts'), { timeout: 3000 });
-    expect(storedSession()).toBeNull();
+      // ... and at the moment it expires the session ends.
+      act(() => {
+        vi.advanceTimersByTime(60 * 1000);
+      });
+      expect(storedSession()).toBeNull();
+      await waitFor(() => expect(location()).toBe('/login?returnUrl=%2Falerts'));
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('goes to the plain login page on logout', async () => {
