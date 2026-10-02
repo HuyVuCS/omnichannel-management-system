@@ -1,5 +1,5 @@
 import { screen, waitFor, within } from '@testing-library/react';
-import { http, HttpResponse } from 'msw';
+import { delay, http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 import type { AuthUser } from '@/features/auth/session';
 import { productsApi } from '@/features/products/productsApi';
@@ -540,6 +540,45 @@ describe('channel detail: changing a mapping', () => {
     await waitFor(() => expect(columnTexts('Trạng thái')).toEqual(['Ngừng', 'Hoạt động']));
     expect(listRequests).toHaveLength(3);
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('never shows the status of the task of the previous save while the task of the next save is loading', async () => {
+    const { state } = serveChannelDetail(websiteChannel, [teaMapping, coffeeMapping]);
+    // The first task has succeeded; the second one is slow to load and still waiting.
+    server.use(
+      http.get(api('/processing/tasks/:id'), async ({ params }) => {
+        if (params.id === SYNC_TASK_ID) {
+          return HttpResponse.json(syncTask('Succeeded'));
+        }
+
+        await delay(600);
+        return HttpResponse.json({ ...syncTask('Pending'), taskId: TASK_ID });
+      }),
+    );
+    const { user } = renderDetail();
+    const save = async (sku: string, externalSku: string, syncTaskId: string) => {
+      state.updateAnswer = (channelProductId) =>
+        HttpResponse.json(savedMapping(channelProductId === TEA_MAPPING_ID ? teaMapping : coffeeMapping, syncTaskId));
+      const dialog = await openEditDialog(user, sku);
+      await user.type(within(dialog).getByLabelText('SKU trên kênh'), externalSku);
+      await user.click(within(dialog).getByRole('button', { name: 'Lưu' }));
+    };
+
+    await save('COF-01', 'WEB-COF', SYNC_TASK_ID);
+    const result = await screen.findByTestId('sync-result');
+    expect(await within(result).findByText('Thành công')).toBeInTheDocument();
+
+    await save('TEA-01', '-2', TASK_ID);
+    await waitFor(() => expect(result).toHaveTextContent('Đã bắt đầu đồng bộ tồn kho cho TEA-01.'));
+    // Its task is not known yet: no status at all, least of all the other task's.
+    expect(within(result).queryByText('Thành công')).not.toBeInTheDocument();
+    expect(within(result).getByRole('link', { name: 'Mở tác vụ' })).toHaveAttribute(
+      'href',
+      `/processing/tasks/${TASK_ID}`,
+    );
+
+    expect(await within(result).findByText('Đang chờ')).toBeInTheDocument();
+    expect(within(result).queryByText('Thành công')).not.toBeInTheDocument();
   });
 
   it('says that the mapping no longer exists (404) in the dialog and fetches the list again', async () => {

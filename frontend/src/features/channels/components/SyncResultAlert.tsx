@@ -18,7 +18,9 @@ function StartedSync({ taskId }: { taskId: string }) {
   const { t } = useTranslation();
   const { token } = theme.useToken();
   // Fetched when the alert appears; a realtime hint that names the task fetches it again (`features/realtime`).
-  const { data: task } = useGetProcessingTaskQuery(taskId, { refetchOnMountOrArgChange: true });
+  // `currentData`, not `data`: while the task of the next save is loading, the status of the previous save's task must
+  // not be shown as its status.
+  const { currentData: task } = useGetProcessingTaskQuery(taskId, { refetchOnMountOrArgChange: true });
 
   return (
     <Space size={12} data-testid="sync-result-task">
