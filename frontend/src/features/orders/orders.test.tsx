@@ -105,6 +105,34 @@ describe('orders list', () => {
     expect(sortOf(/Mã đơn hàng bên ngoài/)).toBeNull();
   });
 
+  it('puts the columns users scan first: the status ends inside the content area of a 1280 px window', async () => {
+    serveOrderList([reserved, insufficient]);
+    renderOrders();
+    await screen.findByText('WEB-20261001-ABC123');
+
+    const headers = [...document.querySelectorAll('thead th')].map((th) => th.textContent);
+    expect(headers).toEqual([
+      'Ngày tạo',
+      'Mã đơn hàng bên ngoài',
+      'Trạng thái',
+      'Tổng tiền',
+      'Khách hàng',
+      'Kênh bán',
+      'Số dòng',
+      'Thao tác',
+    ]);
+
+    // jsdom has no layout: the fixed column widths are what can be checked. 1280 px window - 240 px menu - 2 × 24 px
+    // padding = 992 px.
+    const widths = [...document.querySelectorAll<HTMLElement>('table colgroup col')].map((col) =>
+      Number.parseInt(col.style.width, 10),
+    );
+    const upToStatus = widths.slice(0, headers.indexOf('Trạng thái') + 1).reduce((sum, width) => sum + width, 0);
+    const upToTotal = widths.slice(0, headers.indexOf('Tổng tiền') + 1).reduce((sum, width) => sum + width, 0);
+    expect(upToStatus).toBeLessThanOrEqual(992);
+    expect(upToTotal).toBeLessThanOrEqual(992);
+  });
+
   it('restores search, sort, every filter and the page from the address (reload) and sends the local day range with its offset', async () => {
     const { requests, customers } = serveOrderList([insufficient], 45);
     const address =
