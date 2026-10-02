@@ -13,6 +13,7 @@ using Omnichannel.Domain.Enums;
 using Omnichannel.Infrastructure.Persistence;
 using Omnichannel.Infrastructure.RabbitMQ;
 using Omnichannel.Workers.OrderWorker;
+using Omnichannel.Workers.Processing;
 
 namespace Omnichannel.Tests.Integration.Workers;
 

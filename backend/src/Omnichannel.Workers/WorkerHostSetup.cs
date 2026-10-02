@@ -2,9 +2,11 @@ using Microsoft.Extensions.Options;
 using Omnichannel.Application;
 using Omnichannel.Application.Common.Abstractions;
 using Omnichannel.Infrastructure;
+using Omnichannel.Infrastructure.ExternalChannels;
 using Omnichannel.Infrastructure.RabbitMQ;
 using Omnichannel.Workers.OrderWorker;
 using Omnichannel.Workers.OutboxPublisher;
+using Omnichannel.Workers.StockSyncWorker;
 
 namespace Omnichannel.Workers;
 
@@ -34,10 +36,25 @@ public static class WorkerHostSetup
         services.AddSingleton<IValidateOptions<OrderWorkerOptions>, OrderWorkerOptionsValidator>();
         services.AddScoped<OrderMessageHandler>();
 
+        services.AddOptions<StockSyncWorkerOptions>()
+            .Bind(configuration.GetSection(StockSyncWorkerOptions.SectionName))
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<StockSyncWorkerOptions>, StockSyncWorkerOptionsValidator>();
+
+        // Channel calls: simulated channels behind the per-channel timeout and circuit breaker. Workers host only.
+        services.AddSimulatedChannelStockClient(configuration);
+        services.AddOptions<ChannelResilienceOptions>()
+            .Configure<IOptions<StockSyncWorkerOptions>>((resilience, stockSync) =>
+            {
+                resilience.CallTimeout = stockSync.Value.ChannelCallTimeout;
+                resilience.CircuitBreaker = stockSync.Value.CircuitBreaker;
+            });
+
         // Order matters: the topology is declared before any publisher/consumer starts.
         services.AddHostedService<RabbitMqTopologyInitializer>();
         services.AddHostedService<OutboxPublisherService>();
         services.AddHostedService<OrderWorkerService>();
+        services.AddHostedService<StockSyncWorkerService>();
 
         return services;
     }

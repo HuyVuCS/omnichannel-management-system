@@ -42,6 +42,16 @@ public abstract record HandlerResult
 
     /// <summary>Poison (unparseable, unknown task): straight to the DLQ.</summary>
     public sealed record Reject(string Reason) : HandlerResult;
+
+    /// <summary>
+    /// The host is stopping and the handler gave up work it could not finish (an external call was cancelled). The delivery is
+    /// left unsettled: the broker returns it to the queue when the consumer's channel closes, exactly as after a crash, and
+    /// the next delivery marks the unfinished attempt abandoned. Only for shutdown: an unsettled message blocks its
+    /// consumer slot until the channel closes.
+    /// </summary>
+    public static HandlerResult Abandon { get; } = new AbandonResult();
+
+    public sealed record AbandonResult : HandlerResult;
 }
 
 /// <summary>Why a message ends in the DLQ after processing was attempted.</summary>

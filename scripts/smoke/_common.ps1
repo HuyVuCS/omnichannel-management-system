@@ -1,12 +1,15 @@
 # Shared helpers for smoke checks. Windows PowerShell 5.1 and PowerShell 7 compatible.
 # ASCII only on purpose: Windows PowerShell 5.1 misreads UTF-8 files without a BOM.
 # Secrets: the admin credentials are read from backend/src/Omnichannel.Api/.env (git-ignored) and never printed.
+# Another environment (not the local development one): set SMOKE_BASE_URL, SMOKE_ADMIN_EMAIL and SMOKE_ADMIN_PASSWORD.
 
 $ErrorActionPreference = 'Stop'
 $script:RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $script:BaseUrl  = if ($env:SMOKE_BASE_URL) { $env:SMOKE_BASE_URL } else { 'http://localhost:5080' }
 $script:Results  = New-Object System.Collections.Generic.List[object]
 $script:StartedApi = $null
+$script:StartedWorkers = $null
+$script:WorkersLog = $null
 
 function Read-DotEnv([string]$path) {
     $values = @{}
@@ -19,6 +22,9 @@ function Read-DotEnv([string]$path) {
 }
 
 function Get-AdminCredential {
+    if ($env:SMOKE_ADMIN_EMAIL -and $env:SMOKE_ADMIN_PASSWORD) {
+        return @{ Email = $env:SMOKE_ADMIN_EMAIL; Password = $env:SMOKE_ADMIN_PASSWORD }
+    }
     $envFile = Join-Path $script:RepoRoot 'backend\src\Omnichannel.Api\.env'
     $values = Read-DotEnv $envFile
     if ($values['BOOTSTRAP_ADMIN_EMAIL'] -and $values['BOOTSTRAP_ADMIN_PASSWORD']) {
@@ -113,7 +119,46 @@ function Start-Smoke([string]$Title) {
     Write-Host 'API started.'
 }
 
+# True when a Workers host runs on this machine (started with "dotnet run" or from its build output).
+function Test-WorkersRunning {
+    $found = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
+        ($_.Name -eq 'dotnet.exe' -or $_.Name -eq 'Omnichannel.Workers.exe') -and
+        $_.CommandLine -and ($_.CommandLine -like '*Omnichannel.Workers*') -and ($_.CommandLine -notlike '* build *')
+    }
+    return (@($found).Count -gt 0)
+}
+
+# Uses a running Workers host if there is one; otherwise builds and starts it (Development: the channel simulator's SKU
+# rules are on), writes its output to a log file, and stops it again in Stop-Smoke. Needs the Workers user-secrets
+# (README section 6).
+function Start-SmokeWorkers {
+    if (Test-WorkersRunning) {
+        Write-Host 'Using the Workers host already running (restart it first if it runs an older build).'
+        return
+    }
+    Write-Host 'Workers host not running - building and starting it for this check...'
+    $proj = Join-Path $script:RepoRoot 'backend\src\Omnichannel.Workers'
+    & dotnet build $proj -c Debug --nologo -v q | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'Workers build failed.' }
+    $dll = Join-Path $proj 'bin\Debug\net10.0\Omnichannel.Workers.dll'
+    $env:DOTNET_ENVIRONMENT = 'Development'
+    $script:WorkersLog = Join-Path ([System.IO.Path]::GetTempPath()) ('omnichannel-workers-smoke-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.log')
+    $script:StartedWorkers = Start-Process -FilePath 'dotnet' -ArgumentList "`"$dll`"" -WorkingDirectory $proj -PassThru -WindowStyle Hidden `
+        -RedirectStandardOutput $script:WorkersLog -RedirectStandardError ($script:WorkersLog + '.err')
+    Start-Sleep -Seconds 8
+    if ($script:StartedWorkers.HasExited) {
+        $script:StartedWorkers = $null
+        throw "The Workers host stopped right after its start (log: $script:WorkersLog). Are its user-secrets set (README section 6)?"
+    }
+    Write-Host "Workers host started (log: $script:WorkersLog)."
+}
+
 function Stop-Smoke {
+    if ($script:StartedWorkers -and -not $script:StartedWorkers.HasExited) {
+        Stop-Process -Id $script:StartedWorkers.Id -Force
+        Write-Host 'Workers host stopped.'
+    }
+    $script:StartedWorkers = $null
     if ($script:StartedApi -and -not $script:StartedApi.HasExited) {
         Stop-Process -Id $script:StartedApi.Id -Force
         Write-Host 'API stopped.'

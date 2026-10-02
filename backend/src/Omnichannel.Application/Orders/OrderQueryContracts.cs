@@ -42,11 +42,15 @@ public sealed record OrderItemResponse(
     decimal UnitPrice,
     decimal LineTotal);
 
+/// <param name="ChannelId">The channel of a <c>StockSync</c> task; null for other task types.</param>
+/// <param name="ProductId">The product of a <c>StockSync</c> task; null for other task types.</param>
 /// <param name="Attempts">Ordered by <c>attemptNo</c>.</param>
 public sealed record OrderTaskResponse(
     Guid TaskId,
     ProcessingTaskType TaskType,
     ProcessingTaskStatus Status,
+    Guid? ChannelId,
+    Guid? ProductId,
     int RetryCount,
     string CorrelationId,
     string? MessageId,

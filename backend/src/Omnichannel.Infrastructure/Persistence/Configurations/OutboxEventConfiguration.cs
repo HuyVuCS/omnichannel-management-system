@@ -13,6 +13,7 @@ internal sealed class OutboxEventConfiguration : IEntityTypeConfiguration<Outbox
         builder.Property(x => x.OutboxEventId).ValueGeneratedNever();
 
         builder.Property(x => x.EventType).HasMaxLength(100).IsRequired();
+        builder.Property(x => x.RoutingKey).HasMaxLength(OutboxEvent.MaxRoutingKeyLength);
         builder.Property(x => x.AggregateId).HasMaxLength(100).IsRequired();
         builder.Property(x => x.Payload).HasColumnType("jsonb").IsRequired();
         builder.Property(x => x.CorrelationId)

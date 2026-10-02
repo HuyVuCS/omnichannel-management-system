@@ -156,4 +156,12 @@
     <value>Attempt number</value>
     <comment>Processing task filter.</comment>
   </data>
+  <data name="externalProductId" xml:space="preserve">
+    <value>External product ID</value>
+    <comment>Channel product mapping.</comment>
+  </data>
+  <data name="externalSku" xml:space="preserve">
+    <value>External SKU</value>
+    <comment>Channel product mapping.</comment>
+  </data>
 </root>

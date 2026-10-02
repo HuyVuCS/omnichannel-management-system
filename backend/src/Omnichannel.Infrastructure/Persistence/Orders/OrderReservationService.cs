@@ -3,9 +3,9 @@ using Microsoft.Extensions.Logging;
 using Omnichannel.Application.Common.Abstractions;
 using Omnichannel.Application.Common.Messaging;
 using Omnichannel.Application.Orders;
-using Omnichannel.Application.Processing;
 using Omnichannel.Domain.Entities;
 using Omnichannel.Domain.Enums;
+using Omnichannel.Infrastructure.Persistence.Processing;
 
 namespace Omnichannel.Infrastructure.Persistence.Orders;
 
@@ -24,6 +24,7 @@ namespace Omnichannel.Infrastructure.Persistence.Orders;
 /// </summary>
 internal sealed class OrderReservationService(
     OmnichannelDbContext dbContext,
+    ProcessingAttemptStore attempts,
     ICurrentUser currentUser,
     ICorrelationContext correlationContext,
     TimeProvider timeProvider,
@@ -38,28 +39,12 @@ internal sealed class OrderReservationService(
             .Select(t => (ProcessingTaskStatus?)t.Status)
             .SingleOrDefaultAsync(cancellationToken);
 
-    public async Task<AttemptStart?> StartAttemptAsync(
+    public Task<AttemptStart?> StartAttemptAsync(
         Guid taskId,
         string workerName,
         string workerInstanceId,
-        CancellationToken cancellationToken)
-    {
-        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
-        var task = await LockTaskAsync(taskId, cancellationToken);
-        if (task.IsTerminal)
-        {
-            return null;
-        }
-
-        var attempt = task.StartAttempt(workerName, workerInstanceId, timeProvider.GetUtcNow());
-        dbContext.ProcessingAttempts.Add(attempt);
-
-        // The unique (TaskId, AttemptNo) index is the last guard against two workers numbering the same attempt.
-        await dbContext.SaveChangesAsync(cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
-
-        return new AttemptStart(attempt.AttemptId, attempt.AttemptNo, task.AttemptBudgetStart);
-    }
+        CancellationToken cancellationToken) =>
+        attempts.StartAttemptAsync(taskId, workerName, workerInstanceId, cancellationToken);
 
     public async Task<ReservationResult> ReserveAsync(
         OrderCreatedPayload order,
@@ -143,24 +128,15 @@ internal sealed class OrderReservationService(
             : await StoreInsufficientStockOrderAsync(order, attemptId, workerName, cancellationToken);
     }
 
-    public async Task RecordTransientFailureAsync(
+    public Task RecordTransientFailureAsync(
         Guid taskId,
         Guid attemptId,
         string errorCode,
         string errorMessage,
-        CancellationToken cancellationToken)
-    {
-        // The failed unit of work may have left tracked entities behind in this scope.
-        dbContext.ChangeTracker.Clear();
+        CancellationToken cancellationToken) =>
+        attempts.RecordTransientFailureAsync(taskId, attemptId, errorCode, errorMessage, cancellationToken);
 
-        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
-        var task = await LockTaskAsync(taskId, cancellationToken);
-        task.ScheduleRetry(attemptId, errorCode, errorMessage, timeProvider.GetUtcNow());
-        await dbContext.SaveChangesAsync(cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
-    }
-
-    public async Task<int?> RecordFinalFailureAsync(
+    public Task<int?> RecordFinalFailureAsync(
         Guid taskId,
         Guid? attemptId,
         string errorCode,
@@ -168,55 +144,9 @@ internal sealed class OrderReservationService(
         string workerName,
         string workerInstanceId,
         string queue,
-        CancellationToken cancellationToken)
-    {
-        dbContext.ChangeTracker.Clear();
-
-        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
-        var now = timeProvider.GetUtcNow();
-        var task = await LockTaskAsync(taskId, cancellationToken);
-        if (task.IsTerminal)
-        {
-            return null;
-        }
-
-        // No attempt yet for this delivery (delivery-limit guard): record the failure as its own attempt.
-        if (attemptId is not { } id)
-        {
-            var attempt = task.StartAttempt(workerName, workerInstanceId, now);
-            dbContext.ProcessingAttempts.Add(attempt);
-            id = attempt.AttemptId;
-        }
-
-        task.Fail(id, errorCode, errorMessage, now);
-        var attemptNo = task.Attempts.Single(a => a.AttemptId == id).AttemptNo;
-
-        dbContext.SystemEventLogs.Add(new SystemEventLog(
-            SystemEventLevel.Error,
-            ProcessingEvents.Failed,
-            task.CorrelationId,
-            task.TaskId,
-            task.OrderId,
-            workerName,
-            MessageJson.Serialize(new
-            {
-                taskId = task.TaskId,
-                taskType = task.TaskType,
-                attemptNo,
-                errorCode,
-                errorMessage,
-                queue
-            }),
-            now));
-
-        await dbContext.SaveChangesAsync(cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
-
-        logger.LogError(
-            "Task {TaskId} failed permanently at attempt {AttemptNo} ({ErrorCode}); message goes to the DLQ",
-            task.TaskId, attemptNo, errorCode);
-        return attemptNo;
-    }
+        CancellationToken cancellationToken) =>
+        attempts.RecordFinalFailureAsync(
+            taskId, attemptId, errorCode, errorMessage, workerName, workerInstanceId, queue, cancellationToken);
 
     public async Task RecordRejectedMessageAsync(
         string? messageId,
@@ -401,17 +331,8 @@ internal sealed class OrderReservationService(
         }
     }
 
-    /// <summary>Locks the task row for the rest of the transaction and loads it with all attempts.</summary>
-    private async Task<ProcessingTask> LockTaskAsync(Guid taskId, CancellationToken cancellationToken)
-    {
-        await dbContext.Database.ExecuteSqlAsync(
-            $"""SELECT 1 FROM "ProcessingTasks" WHERE "TaskId" = {taskId} FOR UPDATE""",
-            cancellationToken);
-
-        return await dbContext.ProcessingTasks
-            .Include(t => t.Attempts)
-            .SingleAsync(t => t.TaskId == taskId, cancellationToken);
-    }
+    private Task<ProcessingTask> LockTaskAsync(Guid taskId, CancellationToken cancellationToken) =>
+        attempts.LockTaskAsync(taskId, cancellationToken);
 
     /// <summary>Order lines keep the request order; unit price is the intake snapshot.</summary>
     private static void AddItems(Order stored, OrderCreatedPayload order)

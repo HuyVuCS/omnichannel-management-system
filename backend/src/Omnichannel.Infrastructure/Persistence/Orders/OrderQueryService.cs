@@ -124,6 +124,8 @@ internal sealed class OrderQueryService(OmnichannelDbContext dbContext) : IOrder
                         t.TaskId,
                         t.TaskType,
                         t.Status,
+                        t.ChannelId,
+                        t.ProductId,
                         t.RetryCount,
                         t.CorrelationId,
                         t.MessageId,

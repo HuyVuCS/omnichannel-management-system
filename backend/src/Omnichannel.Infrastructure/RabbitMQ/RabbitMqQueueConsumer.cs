@@ -11,6 +11,7 @@ namespace Omnichannel.Infrastructure.RabbitMQ;
 /// <list type="bullet">
 /// <item><c>Ack</c> → ACK (only after the handler returned, i.e. after it committed).</item>
 /// <item><c>Reject</c> → reject without requeue → <c>&lt;queue&gt;.dlq</c>.</item>
+/// <item><c>Abandon</c> (host stopping) → not settled; the broker requeues the message when this consumer's channel closes.</item>
 /// <item><c>Retry</c> below <see cref="RetryPolicy.MaxAttempts"/> → delayed retry copy published with confirm, then ACK; if the
 /// copy cannot be published → NACK with requeue (the message is not lost) after a bounded backoff (1 s doubling to 30 s per
 /// consecutive failure of this consumer, reset when a copy is published), so a persistently unroutable copy cannot spin.</item>
@@ -266,6 +267,12 @@ public sealed class RabbitMqQueueConsumer : IAsyncDisposable
                 _logger.LogError("Message {MessageId} rejected to the DLQ: {Reason}", message.MessageId, reject.Reason);
                 return Settlement.Reject;
 
+            case HandlerResult.AbandonResult:
+                _logger.LogInformation(
+                    "Message {MessageId} on {Queue} left unsettled (host stopping); the broker redelivers it",
+                    message.MessageId, _settings.Queue);
+                return Settlement.None;
+
             case HandlerResult.Retry retry when policy.CanRetry(retry.AttemptInBudget):
                 _logger.LogWarning(
                     "Attempt {AttemptNo} of message {MessageId} failed ({ErrorCode}); scheduling a delayed retry",
@@ -398,6 +405,8 @@ public sealed class RabbitMqQueueConsumer : IAsyncDisposable
                 case Settlement.Reject:
                     await _channel.BasicRejectAsync(deliveryTag, requeue: false);
                     break;
+                case Settlement.None:
+                    break;
                 default:
                     await _channel.BasicNackAsync(deliveryTag, multiple: false, requeue: true);
                     break;
@@ -419,6 +428,9 @@ public sealed class RabbitMqQueueConsumer : IAsyncDisposable
     {
         Ack,
         Reject,
-        Requeue
+        Requeue,
+
+        /// <summary>Leave the delivery unacknowledged; it returns to the queue when the channel closes.</summary>
+        None
     }
 }

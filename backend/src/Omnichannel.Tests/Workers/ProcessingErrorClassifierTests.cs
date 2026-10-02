@@ -2,6 +2,7 @@ using System.Net.Sockets;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using Omnichannel.Workers.OrderWorker;
+using Omnichannel.Workers.Processing;
 
 namespace Omnichannel.Tests.Workers;
 

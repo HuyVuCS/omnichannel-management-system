@@ -14,6 +14,8 @@ public sealed record ProcessingAttemptResponse(
     DateTimeOffset StartedAt,
     DateTimeOffset? FinishedAt);
 
+/// <param name="ChannelId">The channel of a <c>StockSync</c> task; null for other task types.</param>
+/// <param name="ProductId">The product of a <c>StockSync</c> task; null for other task types.</param>
 /// <param name="AttemptBudgetStart">Attempts that existed at the last manual retry (0 = never retried manually).</param>
 /// <param name="LastAttempt">The attempt with the highest number; null when none was started yet.</param>
 public sealed record ProcessingTaskSummaryResponse(
@@ -21,6 +23,8 @@ public sealed record ProcessingTaskSummaryResponse(
     ProcessingTaskType TaskType,
     ProcessingTaskStatus Status,
     Guid? OrderId,
+    Guid? ChannelId,
+    Guid? ProductId,
     int RetryCount,
     int AttemptBudgetStart,
     string CorrelationId,
@@ -30,16 +34,21 @@ public sealed record ProcessingTaskSummaryResponse(
     int AttemptCount,
     ProcessingAttemptResponse? LastAttempt);
 
+/// <param name="ChannelId">The channel of a <c>StockSync</c> task; null for other task types.</param>
+/// <param name="ProductId">The product of a <c>StockSync</c> task; null for other task types.</param>
 /// <param name="Attempts">Ordered by <c>attemptNo</c>.</param>
 /// <param name="Message">
 /// The outbox row that carries the task's current message (<see cref="MessageId"/>); null when the task has no message or
-/// the row does not exist.
+/// the row does not exist. For a stock-sync task created from <c>inventory.changed</c> it is that event, shared by the tasks
+/// of the other channels.
 /// </param>
 public sealed record ProcessingTaskDetailResponse(
     Guid TaskId,
     ProcessingTaskType TaskType,
     ProcessingTaskStatus Status,
     Guid? OrderId,
+    Guid? ChannelId,
+    Guid? ProductId,
     int RetryCount,
     int AttemptBudgetStart,
     string CorrelationId,
@@ -62,7 +71,10 @@ public sealed record ProcessingMessageResponse(
     int PublishAttempts,
     string? LastError);
 
-/// <summary>202 body of a manual retry: the task waits for <see cref="MessageId"/>, a new copy of its original message.</summary>
+/// <summary>
+/// 202 body of a manual retry: the task waits for <see cref="MessageId"/> - a new copy of its original message, or for a
+/// stock-sync task a new <c>stock.sync.requested</c> directed at the task's channel.
+/// </summary>
 public sealed record RetryProcessingTaskResponse(Guid TaskId, ProcessingTaskStatus Status, string MessageId);
 
 /// <summary>
@@ -81,6 +93,10 @@ public sealed record ProcessingTaskListQuery : PageQuery
     public ProcessingTaskType? TaskType { get; init; }
     public ProcessingTaskStatus? Status { get; init; }
     public Guid? OrderId { get; init; }
+
+    /// <summary>Tasks of this channel (stock sync).</summary>
+    public Guid? ChannelId { get; init; }
+
     public string? CorrelationId { get; init; }
     public DateTimeOffset? From { get; init; }
     public DateTimeOffset? To { get; init; }
@@ -103,6 +119,9 @@ public static class ProcessingErrorCodes
     /// <summary>Manual retry of a task that is not <c>Failed</c> (still running, waiting, succeeded, or already retried).</summary>
     public const string TaskNotFailed = "task_not_failed";
 
-    /// <summary>Manual retry: the outbox row of the task's message does not exist, so there is nothing to republish.</summary>
+    /// <summary>
+    /// Manual retry: the outbox row of the task's message does not exist, so there is nothing to republish; or the channel of
+    /// a stock-sync task has no stock-sync queue.
+    /// </summary>
     public const string RetrySourceMissing = "retry_source_missing";
 }

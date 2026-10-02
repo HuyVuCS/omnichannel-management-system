@@ -38,9 +38,9 @@ public sealed class ProcessingTaskEndpointsTests(ApiFactory factory)
         b.Succeed(null, b.StartAttempt("OrderWorker", "inst-2", T0).AttemptId, T0);
         // C: not started yet.
         var c = NewTask(ProcessingTaskType.OrderProcessing, correlationId);
-        // D: stock sync failed permanently on another worker.
-        var d = NewTask(ProcessingTaskType.StockSync, correlationId);
-        FinalFail(d, "StockSyncWorker", "inst-3", "check_violation");
+        // D: an invoice failed permanently on another worker.
+        var d = NewTask(ProcessingTaskType.Invoice, correlationId);
+        FinalFail(d, "InvoiceWorker", "inst-3", "check_violation");
         await SaveAsync((a, T0.AddMinutes(1)), (b, T0.AddMinutes(2)), (c, T0.AddMinutes(3)), (d, T0.AddMinutes(4)));
 
         var all = await ListAsync($"correlationId={correlationId}");
@@ -58,11 +58,11 @@ public sealed class ProcessingTaskEndpointsTests(ApiFactory factory)
         Assert.Equal([b.TaskId, a.TaskId], await TaskIdsAsync($"correlationId={correlationId}&workerName=OrderWorker"));
         Assert.Equal([b.TaskId, a.TaskId], await TaskIdsAsync($"correlationId={correlationId}&attemptNo=2"));
         Assert.Equal([d.TaskId], await TaskIdsAsync($"correlationId={correlationId}&workerInstanceId=inst-3"));
-        Assert.Equal([d.TaskId], await TaskIdsAsync($"correlationId={correlationId}&taskType=StockSync"));
+        Assert.Equal([d.TaskId], await TaskIdsAsync($"correlationId={correlationId}&taskType=Invoice"));
 
         // Attempt filters apply to one and the same attempt: only A has an attempt on inst-2 that timed out.
         Assert.Equal([a.TaskId], await TaskIdsAsync($"correlationId={correlationId}&workerInstanceId=inst-2&errorCode=timeout"));
-        Assert.Empty(await TaskIdsAsync($"correlationId={correlationId}&workerName=StockSyncWorker&errorCode=timeout"));
+        Assert.Empty(await TaskIdsAsync($"correlationId={correlationId}&workerName=InvoiceWorker&errorCode=timeout"));
 
         // Range and ascending order.
         var from = Uri.EscapeDataString(T0.AddMinutes(2).ToString("O"));

@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using RabbitMQ.Client;
 
@@ -23,8 +24,10 @@ public interface IRetryPublisher
 /// Retry copies: same body and properties (MessageId/CorrelationId unchanged) with the given headers (<c>x-retry-attempt</c>,
 /// <c>x-last-error-code</c> or <c>x-handler-failures</c>); broker headers (<c>x-death</c>, <c>x-delivery-count</c>, ...) are not copied.
 /// </summary>
-public sealed class RabbitMqRetryPublisher(RabbitMqConnectionProvider connectionProvider, IOptions<RabbitMqOptions> options)
-    : IRetryPublisher
+public sealed class RabbitMqRetryPublisher(
+    RabbitMqConnectionProvider connectionProvider,
+    IOptions<RabbitMqOptions> options,
+    ILogger<RabbitMqRetryPublisher> logger) : IRetryPublisher
 {
     /// <summary>The failed attempt (from the database) this copy retries.</summary>
     public const string RetryAttemptHeader = "x-retry-attempt";
@@ -54,6 +57,10 @@ public sealed class RabbitMqRetryPublisher(RabbitMqConnectionProvider connection
             CreateRetryProperties(message.Properties, headers),
             message.Body,
             cancellationToken);
+
+        logger.LogInformation(
+            "Retry {RetryNumber} of message {MessageId}: waits {Delay} in {DelayQueue}, then returns to {Queue}",
+            retryNumber, message.MessageId, delay, RabbitMqTopology.DelayNameOf(delay), queue);
     }
 
     public static BasicProperties CreateRetryProperties(IReadOnlyBasicProperties original, IReadOnlyDictionary<string, object?> retryHeaders)

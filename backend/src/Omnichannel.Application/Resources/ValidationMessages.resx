@@ -92,4 +92,8 @@
     <value>Passwords must use at least {UniqueChars} different characters.</value>
     <comment>Identity password policy.</comment>
   </data>
+  <data name="ExternalIdRequired" xml:space="preserve">
+    <value>Enter '{PropertyName}' or '{ExternalSku}'.</value>
+    <comment>Channel product mapping: at least one external identifier; {ExternalSku} is the field name of the external SKU.</comment>
+  </data>
 </root>
