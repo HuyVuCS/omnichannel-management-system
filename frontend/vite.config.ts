@@ -24,8 +24,11 @@ export default defineConfig({
     testTimeout: 20_000,
     restoreMocks: true,
     // Every test file renders the whole application in its own jsdom. With one worker per CPU core the files compete
-    // for memory while the API, PostgreSQL and RabbitMQ run next to them, and first renders time out. Four workers take
-    // about as long in total and are stable.
+    // for memory while PostgreSQL and RabbitMQ run next to them, and first renders time out.
+    // 2026-10-03 (task 017): measured with PostgreSQL and RabbitMQ running, three full runs each, all green -
+    // 4 workers 207 / 183 / 178 s (median 183 s), 3 workers 217 / 207 / 195 s (median 207 s, 13 % slower).
+    // 3 would have been chosen at no more than 5 % above 4, so 4 stays. Stability came from splitting the tests that
+    // took more than 5 s alone and from running the suite without an API or Workers host next to it (smoke scripts).
     maxWorkers: 4,
   },
 });
