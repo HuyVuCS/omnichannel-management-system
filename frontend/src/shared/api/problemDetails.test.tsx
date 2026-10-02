@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react';
 import { Form, Input, InputNumber, type FormInstance } from 'antd';
 import { act } from 'react';
 import { describe, expect, it } from 'vitest';
-import i18n from '@/shared/i18n';
+import i18n, { changeLanguage } from '@/shared/i18n';
 import { applyProblemToForm, parseFieldPath, translateApiError } from './problemDetails';
 import type { ApiError } from './types';
 
@@ -130,7 +130,7 @@ describe('translateApiError', () => {
     expect(translateApiError(t, { status: 418, correlationId: 'c' })).toBe('Không thể hoàn tất yêu cầu.');
     expect(translateApiError(t, 'not an error object')).toBe('Không thể hoàn tất yêu cầu.');
 
-    await i18n.changeLanguage('en');
+    await changeLanguage('en');
     expect(translateApiError(i18n.t, { status: 409, correlationId: 'c', problem: { errorCode: 'last_admin' } })).toBe(
       'This is the last active administrator. The system must keep at least one.',
     );

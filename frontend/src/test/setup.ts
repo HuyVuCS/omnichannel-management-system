@@ -1,7 +1,7 @@
 import '@testing-library/jest-dom/vitest';
 import { cleanup, configure } from '@testing-library/react';
 import { afterAll, afterEach, beforeAll, vi } from 'vitest';
-import i18n, { DEFAULT_LANGUAGE } from '@/shared/i18n';
+import i18n, { DEFAULT_LANGUAGE, loadLanguage } from '@/shared/i18n';
 import { server } from './server';
 
 // Pages are separate chunks (React.lazy): the first render of a page in a test file also loads and transforms its
@@ -37,6 +37,10 @@ window.getComputedStyle = (element: Element) => originalGetComputedStyle(element
 
 // Every request a test makes must be answered by a handler of that test (or a default one).
 beforeAll(() => server.listen({ onUnhandledFrame: 'error' }));
+
+// As `main.tsx` does before the first render: the texts of the language every test starts in. The other language is
+// loaded by the first switch to it, like in the browser.
+beforeAll(() => loadLanguage(DEFAULT_LANGUAGE));
 
 afterEach(async () => {
   cleanup();
