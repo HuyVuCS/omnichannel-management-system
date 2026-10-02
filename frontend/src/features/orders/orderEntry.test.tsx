@@ -231,6 +231,7 @@ describe('order entry', () => {
     await waitFor(() => expect(titles()).toEqual(['Digital Platform Online', 'Website', 'POS']));
   });
 
+  // No live connection here (the default hub of the tests never connects): the outcome view itself refreshes the lists.
   it('submits the order of the website panel, follows its task until it succeeded, loads the order once and refreshes the lists once', async () => {
     const { backend, products } = serveEverything();
     backend.taskAnswer = (requestNo) => {
@@ -750,8 +751,53 @@ describe('order entry: outcome by push', () => {
     await pause(POLL_INTERVAL_MS + 700);
     expect(backend.taskRequests).toHaveLength(3);
     expect(backend.orderRequests).toEqual([ORDER_ID]);
-    // The lists: once by the hints, once by the outcome when it saw the task finished (the rule of task 013).
-    expect(counts()).toEqual({ orders: 3, inventory: 3, movements: 3, products: 3 });
+    // The lists: once, by the hints. The outcome invalidates nothing while the connection is live.
+    expect(counts()).toEqual({ orders: 2, inventory: 2, movements: 2, products: 2 });
+  });
+
+  it('leaves the lists alone when it sees the task finished while live: only hints refresh them', async () => {
+    const { backend, products, hub, store, user: appUser } = await renderLive();
+    backend.taskAnswer = (requestNo) =>
+      requestNo === 1
+        ? task({ status: 'Pending' })
+        : task({ status: 'Succeeded', orderId: ORDER_ID, attempts: [attempt()] });
+    const counts = watchLists(store, products);
+    await waitFor(() => expect(counts()).toEqual({ orders: 1, inventory: 1, movements: 1, products: 1 }));
+
+    const outcome = await submitOrder(appUser);
+    expect(await within(outcome).findByText('Đơn hàng đang chờ trong hàng đợi xử lý.')).toBeInTheDocument();
+
+    // A hint that names the task only (not what a worker sends; it shows what the outcome view does by itself).
+    await hub.latest().send([taskChanged('Succeeded', ORDER_ID)]);
+    expect(await within(outcome).findByText('Đã giữ hàng cho đơn hàng.')).toBeInTheDocument();
+
+    await pause(FLUSH_WINDOW_MS + 500);
+    expect(counts()).toEqual({ orders: 1, inventory: 1, movements: 1, products: 1 });
+  });
+
+  it('refreshes the lists once when the connection was lost while waiting and the task is finished by polling', async () => {
+    const { backend, products } = serveEverything();
+    backend.taskAnswer = () => task({ status: 'Pending' });
+    const hub = fakeHub();
+    const { user: appUser, store } = await renderOrderEntry(staffUser, hub.create);
+    await hub.latest().accept();
+    await pause(FLUSH_WINDOW_MS + 200);
+    const counts = watchLists(store, products);
+    await waitFor(() => expect(counts()).toEqual({ orders: 1, inventory: 1, movements: 1, products: 1 }));
+
+    const outcome = await submitOrder(appUser);
+    await within(outcome).findByText('Đơn hàng đang chờ trong hàng đợi xử lý.');
+
+    // Connection lost (the reconnect attempt stays open): no hint will come, the task is polled.
+    await hub.latest().drop();
+    await waitFor(() => expect(screen.getByTestId('connection-indicator')).toHaveTextContent('Đang kết nối lại'));
+    backend.taskAnswer = () => task({ status: 'Succeeded', orderId: ORDER_ID, attempts: [attempt()] });
+    expect(await within(outcome).findByText('Đã giữ hàng cho đơn hàng.')).toBeInTheDocument();
+
+    // Not live when the task was seen finished: the outcome is the only one who can refresh the lists - once.
+    await waitFor(() => expect(counts()).toEqual({ orders: 2, inventory: 2, movements: 2, products: 2 }));
+    await pause(POLL_INTERVAL_MS + 700);
+    expect(counts()).toEqual({ orders: 2, inventory: 2, movements: 2, products: 2 });
   });
 
   it('keeps the outcome when the connection is lost and comes back while waiting: polling in between, push again after', async () => {
