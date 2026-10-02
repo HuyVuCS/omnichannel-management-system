@@ -27,6 +27,9 @@ export function OrderEntryPanel({ panel, channel, channelsKnown }: OrderEntryPan
   const { t } = useTranslation();
   const [accepted, setAccepted] = useState<AcceptedOrder | null>(null);
   const title = t(panel.titleKey);
+  // The channel's name is shown next to the panel's name only when it says something else ("Website Website").
+  const channelNameDiffers =
+    channel !== undefined && channel.name.trim().toLocaleLowerCase() !== title.trim().toLocaleLowerCase();
 
   return (
     <Card
@@ -34,7 +37,7 @@ export function OrderEntryPanel({ panel, channel, channelsKnown }: OrderEntryPan
       title={
         <Space size={12}>
           <span>{title}</span>
-          {channel && (
+          {channel && channelNameDiffers && (
             <Typography.Text type="secondary" style={{ fontWeight: 'normal' }}>
               {channel.name}
             </Typography.Text>
