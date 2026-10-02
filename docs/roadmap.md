@@ -3,7 +3,7 @@
 Plan from the current state to the complete system (backend + frontend), following the implementation order in
 the architecture document (section 15). Maintained by Cowork; updated after every task review.
 
-Last updated: 2026-10-02 (after review 015)
+Last updated: 2026-10-02 (after review 016)
 
 ## Conventions
 - One row = one task file `docs/tasks/NNN-*.md`, written by Cowork shortly before it is needed (not all up front),
@@ -35,8 +35,8 @@ Last updated: 2026-10-02 (after review 015)
 | 013 | FE | Order entry page (Digital Platform / Website / POS panels, reusing `ProductSelect`; outcome tracked by polling the processing task) + orders list/detail; order links in the movement history; Part A: picker tooltips, deterministic expiry test, main-chunk growth | 3.1, 3.2 | Done |
 | 014 | BE | ChannelProduct mapping API + Stock Sync Worker (per-channel queues, **simulated** channel adapters, Polly timeout/circuit breaker, directed `stock.sync.requested` for initial sync and manual retry); Part A: expected 23505 conflicts not logged as errors by EF Core, stale list error in the stock-import form | 8 | Done |
 | 015 | BE | Realtime hints: `pg_notify` in the committing transaction (API and Workers) → per-instance `LISTEN` in the API → SignalR hub `/api/hubs/notifications` (JWT, AnyStaff, resync after a lost listener); `GET /api/dashboard/summary`; Part A (review 014): stale stock-sync task after deactivation (P2), `GET` of one mapping, README section 6, `.http` samples | 10 | Done |
-| 016 | FE | Realtime client (`@microsoft/signalr`, lazy; connect/stop with the session, reconnect → resync, event → tag map, coalesced refetch, connection indicator) + dashboard overview (`GET /api/dashboard/summary`, range in the address) + Sync & Processing page (task list with filters incl. channel, task detail route, retry for Manager/Admin, also on the order detail) + order-entry outcome by push (polling only while disconnected); BE: `productSku` on task summary/detail; Vite proxy with WebSocket; Part A (review 013): pickers hide only stale answers (`currentData`), panel title repetition, orders table width at 1280 px, load only the active language; Part A (review 014): committed bundle-measurement script; Part A (review 015): smoke scripts start hosts only for the local default | 3.2, 12 | Open |
-| 016b | FE | Channel product mappings on the Channels page (list, create, edit, activate/deactivate, initial-sync task link); channels without stock sync shown as "never synced" (review 014) | 3.2 | Planned |
+| 016 | FE | Realtime client (`@microsoft/signalr`, lazy; connect/stop with the session, reconnect → resync, event → tag map, coalesced refetch, connection indicator) + dashboard overview (`GET /api/dashboard/summary`, range in the address) + Sync & Processing page (task list with filters incl. channel, task detail route, retry for Manager/Admin, also on the order detail) + order-entry outcome by push (polling only while disconnected); BE: `productSku` on task summary/detail; Vite proxy with WebSocket; Part A (review 013): pickers hide only stale answers (`currentData`), panel title repetition, orders table width at 1280 px, load only the active language; Part A (review 014): committed bundle-measurement script; Part A (review 015): smoke scripts start hosts only for the local default | 3.2, 12 | Done |
+| 016b | FE | Channel detail route `/channels/:channelId` with its product mappings (list, search, sort, paging; create, edit, activate/deactivate for Manager/Admin; initial-sync task with live status); channels without stock sync shown as such (review 014); BE: `stockSyncEnabled` on channel responses; Part A (review 016): `127.0.0.1` for local connections, hint flush as a throttle, order outcome invalidates lists only when not live | 3.2 | Open |
 | 017 | BE | Alerts: low-stock (shared predicate) and processing failures, `GET /api/alerts`, `low_stock.created` event | 11 | Planned |
 | 018 | FE | Alerts page + Logs/Audit page | 3.2 | Planned |
 | 019 | BE+FE | S3 product images: presigned upload `POST /api/products/{id}/image/presign`, private bucket, UI upload | 12 | Planned |
@@ -45,7 +45,7 @@ Last updated: 2026-10-02 (after review 015)
 | 022 | BE | Reconciliation Worker (detect drift, create StockSync tasks, never modify the source of truth); needs readable channel-side stock in the simulator (decide its state) | 13 | Planned |
 | 023 | BE | `POST /api/webhooks/{slug}`: signature verification, rate limiting, reuse of order intake | 11 (API) | Planned |
 | 024 | BE | Invoice Worker + Notification (email) Worker with independent task status | 8.4 | Planned |
-| 025 | Ops | Worker Dockerfiles, full docker-compose, CI pipeline (build, unit + integration tests); a multi-instance check of the stock sync | 14 | Planned |
+| 025 | Ops | Worker Dockerfiles, full docker-compose, CI pipeline (build, unit + integration tests); a multi-instance check of the stock sync; reverse proxy passes WebSocket upgrades for `/api/hubs/*` (review 016) | 14 | Planned |
 | 026 | All | Security and performance hardening review (OWASP, CSP/security headers, revisit httpOnly-cookie auth, login throttling per account+IP, indexes, load test of reserve path, `createdByEmail` lookup index, dashboard-summary indexes (review 015: outbox failed, non-terminal tasks, last stock-sync success per channel), token-in-URL logging at the reverse proxy, accessibility pass) | 14 | Planned |
 | 027 | All | End-to-end smoke tests against the acceptance criteria (doc section 16) | 14, 16 | Planned |
 
