@@ -89,7 +89,7 @@ describe('hints → cache tags', () => {
 });
 
 /** Fake timers: the one-second window is jumped over, and "nothing before the window ends" can be asserted exactly. */
-describe('coalescing', () => {
+describe('coalescing (a throttle: at most one flush per window)', () => {
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
   });
@@ -98,58 +98,131 @@ describe('coalescing', () => {
     vi.useRealTimers();
   });
 
-  it('flushes several messages of one window as one union, and the next ones after the next window', () => {
+  const orderCreated = (orderId: string) => tagsForEvent({ type: 'order.created', orderId });
+  const taskChanged = tagsForEvent({ type: 'processing.task.changed', taskId: TASK, orderId: ORDER });
+  const stockChanged = tagsForEvent({ type: 'inventory.changed', productIds: ['p1'] });
+
+  it('flushes at once when nothing was flushed within the last window', () => {
     const flushed: RealtimeTag[][] = [];
     const coalescer = createTagCoalescer((tags) => flushed.push(tags));
 
-    coalescer.add(tagsForEvent({ type: 'order.created', orderId: ORDER }));
-    vi.advanceTimersByTime(400);
-    coalescer.add(tagsForEvent({ type: 'processing.task.changed', taskId: TASK, orderId: ORDER }));
-    vi.advanceTimersByTime(400);
-    coalescer.add(tagsForEvent({ type: 'order.created', orderId: 'another-order' }));
-    vi.advanceTimersByTime(FLUSH_WINDOW_MS - 800 - 1);
-    expect(flushed).toEqual([]);
+    // The very first tags: no window is open.
+    coalescer.add(orderCreated(ORDER));
+    expect(flushed).toEqual([[{ type: 'Order', id: 'LIST' }, 'DashboardSummary']]);
 
-    vi.advanceTimersByTime(1);
-    expect(flushed).toEqual([
-      [
-        { type: 'Order', id: 'LIST' },
-        'DashboardSummary',
-        { type: 'ProcessingTask', id: TASK },
-        { type: 'ProcessingTask', id: 'LIST' },
-        { type: 'Order', id: ORDER },
-      ],
-    ]);
+    // The window of that flush has ended with nothing collected: idle again, so the next tags go out at once.
+    vi.advanceTimersByTime(FLUSH_WINDOW_MS);
+    expect(flushed).toHaveLength(1);
+    coalescer.add(stockChanged);
+    expect(flushed).toHaveLength(2);
+    expect(flushed[1]).toEqual(['Inventory', 'InventoryMovement', { type: 'Product', id: 'LIST' }, 'DashboardSummary']);
 
     // Nothing collected: nothing flushed, however long it takes.
     vi.advanceTimersByTime(10 * FLUSH_WINDOW_MS);
+    expect(flushed).toHaveLength(2);
+  });
+
+  it('flushes what arrives within the window of a flush once, at its end, as one union', () => {
+    const flushed: RealtimeTag[][] = [];
+    const coalescer = createTagCoalescer((tags) => flushed.push(tags));
+
+    coalescer.add(stockChanged);
     expect(flushed).toHaveLength(1);
 
-    coalescer.add(tagsForEvent({ type: 'inventory.changed', productIds: ['p1'] }));
-    vi.advanceTimersByTime(FLUSH_WINDOW_MS - 1);
+    vi.advanceTimersByTime(300);
+    coalescer.add(orderCreated(ORDER));
+    vi.advanceTimersByTime(300);
+    coalescer.add(taskChanged);
+    vi.advanceTimersByTime(300);
+    coalescer.add(orderCreated('another-order'));
+    vi.advanceTimersByTime(FLUSH_WINDOW_MS - 900 - 1);
     expect(flushed).toHaveLength(1);
+
     vi.advanceTimersByTime(1);
-    expect(flushed[1]).toEqual(['Inventory', 'InventoryMovement', { type: 'Product', id: 'LIST' }, 'DashboardSummary']);
+    expect(flushed).toHaveLength(2);
+    // Each tag once, in the order of its first arrival.
+    expect(flushed[1]).toEqual([
+      { type: 'Order', id: 'LIST' },
+      'DashboardSummary',
+      { type: 'ProcessingTask', id: TASK },
+      { type: 'ProcessingTask', id: 'LIST' },
+      { type: 'Order', id: ORDER },
+    ]);
+
+    // That flush opened a window of its own: tags right after it wait again.
+    coalescer.add(stockChanged);
+    expect(flushed).toHaveLength(2);
+    vi.advanceTimersByTime(FLUSH_WINDOW_MS - 1);
+    expect(flushed).toHaveLength(2);
+    vi.advanceTimersByTime(1);
+    expect(flushed).toHaveLength(3);
+  });
+
+  it('turns a burst over several windows into one flush per window', () => {
+    const flushedAt: number[] = [];
+    let now = 0;
+    const coalescer = createTagCoalescer(() => flushedAt.push(now));
+
+    // A message every 100 ms for 3.5 seconds. (`now` is the time at the end of each step: that is when a window that
+    // closes during the step ends.)
+    while (now < 3500) {
+      coalescer.add(taskChanged);
+      now += 100;
+      vi.advanceTimersByTime(100);
+    }
+
+    expect(flushedAt).toEqual([0, 1000, 2000, 3000]);
+
+    // The messages after the last flush go out when its window ends, and then it is quiet.
+    vi.advanceTimersByTime(10 * FLUSH_WINDOW_MS);
+    expect(flushedAt).toHaveLength(5);
   });
 
   it('replaces the tags with ids of a type by the bare type (resync within the window)', () => {
     const flushed: RealtimeTag[][] = [];
     const coalescer = createTagCoalescer((tags) => flushed.push(tags));
 
-    coalescer.add(tagsForEvent({ type: 'processing.task.changed', taskId: TASK, orderId: ORDER }));
+    coalescer.add(stockChanged);
+    coalescer.add(taskChanged);
     coalescer.add(tagsForBatch({ events: [], resync: true }));
     vi.advanceTimersByTime(FLUSH_WINDOW_MS);
 
-    expect(flushed).toHaveLength(1);
-    expect([...(flushed[0] ?? [])].sort()).toEqual([...RESYNC_TAGS].sort());
+    expect(flushed).toHaveLength(2);
+    expect([...(flushed[1] ?? [])].sort()).toEqual([...RESYNC_TAGS].sort());
   });
 
-  it('flushes nothing after cancel', () => {
+  it('flushes a resync at once when idle, like every other tag', () => {
+    const flushed: RealtimeTag[][] = [];
+    const coalescer = createTagCoalescer((tags) => flushed.push(tags));
+
+    // What a (re)connect adds.
+    coalescer.add(RESYNC_TAGS);
+
+    expect(flushed).toEqual([[...RESYNC_TAGS]]);
+  });
+
+  it('drops what is pending on cancel, and still flushes at most once per window afterwards', () => {
+    const flushed: RealtimeTag[][] = [];
+    const coalescer = createTagCoalescer((tags) => flushed.push(tags));
+
+    coalescer.add(['Order']);
+    coalescer.add(['Inventory']);
+    coalescer.cancel();
+    vi.advanceTimersByTime(FLUSH_WINDOW_MS - 1);
+    expect(flushed).toEqual([['Order']]);
+
+    // The window of the flush before the cancel is still open.
+    coalescer.add(['Product']);
+    expect(flushed).toHaveLength(1);
+    vi.advanceTimersByTime(1);
+    expect(flushed).toEqual([['Order'], ['Product']]);
+  });
+
+  it('flushes nothing for an empty batch', () => {
     const flush = vi.fn();
     const coalescer = createTagCoalescer(flush);
 
-    coalescer.add(['Order']);
-    coalescer.cancel();
+    coalescer.add([]);
     vi.advanceTimersByTime(2 * FLUSH_WINDOW_MS);
 
     expect(flush).not.toHaveBeenCalled();

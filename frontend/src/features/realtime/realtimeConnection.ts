@@ -16,9 +16,10 @@ const SLOW_RETRY_MS = RECONNECT_DELAYS_MS[RECONNECT_DELAYS_MS.length - 1] ?? 30_
 
 /**
  * The one hub connection of a session. Owns the whole lifecycle: connect, reconnect with {@link RECONNECT_DELAYS_MS},
- * the connection state in the store, and what arrives - hints become cache tags, collected and invalidated at most
- * once per second (`createTagCoalescer`). Every transition to "connected", the first included, invalidates the
- * realtime tags once: hints sent while there was no connection are lost.
+ * the connection state in the store, and what arrives - hints become cache tags, invalidated at once when nothing was
+ * invalidated in the last second and otherwise together at the end of that second (`createTagCoalescer`: at most once
+ * per second). Every transition to "connected", the first included, invalidates the realtime tags once, through the
+ * same throttle: hints sent while there was no connection are lost.
  *
  * A token the hub refuses (401 on negotiate: revoked, or the security stamp changed) ends the session exactly like a
  * 401 of the API (`apiBaseQuery`): only when the token used is still the current one.

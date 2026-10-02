@@ -75,24 +75,33 @@ export function tagsForBatch(batch: HintBatch | null | undefined): RealtimeTag[]
 
 const keyOf = (tag: RealtimeTag) => (typeof tag === 'string' ? tag : `${tag.type}\n${tag.id}`);
 
-/** How long tags are collected before they are invalidated together. */
+/** The shortest time between two invalidations: tags that arrive sooner after a flush wait for the end of this window. */
 export const FLUSH_WINDOW_MS = 1000;
 
 /**
- * Collects tags and hands them to `flush` at most once per window: the first tag opens the window, everything that
- * arrives until it closes goes out as one union (each tag once; a bare type replaces its tags with ids). A burst of
- * hub messages - a stock import fans out into many stock-sync transitions - becomes one round of refetches per window
- * instead of one per message.
+ * Hands tags to `flush` at most once per window (a throttle): when no flush happened within the last window, tags go
+ * out at once; a flush opens a window, and everything that arrives until it closes goes out together when it does, as
+ * one union (each tag once; a bare type replaces its tags with ids) - which opens the next window. A burst of hub
+ * messages - a stock import fans out into many stock-sync transitions - becomes one round of refetches per window
+ * instead of one per message, and a single change while nothing else happens is not held back.
  */
 export function createTagCoalescer(flush: (tags: RealtimeTag[]) => void, windowMs: number = FLUSH_WINDOW_MS) {
   const pending = new Map<string, RealtimeTag>();
+  /** Runs while the window of the last flush is open. */
   let timer: number | undefined;
 
   const flushNow = () => {
-    timer = undefined;
     const tags = [...pending.values()].filter((tag) => typeof tag === 'string' || !pending.has(tag.type));
     pending.clear();
+    timer = window.setTimeout(windowEnded, windowMs);
     flush(tags);
+  };
+
+  const windowEnded = () => {
+    timer = undefined;
+    if (pending.size > 0) {
+      flushNow();
+    }
   };
 
   return {
@@ -102,13 +111,11 @@ export function createTagCoalescer(flush: (tags: RealtimeTag[]) => void, windowM
       }
 
       if (pending.size > 0 && timer === undefined) {
-        timer = window.setTimeout(flushNow, windowMs);
+        flushNow();
       }
     },
-    /** Drops what was collected (the connection is given up). */
+    /** Drops what is pending (the connection is given up). An open window ends with nothing to flush. */
     cancel() {
-      window.clearTimeout(timer);
-      timer = undefined;
       pending.clear();
     },
   };

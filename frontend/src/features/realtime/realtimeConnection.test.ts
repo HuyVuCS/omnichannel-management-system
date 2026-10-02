@@ -14,6 +14,7 @@ const TASK = '0199a1b2-0000-7000-8000-0000000000aa';
 /**
  * The connection manager without React: a store with a session and a fake hub. Fake timers (`setTimeout` only) because
  * the reconnect delays (up to 30 s) and the one-second flush window are jumped over and asserted to the millisecond.
+ * The flush is a throttle: at once when nothing was flushed in the last second, otherwise at the end of that second.
  */
 describe('realtime connection', () => {
   beforeEach(() => {
@@ -47,49 +48,56 @@ describe('realtime connection', () => {
     await hub.latest().accept();
     expect(state()).toBe('connected');
 
-    // Through the same window as hints: not at once, then exactly once.
-    await wait(FLUSH_WINDOW_MS - 1);
-    expect(invalidate).not.toHaveBeenCalled();
-    await wait(1);
+    // Through the same throttle as hints: at once (nothing was flushed before), and exactly once.
     expect(invalidate).toHaveBeenCalledTimes(1);
     expect(invalidate).toHaveBeenCalledWith(RESYNC_TAGS);
+    await wait(2 * FLUSH_WINDOW_MS);
+    expect(invalidate).toHaveBeenCalledTimes(1);
 
     await stop();
     expect(hub.latest().stopped).toBe(true);
     expect(state()).toBe('disconnected');
   });
 
-  it('turns the hints of several messages into one invalidation per second', async () => {
+  it('invalidates the hint of an idle second at once and the hints of a burst once per second', async () => {
     const { hub, invalidate } = start();
     await wait(0);
     await hub.latest().accept();
+    // The second of the connect resync is over: idle.
     await wait(FLUSH_WINDOW_MS);
     invalidate.mockClear();
 
+    // Idle: the first message is not held back.
     await hub.latest().send([{ type: 'order.created', orderId: 'o1' }]);
+    expect(invalidate).toHaveBeenCalledTimes(1);
+    expect(invalidate).toHaveBeenLastCalledWith([{ type: 'Order', id: 'LIST' }, 'DashboardSummary']);
+
+    // What follows within that second waits for its end and goes out as one union.
     await wait(300);
     await hub.latest().send([{ type: 'processing.task.changed', taskId: TASK, taskType: 'StockSync' }]);
     await wait(300);
     await hub.latest().send([{ type: 'unknown.event' }, { type: 'inventory.changed', productIds: ['p1'] }]);
-    expect(invalidate).not.toHaveBeenCalled();
-
-    await wait(FLUSH_WINDOW_MS - 600);
+    await wait(FLUSH_WINDOW_MS - 600 - 1);
     expect(invalidate).toHaveBeenCalledTimes(1);
-    expect(invalidate).toHaveBeenCalledWith([
-      { type: 'Order', id: 'LIST' },
-      'DashboardSummary',
+
+    await wait(1);
+    expect(invalidate).toHaveBeenCalledTimes(2);
+    expect(invalidate).toHaveBeenLastCalledWith([
       { type: 'ProcessingTask', id: TASK },
       { type: 'ProcessingTask', id: 'LIST' },
+      'DashboardSummary',
       'Inventory',
       'InventoryMovement',
       { type: 'Product', id: 'LIST' },
     ]);
 
-    // resync: every realtime tag, never the whole cache.
+    // resync: every realtime tag, never the whole cache - and through the same throttle (the second of the flush
+    // above is still running).
     const reset = vi.spyOn(baseApi.util, 'resetApiState');
     await hub.latest().send({ events: [], resync: true });
-    await wait(FLUSH_WINDOW_MS);
     expect(invalidate).toHaveBeenCalledTimes(2);
+    await wait(FLUSH_WINDOW_MS);
+    expect(invalidate).toHaveBeenCalledTimes(3);
     expect(invalidate).toHaveBeenLastCalledWith(RESYNC_TAGS);
     expect(reset).not.toHaveBeenCalled();
   });
@@ -125,13 +133,15 @@ describe('realtime connection', () => {
     expect(state()).toBe('disconnected');
     expect(invalidate).not.toHaveBeenCalled();
 
-    // The server is back: live, and what was missed is fetched again - once.
+    // The server is back: live, and what was missed is fetched again - at once (nothing was flushed for a long time)
+    // and once.
     await wait(30_000);
     await hub.latest().accept();
     expect(state()).toBe('connected');
-    await wait(FLUSH_WINDOW_MS);
     expect(invalidate).toHaveBeenCalledTimes(1);
     expect(invalidate).toHaveBeenCalledWith(RESYNC_TAGS);
+    await wait(FLUSH_WINDOW_MS);
+    expect(invalidate).toHaveBeenCalledTimes(1);
 
     // A later loss starts with the quick retries again.
     const before = hub.connections.length;
@@ -189,6 +199,8 @@ describe('realtime connection', () => {
     const { hub, invalidate, stop } = start();
     await wait(0);
     await hub.latest().accept();
+    // The connect resync went out at once; a hint within its second is pending when the connection is stopped.
+    invalidate.mockClear();
     await hub.latest().send([{ type: 'order.created', orderId: 'o1' }]);
 
     await stop();

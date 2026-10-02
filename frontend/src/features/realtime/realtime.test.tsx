@@ -163,7 +163,7 @@ describe('connection indicator', () => {
 });
 
 describe('hints and the cache', () => {
-  it('refetches a list on screen once per burst and removes a cached list nobody shows', async () => {
+  it('refetches a list on screen at most once per second during a burst and removes a cached list nobody shows', async () => {
     let orderRequests = 0;
     server.use(
       http.get(api('/orders'), () => {
@@ -178,21 +178,31 @@ describe('hints and the cache', () => {
     await screen.findByRole('heading', { name: 'Đơn hàng' });
     await waitFor(() => expect(indicator()).toHaveTextContent('Trực tiếp'));
 
-    // The page's own request and the one every new connection causes (hints before it were missed).
+    // The page's own request and, when the page was there before the connection, the one every new connection causes
+    // (hints before it were missed). That invalidation goes out the moment the hub connects: a page that is loaded
+    // later has nothing to fetch again.
     await pause(FLUSH_WINDOW_MS + 300);
-    expect(orderRequests).toBe(2);
+    const loaded = orderRequests;
+    expect(loaded).toBeGreaterThanOrEqual(1);
+    expect(loaded).toBeLessThanOrEqual(2);
 
-    // Three hub messages within the window: one refetch.
+    // Idle: the first hub message refetches at once.
     await hub.latest().send([{ type: 'order.created', orderId: 'o1' }]);
+    await waitFor(() => expect(orderRequests).toBe(loaded + 1));
+
+    // Three more within the second of that refetch: one refetch, when the second is over.
     await hub.latest().send([{ type: 'order.created', orderId: 'o2' }]);
+    await hub.latest().send([{ type: 'order.created', orderId: 'o3' }]);
     await hub.latest().send([{ type: 'processing.task.changed', taskId: 't1', orderId: 'o1' }]);
+    await pause(200);
+    expect(orderRequests).toBe(loaded + 1);
     await pause(FLUSH_WINDOW_MS + 300);
-    expect(orderRequests).toBe(3);
+    expect(orderRequests).toBe(loaded + 2);
 
     // A hint about something that is not shown anywhere asks for nothing.
     await hub.latest().send([{ type: 'unknown.event', all: true }]);
     await pause(FLUSH_WINDOW_MS + 300);
-    expect(orderRequests).toBe(3);
+    expect(orderRequests).toBe(loaded + 2);
 
     // The list is left: its entry stays in the cache for a while, without a subscriber.
     const cachedOrderLists = () =>
@@ -203,9 +213,9 @@ describe('hints and the cache', () => {
 
     // RTK Query removes an invalidated entry nobody is subscribed to instead of refetching it: it cannot be shown
     // stale later, and nothing is requested for a page that is not open.
-    await hub.latest().send([{ type: 'order.created', orderId: 'o3' }]);
+    await hub.latest().send([{ type: 'order.created', orderId: 'o4' }]);
+    await waitFor(() => expect(cachedOrderLists()).toHaveLength(0));
     await pause(FLUSH_WINDOW_MS + 300);
-    expect(cachedOrderLists()).toHaveLength(0);
-    expect(orderRequests).toBe(3);
+    expect(orderRequests).toBe(loaded + 2);
   });
 });

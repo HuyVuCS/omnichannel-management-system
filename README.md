@@ -259,9 +259,10 @@ npm run dev     # http://localhost:5173 - needs the API on http://localhost:5080
   `/api/hubs/notifications` (section "Realtime hints and dashboard summary"). The client library
   (`@microsoft/signalr`) is behind a small interface (`hub.ts`) and loaded with a dynamic `import()`, so the login page
   never downloads it; tests use a fake hub (`src/test/hub.ts`).
-  - Hints carry ids only. Each hint is mapped to RTK Query cache tags (`hintTags.ts`), the tags of one second are
-    collected and invalidated together: what is on screen is fetched again through the API, a cached list nobody shows
-    is dropped. No page polls.
+  - Hints carry ids only. Each hint is mapped to RTK Query cache tags (`hintTags.ts`) and the tags are invalidated at
+    most once per second (a throttle): at once when nothing was invalidated in the last second, otherwise together at
+    the end of that second. What is on screen is fetched again through the API, a cached list nobody shows is dropped.
+    No page polls.
   - Every (re)connect and every `resync: true` invalidates the realtime tags (orders, stock, movements, products,
     tasks, summary) once - never the whole cache. Lists are still fetched again whenever a page is opened.
   - The connection is retried after 0, 2, 5, 10, 30 seconds, then every 30 seconds, for as long as the session lasts;
