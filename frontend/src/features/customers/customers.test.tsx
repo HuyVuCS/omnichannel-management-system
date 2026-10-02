@@ -240,3 +240,44 @@ describe('customers page: dialog reopened before its close animation has finishe
     ).not.toBeInTheDocument();
   });
 });
+
+/**
+ * Animations off: the closed dialog and its form are destroyed, as in the browser once the close animation has ended.
+ * The form instance outlives them. Without React's StrictMode (a production build; these tests) nothing else replaces
+ * what it holds: the next dialog would start with the values of the previous one.
+ */
+describe('customers page: dialog opened again after it was closed completely', () => {
+  it('shows the values of the record it was opened for, never those of the previous one', async () => {
+    serveCustomers([an, binh]);
+    const { user: appUser } = renderApp({ route: '/customers', session: sessionOf(staffUser) });
+    await screen.findByText('Nguyễn Văn An');
+    const closed = () => waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    const valuesOf = (dialog: HTMLElement) =>
+      ['Tên khách hàng', 'Điện thoại', 'E-mail', 'Địa chỉ'].map(
+        (label) => within(dialog).getByLabelText<HTMLInputElement>(label).value,
+      );
+
+    await appUser.click(within(rowOf('Nguyễn Văn An')).getByRole('button', { name: 'Sửa' }));
+    let dialog = await findDialog('Sửa khách hàng');
+    const first = valuesOf(dialog);
+    expect(first[0]).toBe('Nguyễn Văn An');
+    await appUser.click(within(dialog).getByRole('button', { name: 'Huỷ' }));
+    await closed();
+
+    await appUser.click(within(rowOf('Trần Thị Bình')).getByRole('button', { name: 'Sửa' }));
+    dialog = await findDialog('Sửa khách hàng');
+    const second = valuesOf(dialog);
+    expect(second[0]).toBe('Trần Thị Bình');
+    // Nothing of the first customer is left - also not in a field the second one has no value for.
+    for (const value of first.filter((text) => text !== '')) {
+      expect(second).not.toContain(value);
+    }
+
+    await appUser.click(within(dialog).getByRole('button', { name: 'Huỷ' }));
+    await closed();
+
+    await appUser.click(screen.getByRole('button', { name: /Thêm khách hàng/ }));
+    dialog = await findDialog('Thêm khách hàng');
+    expect(valuesOf(dialog)).toEqual(['', '', '', '']);
+  });
+});

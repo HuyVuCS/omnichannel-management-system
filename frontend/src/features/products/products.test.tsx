@@ -391,3 +391,50 @@ describe('products page: dialog reopened before its close animation has finished
     expect(within(dialog).getByLabelText('Giá (VND)')).toHaveValue('');
   });
 });
+
+/**
+ * Animations off: the closed dialog and its form are destroyed, as in the browser once the close animation has ended.
+ * The form instance outlives them. Without React's StrictMode (a production build; these tests) nothing else replaces
+ * what it holds: the next dialog would start with the values of the previous one.
+ */
+describe('products page: dialog opened again after it was closed completely', () => {
+  it('shows the values of the record it was opened for, never those of the previous one', async () => {
+    serveProducts([tea, coffee]);
+    const { user: appUser } = renderProducts();
+    await screen.findByText('TEA-01');
+    const closed = () => waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+
+    await appUser.click(within(rowOf('TEA-01')).getByRole('button', { name: 'Sửa' }));
+    let dialog = await findDialog('Sửa sản phẩm');
+    expect(within(dialog).getByLabelText('Tên sản phẩm')).toHaveValue('Trà xanh');
+    await appUser.type(within(dialog).getByLabelText('Tên sản phẩm'), ' (chưa lưu)');
+    await appUser.click(within(dialog).getByRole('button', { name: 'Huỷ' }));
+    await closed();
+
+    await appUser.click(within(rowOf('COF-01')).getByRole('button', { name: 'Sửa' }));
+    dialog = await findDialog('Sửa sản phẩm');
+    expect(within(dialog).getByLabelText('Tên sản phẩm')).toHaveValue('Cà phê');
+    expect(within(dialog).getByLabelText('SKU')).toHaveValue('COF-01');
+    expect(within(dialog).getByLabelText('Giá (VND)')).toHaveValue('45.000');
+    expect(within(dialog).getByLabelText('Ngưỡng cảnh báo tồn kho')).toHaveValue('10');
+    expect(within(dialog).getByLabelText('Hạn dùng (không bắt buộc)')).toHaveValue('');
+    await appUser.click(within(dialog).getByRole('button', { name: 'Huỷ' }));
+    await closed();
+
+    // The same record again: what was typed and not saved is gone.
+    await appUser.click(within(rowOf('TEA-01')).getByRole('button', { name: 'Sửa' }));
+    dialog = await findDialog('Sửa sản phẩm');
+    expect(within(dialog).getByLabelText('Tên sản phẩm')).toHaveValue('Trà xanh');
+    expect(within(dialog).getByLabelText('Hạn dùng (không bắt buộc)')).toHaveValue('31/01/2027');
+    await appUser.click(within(dialog).getByRole('button', { name: 'Huỷ' }));
+    await closed();
+
+    // ... and a create dialog opened after an edit starts empty.
+    await appUser.click(screen.getByRole('button', { name: /Thêm sản phẩm/ }));
+    dialog = await findDialog('Thêm sản phẩm');
+    expect(within(dialog).getByLabelText('Tên sản phẩm')).toHaveValue('');
+    expect(within(dialog).getByLabelText('SKU')).toHaveValue('');
+    expect(within(dialog).getByLabelText('Giá (VND)')).toHaveValue('');
+    expect(within(dialog).getByLabelText('Ngưỡng cảnh báo tồn kho')).toHaveValue('0');
+  });
+});

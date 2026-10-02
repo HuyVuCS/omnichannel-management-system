@@ -52,6 +52,8 @@ export function ChangeRoleModal({ user, onClose }: ChangeRoleModalProps) {
         form={form}
         layout="vertical"
         preserve={false}
+        // With `useResetFormOnOpen`: a dialog opened again must not start with the values of the previous time.
+        clearOnDestroy
         initialValues={{ role: user?.role ?? undefined }}
         onFinish={(values) => void submit(values)}
       >

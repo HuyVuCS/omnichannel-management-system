@@ -94,7 +94,15 @@ export function ChannelFormModal({ state, onClose }: ChannelFormModalProps) {
       destroyOnHidden
     >
       <FormErrors errors={formErrors} />
-      <Form form={form} layout="vertical" preserve={false} initialValues={initialValues} onFinish={onFinish}>
+      <Form
+        form={form}
+        layout="vertical"
+        preserve={false}
+        // With `useResetFormOnOpen`: a dialog opened again must not start with the values of the previous time.
+        clearOnDestroy
+        initialValues={initialValues}
+        onFinish={onFinish}
+      >
         <Form.Item name="name" label={t('channels.form.name')} rules={[{ required: true, whitespace: true }]}>
           <Input autoComplete="off" />
         </Form.Item>
