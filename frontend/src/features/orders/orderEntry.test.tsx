@@ -19,7 +19,7 @@ import {
   teaProduct,
   TEA_ID,
 } from '@/test/catalog';
-import { expectLanguageSwitchChangesTextOnly, type AppUser } from '@/test/interactions';
+import { expectLanguageSwitchChangesTextOnly, switchLanguage, type AppUser } from '@/test/interactions';
 import { attempt, channel, ORDER_ID, orderDetail, serveChannels, task, TASK_ID } from '@/test/orders';
 import { renderApp } from '@/test/renderApp';
 import { api, managerUser, problem, server, sessionOf, staffUser } from '@/test/server';
@@ -213,6 +213,19 @@ describe('order entry', () => {
     expect(panelOf('digital-platform').queryByRole('alert')).not.toBeInTheDocument();
     expect(submitButton('pos')).toBeEnabled();
     expect(externalOrderId('pos')).toBeEnabled();
+  });
+
+  it('shows the channel name next to the panel title only when it says something else', async () => {
+    serveEverything();
+    const { user: appUser } = await renderOrderEntry();
+    const titles = () =>
+      screen.getAllByTestId(/^order-panel-/).map((panel) => panel.querySelector('.ant-card-head')?.textContent);
+
+    // The seeded channels: two are called like their panel (compared without case), the third is not in Vietnamese.
+    await waitFor(() => expect(titles()).toEqual(['Digital Platform Online', 'Website', 'POS (tại quầy)POS']));
+
+    await switchLanguage(appUser, 'EN');
+    await waitFor(() => expect(titles()).toEqual(['Digital Platform Online', 'Website', 'POS']));
   });
 
   it('submits the order of the website panel, follows its task until it succeeded, loads the order once and refreshes the lists once', async () => {
