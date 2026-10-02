@@ -118,6 +118,9 @@ export function StockImportForm({ initialProductId, onImported }: StockImportFor
         initialValues={{ items: [{ productId: initialProductId }] }}
         onFinish={(values) => {
           setFormErrors([]);
+          // The fields were validated again just now, which removed their old API errors. The list has no rule of its
+          // own, so an API error of the list as a whole (the same product twice) is removed here.
+          form.setFields([{ name: 'items', errors: [] }]);
           setConfirming(values);
         }}
       >

@@ -308,6 +308,33 @@ describe('stock import: errors of the API', () => {
     expect(counts).toEqual({ inventory: 1, movements: 1 });
   });
 
+  it('removes the list error of the previous attempt on the next submit', async () => {
+    serveProductCatalog([teaProduct, coffeeProduct]);
+    const { state, bodies } = serveImport();
+    state.answer = () =>
+      problem(400, {
+        errorCode: 'validation_failed',
+        errors: { items: ["'Các dòng hàng' không được chứa cùng một sản phẩm nhiều lần (máy chủ)."] },
+      });
+    const { user: appUser } = renderImport();
+    await fillTwoLines(appUser);
+    await submitAndConfirm(appUser);
+    expect(
+      await screen.findByText("'Các dòng hàng' không được chứa cùng một sản phẩm nhiều lần (máy chủ)."),
+    ).toBeInTheDocument();
+
+    // The next attempt fails for another reason: only that reason is shown. No field rule clears the list's error.
+    state.answer = () => problem(409, { errorCode: 'stock_limit_exceeded' });
+    await submitAndConfirm(appUser);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Số lượng nhập làm tồn kho vượt quá giới hạn cho phép.');
+    await waitFor(() => expect(document.querySelectorAll('.ant-form-item-explain-error')).toHaveLength(0));
+    expect(
+      screen.queryByText("'Các dòng hàng' không được chứa cùng một sản phẩm nhiều lần (máy chủ)."),
+    ).not.toBeInTheDocument();
+    expect(bodies).toHaveLength(2);
+  });
+
   it('shows a document that was already imported on the document number, and the stock limit above the form', async () => {
     serveProductCatalog([teaProduct, coffeeProduct]);
     const { state, bodies } = serveImport();
