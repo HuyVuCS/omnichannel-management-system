@@ -38,7 +38,7 @@ export const navigationItems: readonly NavigationItem[] = [
   { path: '/products', labelKey: 'nav.products', icon: <AppstoreOutlined /> },
   { path: '/customers', labelKey: 'nav.customers', icon: <TeamOutlined /> },
   { path: '/channels', labelKey: 'nav.channels', icon: <ShopOutlined /> },
-  { path: '/processing', labelKey: 'nav.processing', icon: <SyncOutlined />, plannedTask: '016' },
+  { path: '/processing', labelKey: 'nav.processing', icon: <SyncOutlined /> },
   { path: '/alerts', labelKey: 'nav.alerts', icon: <BellOutlined />, plannedTask: '018' },
   { path: '/logs', labelKey: 'nav.logs', icon: <FileSearchOutlined />, plannedTask: '018' },
   { path: '/reports', labelKey: 'nav.reports', icon: <BarChartOutlined />, plannedTask: '021' },

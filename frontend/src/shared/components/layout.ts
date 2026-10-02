@@ -61,5 +61,11 @@ export const SHORT_SUMMARY_LABEL_WIDTH = 160;
 /** A date-range filter (two `DD/MM/YYYY` inputs). */
 export const DATE_RANGE_WIDTH = 280;
 
+/** Dashboard: the range presets ("Last 24 hours" is the longest of the four labels). */
+export const DASHBOARD_PRESETS_WIDTH = 480;
+
+/** Dashboard: "Cập nhật lúc 08:05:09" / "Updated at 08:05:09" next to the refresh button. */
+export const DASHBOARD_UPDATED_WIDTH = 190;
+
 /** The one brand colour (AntD `token.colorPrimary`); status colours are used for states only. */
 export const PRIMARY_COLOR = '#1677ff';

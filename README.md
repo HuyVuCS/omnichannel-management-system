@@ -206,19 +206,22 @@ npm ci          # first time, and after package.json changes
 npm run dev     # http://localhost:5173 - needs the API on http://localhost:5080 (section 5)
 ```
 
-- `npm run dev` proxies `/api` to the API, so the browser only talks to its own origin (no CORS involved).
+- `npm run dev` proxies `/api` to the API - WebSockets included (the notifications hub) -, so the browser only talks to
+  its own origin (no CORS involved).
 - Sign in with a user of the API (the bootstrap admin, or one created on the Users page).
 - Other scripts: `npm run typecheck`, `npm run lint` (ESLint + Prettier check), `npm test` (Vitest, no API needed: requests
   are answered by MSW), `npm run build` (output in `frontend/dist`), `npm run preview`, `npm run format`,
   `npm run measure` (after a build: the first-load set - entry chunk and everything it imports statically - per file
   and in total, raw and gzip; `scripts/measure-bundle.mjs`).
 - Structure: `src/app` (store, router, providers, layout), `src/shared` (API layer, components, i18n, helpers),
-  `src/features/<feature>` (RTK Query endpoints, pages), `src/pages` (dashboard placeholder, 403, 404).
+  `src/features/<feature>` (RTK Query endpoints, pages), `src/pages` (403, 404, route error).
 - Conventions every page follows:
   - server data through RTK Query endpoints injected into `baseApi` (tags per resource); Redux slices only for client state
-    (the session);
+    (the session, the state of the realtime connection);
   - every text through i18n (`src/shared/i18n/vi.json` and `en.json` must have the same keys; a test checks this and also
-    fails on hard-coded text in components);
+    fails on hard-coded text in components). Only the language in use is downloaded: it is loaded before the first
+    render, the other one on the first switch and before the language changes (`changeLanguage` of `shared/i18n`, never
+    `i18n.changeLanguage` directly); a failed load keeps the language and shows a notification;
   - fixed widths from `src/shared/components/layout.ts` and truncation with a tooltip, so switching the language changes
     text only;
   - API errors: validation errors on the form fields (`applyProblemToForm`), `errorCode` translated under `errors.<code>`,
@@ -239,24 +242,47 @@ npm run dev     # http://localhost:5173 - needs the API on http://localhost:5080
     language switch is a `Modal` of its page, not `modal.confirm`;
   - products and customers are picked with `ProductSelect` / `CustomerSelect` (server-side search, no client-side list;
     shared behaviour in `useServerSearchSelect`). While a search is pending the picker offers no options, so Enter
-    cannot choose an option of an older search; a label that is cut shows its full text as the `title`;
+    cannot choose an option of an older search (a background refetch of the same search keeps its options); a label
+    that is cut shows its full text as the `title`;
   - a list whose table shows the API's default order passes `defaultSortDir` to `useListQueryState` (orders: newest
     first); that order is never written to the address.
-- Pages so far: Order entry (`/order-entry`), Orders (`/orders`), Order detail (`/orders/{id}`, reached from the list
-  and from an order reference in the movement history, no menu item), Inventory (`/inventory`), Stock import
+- Pages so far: Dashboard (`/`), Order entry (`/order-entry`), Orders (`/orders`), Order detail (`/orders/{id}`, reached
+  from the list and from an order reference in the movement history, no menu item), Inventory (`/inventory`), Stock import
   (`/inventory/import`, Manager/Admin, reached from the inventory and product lists, no menu item), Inventory movements
-  (`/inventory/movements`), Products, Customers, Channels, Users. The other menu items show a "coming in task NNN"
-  placeholder.
+  (`/inventory/movements`), Products, Customers, Channels, Sync & Processing (`/processing`), Task detail
+  (`/processing/tasks/{id}`, no menu item), Users. The other menu items show a "coming in task NNN" placeholder.
+- **Realtime** (`src/features/realtime`): after sign-in the application opens one SignalR connection to
+  `/api/hubs/notifications` (section "Realtime hints and dashboard summary"). The client library
+  (`@microsoft/signalr`) is behind a small interface (`hub.ts`) and loaded with a dynamic `import()`, so the login page
+  never downloads it; tests use a fake hub (`src/test/hub.ts`).
+  - Hints carry ids only. Each hint is mapped to RTK Query cache tags (`hintTags.ts`), the tags of one second are
+    collected and invalidated together: what is on screen is fetched again through the API, a cached list nobody shows
+    is dropped. No page polls.
+  - Every (re)connect and every `resync: true` invalidates the realtime tags (orders, stock, movements, products,
+    tasks, summary) once - never the whole cache. Lists are still fetched again whenever a page is opened.
+  - The connection is retried after 0, 2, 5, 10, 30 seconds, then every 30 seconds, for as long as the session lasts;
+    it is closed on logout and when the token expires. A token the hub refuses (401) ends the session like a 401 of the
+    API. The header shows *live* / *connecting* / *reconnecting* / *offline* (offline = only the 30-second retries are
+    left; the data on screen may be outdated).
+  - The client logs warnings and errors only, with `access_token` removed: the token is part of the WebSocket URL.
+- Dashboard: the numbers of `GET /api/dashboard/summary` as the server computed them (no totals, thresholds or range
+  limit in the client). The range is in the address: `?range=today|7d|30d` (local days; the default, the last 24 hours,
+  writes and sends nothing) or `?from=...&to=...`. Non-zero numbers link to the list behind them.
+- Sync & Processing: the task list (filters task type, status, channel, creation range, correlation id, error code;
+  sort by created / updated) and the task detail with its message state and attempts. Manager and Admin can retry a
+  `Failed` task there and on the order detail (after a confirmation). The publisher's `lastError` is never shown.
 - Order entry: three panels, one per seeded channel slug (`digital-platform`, `website`, `pos`), each with its own form
   and outcome. The external order id is the order's idempotency key: it is generated when the form opens
   (`DP-` / `WEB-` / `POS-` + local date + six characters), can be edited, and stays as it is after a failed request, so a
-  resend is the same order. After the API accepted an order (202) the panel follows its processing task
-  (`GET /api/processing/tasks/{id}` every 1.5 s, at most 60 s, not while the tab is hidden - `app/tabVisibility.ts`),
-  then loads the order once; "Check again" starts another 60 s. The Workers host must be running for an order to get
-  past "waiting" (section 6). There is no price or total in the form: amounts come from the order.
-- Stock and orders change in the background (Order Worker): the inventory, movement and order lists and the order detail
-  are fetched again whenever the page is opened and on "Refresh", and the order-entry page invalidates them once when a
-  task is finished. Realtime updates come with SignalR in a later task.
+  resend is the same order. After the API accepted an order (202) the panel follows its processing task: by push while
+  the realtime connection is live (a hint for the task fetches it again, nothing is asked in between), otherwise by
+  polling `GET /api/processing/tasks/{id}` every 1.5 s (not while the tab is hidden - `app/tabVisibility.ts`). Either
+  way it waits at most 60 s, then offers "Check again" (one request, another 60 s); a finished task loads its order
+  once. The Workers host must be running for an order to get past "waiting" (section 6). There is no price or total in
+  the form: amounts come from the order.
+- Stock, orders and tasks change in the background (Workers): besides the realtime hints, the inventory, movement,
+  order and task lists and the detail pages are fetched again whenever the page is opened and on "Refresh", and the
+  order-entry page invalidates the lists once when a task is finished.
 - The access token is kept in `sessionStorage` (cleared when the tab closes); the language choice in `localStorage`.
 
 ## API conventions
@@ -284,8 +310,8 @@ npm run dev     # http://localhost:5173 - needs the API on http://localhost:5080
   400 on `productId` (product does not exist) or `externalProductId` (neither external id given),
   409 `channel_product_exists` (product already mapped on this channel), 409 `external_product_id_taken` (the external
   product id belongs to another product on this channel).
-- `GET /api/processing/tasks` accepts `channelId`; task responses carry `channelId` and `productId` (set for `StockSync`
-  tasks). Attempt error codes of stock sync: `channel_timeout`, `channel_unavailable`, `channel_rate_limited`,
+- `GET /api/processing/tasks` accepts `channelId`; task responses carry `channelId`, `productId` and `productSku` (set
+  for `StockSync` tasks, null otherwise; the SKU comes from a left join in the same query). Attempt error codes of stock sync: `channel_timeout`, `channel_unavailable`, `channel_rate_limited`,
   `channel_circuit_open` (temporary), `channel_rejected` (permanent).
 - A business conflict that the API answers with 409 (the two above, `product_sku_exists`, `stock_import_already_applied`,
   ...) is logged once at Information (`Request failed with 409: <errorCode>`). EF Core's own entries for such a unique
@@ -339,7 +365,9 @@ npm run dev     # http://localhost:5173 - needs the API on http://localhost:5080
     in the range);
   - `stockSync` per channel with a stock-sync queue: `retryScheduled` (now), `failed` (in the range), `lastSucceededAt`;
   - `outbox` (now): `pending`, `failed`, `oldestPendingAt`.
-- Scripted check: `powershell -ExecutionPolicy Bypass -File scripts\smoke\task-015.ps1`.
+- Scripted check: `powershell -ExecutionPolicy Bypass -File scripts\smoke\task-015.ps1`; the frontend side (product
+  SKU on tasks, build, tests): `scripts\smoke\task-016.ps1`. A smoke script starts an API or a Workers host only for
+  the local default; with `SMOKE_BASE_URL` set they must already be running.
 
 ### Users and token revocation
 

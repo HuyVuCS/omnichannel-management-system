@@ -91,12 +91,11 @@
     "stock_limit_exceeded": "Số lượng nhập làm tồn kho vượt quá giới hạn cho phép.",
     "order_conflict": "Mã đơn hàng này đã được dùng trên kênh này với nội dung khác. Hãy tạo số mới cho đơn hàng này.",
     "order_not_found": "Đơn hàng không tồn tại.",
-    "task_not_found": "Tác vụ xử lý không tồn tại."
+    "task_not_found": "Tác vụ xử lý không tồn tại.",
+    "task_not_failed": "Tác vụ không còn ở trạng thái thất bại nên không thể thử lại.",
+    "retry_source_missing": "Không còn thông điệp gốc của tác vụ để gửi lại."
   },
   "pages": {
-    "dashboard": {
-      "title": "Tổng quan"
-    },
     "notFound": {
       "title": "Không tìm thấy trang",
       "description": "Địa chỉ không tồn tại hoặc trang đã được chuyển đi."
@@ -492,6 +491,78 @@
     }
   },
   "processing": {
+    "title": "Đồng bộ & xử lý",
+    "openOrder": "Mở đơn",
+    "filters": {
+      "taskType": "Loại tác vụ",
+      "status": "Trạng thái",
+      "channel": "Kênh bán",
+      "from": "Tạo từ ngày",
+      "to": "Đến ngày",
+      "correlationId": "Mã tương quan",
+      "errorCode": "Mã lỗi",
+      "clear": "Xoá bộ lọc"
+    },
+    "columns": {
+      "createdAt": "Ngày tạo",
+      "taskType": "Loại tác vụ",
+      "status": "Trạng thái",
+      "channel": "Kênh bán",
+      "productSku": "SKU",
+      "order": "Đơn hàng",
+      "attemptCount": "Số lần chạy",
+      "lastErrorCode": "Mã lỗi gần nhất",
+      "lastWorkerInstance": "Phiên bản worker",
+      "lastErrorMessage": "Thông báo lỗi",
+      "updatedAt": "Cập nhật lúc"
+    },
+    "actions": {
+      "detail": "Chi tiết"
+    },
+    "retry": {
+      "action": "Thử lại",
+      "confirmTitle": "Thử lại tác vụ này?",
+      "confirmContent": "Tác vụ sẽ được đưa lại vào hàng đợi và chạy lại từ đầu.",
+      "requested": "Đã đưa tác vụ vào hàng đợi để thử lại."
+    },
+    "detail": {
+      "loadingTitle": "Tác vụ xử lý",
+      "back": "Quay lại",
+      "taskType": "Loại tác vụ",
+      "status": "Trạng thái",
+      "channel": "Kênh bán",
+      "productSku": "SKU",
+      "order": "Đơn hàng",
+      "retryCount": "Số lần thử lại",
+      "correlationId": "Mã tương quan",
+      "taskId": "Mã tác vụ",
+      "createdAt": "Ngày tạo",
+      "updatedAt": "Cập nhật lúc",
+      "notFound": {
+        "title": "Không tìm thấy tác vụ",
+        "description": "Tác vụ không tồn tại hoặc địa chỉ không đúng.",
+        "toList": "Về danh sách"
+      },
+      "message": {
+        "title": "Thông điệp",
+        "none": "Tác vụ này không có thông điệp.",
+        "eventType": "Loại sự kiện",
+        "status": "Trạng thái gửi",
+        "createdAt": "Ngày tạo",
+        "publishedAt": "Gửi lúc",
+        "publishAttempts": "Số lần gửi",
+        "messageId": "Mã thông điệp"
+      },
+      "attempts": {
+        "title": "Các lần chạy",
+        "none": "Tác vụ này chưa có lần chạy nào."
+      }
+    },
+    "messageStatuses": {
+      "Pending": "Chưa gửi",
+      "Published": "Đã gửi",
+      "Failed": "Gửi thất bại"
+    },
     "taskTypes": {
       "OrderProcessing": "Xử lý đơn hàng",
       "StockSync": "Đồng bộ tồn kho",
@@ -519,6 +590,60 @@
       "errorMessage": "Thông báo lỗi",
       "startedAt": "Bắt đầu",
       "finishedAt": "Kết thúc"
+    }
+  },
+  "dashboard": {
+    "title": "Tổng quan",
+    "updatedAt": "Cập nhật lúc {{time}}",
+    "range": {
+      "label": "Khoảng thời gian",
+      "24h": "24 giờ qua",
+      "today": "Hôm nay",
+      "7d": "7 ngày qua",
+      "30d": "30 ngày qua",
+      "from": "Từ ngày",
+      "to": "Đến ngày"
+    },
+    "orders": {
+      "title": "Đơn hàng trong khoảng thời gian",
+      "total": "Số đơn hàng",
+      "salesAmount": "Doanh số (đã giữ hàng và hoàn tất)",
+      "status": "Trạng thái",
+      "count": "Số đơn",
+      "channel": "Kênh bán",
+      "channelTotal": "Số đơn",
+      "channelReserved": "Đã giữ hàng",
+      "channelInsufficientStock": "Không đủ hàng"
+    },
+    "inventory": {
+      "title": "Tồn kho hiện tại",
+      "products": "Sản phẩm",
+      "lowStock": "Sắp hết hàng",
+      "outOfStock": "Hết hàng"
+    },
+    "processing": {
+      "title": "Xử lý theo loại tác vụ",
+      "taskType": "Loại tác vụ",
+      "pending": "Đang chờ",
+      "inProgress": "Đang xử lý",
+      "retryScheduled": "Chờ thử lại",
+      "failed": "Thất bại (trong khoảng)",
+      "succeeded": "Thành công (trong khoảng)"
+    },
+    "stockSync": {
+      "title": "Đồng bộ tồn kho theo kênh",
+      "channel": "Kênh bán",
+      "retryScheduled": "Chờ thử lại",
+      "failed": "Thất bại (trong khoảng)",
+      "lastSucceededAt": "Lần thành công gần nhất",
+      "never": "Chưa có"
+    },
+    "outbox": {
+      "title": "Hàng đợi gửi thông điệp (outbox)",
+      "pending": "Đang chờ gửi",
+      "failed": "Gửi thất bại",
+      "oldestPending": "Chờ lâu nhất",
+      "none": "Không có"
     }
   }
 }
