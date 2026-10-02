@@ -425,3 +425,21 @@ stability"), smoke 25/25 (second run). First-load set 968 kB raw / 317 kB gzip. 
 | Mapping writes | Status is a field of the edit dialog, no separate action, no confirmation; no client rule for "one external id" (the server's 400 on `externalProductId`) | Reversible, nothing deleted; business rules stay on the server | — |
 | Frontend test stability (review 016b) | Smoke scripts run `npm run build` / `npm test` after stopping the hosts they started; `testTimeout` stays 20 s; worker count and slow-test split decided by measurement in 017 Part A | Whole-test timeouts under memory pressure made 2 of 6 known runs red | CI runner sizing (025) |
 
+## Task 017 plan — alerts backend (2026-10-03)
+
+| Topic | Decision | Reason | Revisit when |
+| --- | --- | --- | --- |
+| Alert storage | **New `Alerts` table with a lifecycle `Open` → `Acknowledged` → `Resolved` (user, 2026-10-03)**; `SystemEventLog` stays the event history | `SystemEventLog` alone cannot say what is open now, cannot be acknowledged without mutating an append-only audit table, and writes one row per occurrence. Alternatives: `SystemEventLog` only; alerts derived from current state (no acknowledge, permanent failures listed forever, complex "superseded task" query) | — |
+| Acknowledge | Manager/Admin only (user, 2026-10-03); `Open` → `Acknowledged`, never resolves; audited in `SystemEventLog` (`alert.acknowledged`) | Same role as manual retry: Staff must not remove a failure from "needs attention" before a manager sees it | Staff need to triage |
+| Types and keys | `LowStock` per product, `InsufficientStock` per product, `StockSyncFailed` per (channel, product), `ProcessingFailed` per task; one unresolved row per `DedupKey` (partial unique index `WHERE Status <> 'Resolved'`); a recurring condition refreshes the row (`OccurrenceCount`, latest task/order/error), a condition that returns after resolution opens a new row | Dedup without losing history; per (channel, product) because only the newest stock-sync task matters (log 014) | — |
+| Resolution | Always by the system: low stock when the shared predicate is false again; insufficient stock by the next import of the product; stock-sync failure by any later `Succeeded` task of the same (channel, product); processing failure by the same task succeeding (manual retry). No manual resolve | The source-of-truth tables decide; an operator cannot hide a live condition | Users ask for manual resolve |
+| Write mechanism | One raw SQL statement per alert write, in the transaction of the causing change (`INSERT … ON CONFLICT … WHERE Status <> 'Resolved'`, conditional `UPDATE … RETURNING`); writer throws without an explicit transaction | Race-free without extra locks or check-then-insert; an alert never exists without its cause nor survives a rollback | — |
+| Low stock | Reconciled from current rows after every stock or threshold change (two set-based statements over the changed products, under the inventory row locks already held), not detected by transition; product update locks the inventory row before changing the threshold; new products are low at creation (intended); the reserve `UPDATE` itself is unchanged | Self-healing and exact under the existing lock order; no second copy of the rule | A stock release/cancel path is added: it must call the reconcile |
+| Hints | Alert writer sends its own `pg_notify` in the same transaction: `alert.changed` for every row change, `low_stock.created` when a `LowStock` row is inserted; the change-tracker interceptor does not capture alerts | Raw SQL writes are invisible to the change tracker; transactional `NOTIFY` keeps "hint never precedes its data" | — |
+| Backfill | Migration opens `LowStock` for products low now, `StockSyncFailed` for pairs whose newest task is `Failed`, `ProcessingFailed` for other `Failed` tasks; no `InsufficientStock` backfill | Alert view matches the current state from the first deploy | — |
+| Retention | Resolved alerts are kept; no purge | Volume is small (deduplicated) | 026 |
+
+### Deviations / additions to the architecture document
+15. `Alerts` table (the ERD has no alert entity).
+16. `GET /api/alerts/{alertId}`, `POST /api/alerts/{alertId}/acknowledge` (doc §11 lists only `GET /api/alerts`).
+17. Hint `alert.changed` in addition to the doc's `low_stock.created`.

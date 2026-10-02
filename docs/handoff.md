@@ -29,14 +29,13 @@ Source-of-truth order when documents disagree:
 - 001–016b — Done (titles in [docs/roadmap.md](roadmap.md); 016b
   [review](tasks/016b-channel-product-mappings-ui.review.md) accepted: no P0–P1 in the new code, a pre-existing P1
   form-dialog defect fixed, one P2 — frontend suite unstable under load — goes to 017 Part A).
-- 017 — Alerts (low stock, processing failures), `GET /api/alerts`; Part A from review 016b — Planned, **blocked on the
-  user's decision: where alerts are stored** (new `Alert` table with open/acknowledged, or `SystemEventLog` only)
+- 017 — Alerts backend + Part A from review 016b — **Open**: [task file](tasks/017-alerts-backend.md) written by Cowork
+  on 2026-10-03 after the user's decision (new `Alerts` table Open → Acknowledged → Resolved; acknowledge Manager/Admin)
 - 018 — Frontend: Alerts page, Logs/Audit page; Part A from review 016b — Planned
 - 019 — S3 product images (presigned upload) — Planned (decision needed first: S3 in development)
 
 ## 5. In flight
-**Nothing is being implemented.** Task 017 is not written yet: Cowork writes it once the user has decided where alerts
-are stored. Its Part A (review 016b) is fixed already:
+**Task 017 is open for Claude Code** (`/next-task`). Decisions: implementation log "Task 017 plan". Its Part A (review 016b):
 - A1 frontend suite stable under load: smoke scripts run `npm run build` / `npm test` after stopping the hosts they
   started; measure `maxWorkers` 3 vs 4; split tests that take > 5 s alone; `testTimeout` stays 20 s; acceptance 5
   consecutive green full runs with PostgreSQL and RabbitMQ running;
@@ -45,7 +44,6 @@ The user's smoke run of 016b (2026-10-03): API checks green, `npm test` red in `
 pasted; assumed the same timeout class).
 
 ## 6. Pending for the user
-- **Decision before 017:** where alerts are stored (new `Alert` table with open/acknowledged · `SystemEventLog` only).
 - **A1 of 016b:** `Host=127.0.0.1` instead of `Host=localhost` in `ConnectionStrings:Default` of both user-secrets and in
   `OMNICHANNEL_MIGRATOR_CONNECTION` (commands: report 016b "Manual steps", or the in-place PowerShell snippet from the
   Cowork chat of 2026-10-02). Until then every new database connection costs about 2 s.
@@ -106,8 +104,8 @@ pasted; assumed the same timeout class).
   scripts with the Write tool and run the file.
 
 ## 9. Next action
-**User:** decide where alerts are stored. **Then Cowork:** write task 017 (alerts + Part A from review 016b).
-**Claude Code:** nothing until 017 exists. The user can do the `127.0.0.1` change and the manual check at any time.
+**Claude Code:** `/next-task` → task 017 (Part A first). **User:** apply migration `Alerts` with the migrator role when
+the report lists it, run `task-017.ps1` if Claude Code could not. **Then Cowork:** review 017. The user can do the `127.0.0.1` change and the manual check at any time.
 
 ## 10. Resume prompts
 New Claude Code chat:
@@ -119,5 +117,5 @@ docs/handoff.md.")
 
 New Cowork chat:
 ```
-Dự án Management System. Đọc docs/handoff.md, docs/roadmap.md và docs/implementation-log.md trong thư mục đã kết nối, rồi tiếp tục vai trò lập kế hoạch/review theo docs/tasks/README.md. Review 016b đã xong. Việc tiếp theo: chốt với tôi quyết định "lưu alert ở đâu" (bảng Alert mới có open/acknowledged hay chỉ SystemEventLog), rồi viết task 017 (alerts backend; Part A từ review 016b: bộ test frontend ổn định khi chạy cùng smoke, Assert-Step so sánh chặt).
+Dự án Management System. Đọc docs/handoff.md, docs/roadmap.md và docs/implementation-log.md trong thư mục đã kết nối, rồi tiếp tục vai trò lập kế hoạch/review theo docs/tasks/README.md. Task 017 (alerts backend + Part A) đã được viết. Việc tiếp theo: review task 017 khi docs/tasks/017-alerts-backend.report.md đã có, rồi viết task 018.
 ```
