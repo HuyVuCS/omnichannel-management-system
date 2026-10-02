@@ -9,7 +9,8 @@ You are the implementation side of the Cowork ⇄ Claude Code workflow described
 
 - If an argument was given (`$ARGUMENTS`), use the task file in `docs/tasks/` whose name starts with that number.
 - Otherwise use the **lowest-numbered** `docs/tasks/NNN-*.md` that has no matching `NNN-*.report.md`
-  (ignore `README.md`, `*.report.md`, `*.review.md`).
+  (ignore `README.md`, `*.report.md`, `*.review.md`). A split task has a letter suffix (`016b-*.md`): it comes after
+  `016-*.md` and before `017-*.md`.
 - If there is no open task, say so and stop.
 
 ## 2. Understand before changing anything

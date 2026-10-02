@@ -347,3 +347,41 @@ smoke 38/38 (throwaway environment; the development run, migration and manual ch
 | API side | One `LISTEN` connection per API instance (background service, reconnect with backoff); after a reconnect every client gets `resync` (hints may have been missed) ; hints batched per short window (≤ 250 ms) into one hub message | Each instance pushes to its own connections: scale-out without a SignalR backplane; batching avoids refetch storms | Many API instances with sticky sessions → consider a backplane |
 | Hub | `/api/hubs/notifications`, server → client only, AnyStaff, JWT from the `access_token` query parameter for this path only, `CloseOnAuthenticationExpiration`, security-stamp check at connect (existing `OnTokenValidated`); the token never appears in logs | WebSockets cannot send headers from the browser; revocation keeps working at (re)connect; hints carry no data, so a revoked user keeps at most hint traffic until the token expires | Hints ever carry data |
 | Dashboard summary | `GET /api/dashboard/summary?from&to` (AnyStaff): orders in range by status and channel + sales amount (Reserved + Completed), current inventory counts (shared low-stock predicate, out of stock), current non-terminal tasks per type and failures in range, stock-sync health per channel, outbox health | One request for the overview page; every number from SQL aggregates, none computed by the client | 017 adds open alerts |
+
+## Task 015 result (reviewed 2026-10-02)
+
+Realtime hints (`RealtimeHintInterceptor` → `pg_notify('omnichannel_ui')` → `PostgresHintListener` → hub
+`/api/hubs/notifications`, message `hints` `{ events, resync }`), `GET /api/dashboard/summary`; Part A: stale stock-sync
+task after deactivation (014 P2), `GET` of one mapping, README section 6, `.http` samples. Backend 745/745 (505 unit, 240
+integration), smoke 27/27 (throwaway environment; the development run and the manual check confirmed by the user on
+2026-10-02), 15 mutations; frontend untouched; no migration. Review: `docs/tasks/015-*.review.md`.
+
+| Topic | Decision | Reason | Revisit when |
+| --- | --- | --- | --- |
+| Token in log events | `AccessTokenRedactionEnricher` replaces every `access_token=` value in string properties of every Serilog event of the API | The hub reads the token from the query string; `Microsoft.AspNetCore.Hosting.Diagnostics` logs URLs at Information — one level change must not leak tokens | Hardening (026): reverse proxy / load balancer logs (outside the application) |
+| Oversized hints | Per save: > 100 product ids → `inventory.changed` with `all: true`; payload still > 7999 bytes → one `{type, all: true}` per event type. Per API instance: batch > 200 events or queue (10,000) full → `resync: true` without events | Degrade to "refetch" instead of failing a business transaction or flooding clients | — |
+| Summary response shape | `byStatus`, `processing`, `stockSync` are lists of objects (every enum value / channel, zeros included), not objects keyed by enum name | Keys would be PascalCase enum names; lists keep camelCase and a stable order | — |
+| Summary consistency | Nine independent aggregate statements, no common snapshot; sections can differ by changes committed in between | Overview page; a `REPEATABLE READ` read-only transaction is the fix if it ever matters | Users compare numbers across sections |
+| `stockSync.lastSucceededAt` | The channel's most recent successful sync **ever**, not bound to the range | An operator needs "when did this channel last get stock" exactly when the range shows no success | 026 adds the index for it |
+| Summary indexes | None added; three statements grow with the table (tasks by type/status, stock sync per channel, outbox failed), measured 3–5 ms at 24k tasks / 40k outbox rows | No measured need yet | 026, or earlier when the endpoint exceeds 200 ms: partial indexes on `OutboxEvents (Status = 'Failed')`, `ProcessingTasks` non-terminal statuses, `ProcessingTasks (ChannelId, UpdatedAt)` for `StockSync`/`Succeeded` |
+| Hint audience | Every connected user receives every hint (ids only) | Every role may read orders, inventory and tasks | A page whose ids are restricted by role |
+| Smoke scripts and foreign environments | (016 Part A) a script starts an API / Workers host only for the local default (`SMOKE_BASE_URL` unset) | The 015 run started an API with the development secrets while targeting a throwaway port | — |
+
+## Task 016 plan — realtime client, dashboard, Sync & Processing page (2026-10-02)
+
+Roadmap change (user, 2026-10-02): the planned 016 is split. **016** = realtime client, dashboard, Sync & Processing page,
+order-entry outcome by push, Part A; **016b** = channel product mapping UI (Channels page) incl. "channel is never
+synced". Numbers 017+ are unchanged.
+
+| Topic | Decision | Reason | Revisit when |
+| --- | --- | --- | --- |
+| SignalR client | `@microsoft/signalr` (official client), loaded with a dynamic `import()` after sign-in so it stays out of the first-load set; client log level Warning (the client must never print a URL with the token) | No hand-written WebSocket protocol; the login page does not need it | — |
+| Connection lifecycle | One connection per session: started when a session exists, stopped on logout / expiry / 401; `accessTokenFactory` reads the current token from the store; automatic reconnect with delays 0, 2, 5, 10, 30 s, then every 30 s while signed in (no give-up) | The token has no refresh: the session ends at expiry anyway (`SessionManager`), so reconnect never needs a new token | Refresh tokens (026) |
+| Resync | Every transition to *connected* (the first connect included) and every `resync: true` message invalidates the realtime tags once | Hints sent before the connection existed or while it was down are lost; one extra refetch at page load is the price | — |
+| Event → tag map | One module: `order.created` → `Order` LIST, summary; `inventory.changed` → `Inventory`, `InventoryMovement`, `Product` LIST, summary; `processing.task.changed` → `ProcessingTask` (id + LIST), `Order` (id, when `orderId`), summary; `all: true` = every tag of that event type | Hints carry ids only; RTK Query refetches what is on screen with the user's own authorization | — |
+| Refetch coalescing | Tags from hints are collected and flushed at most once per second (trailing); `resync` flushes the realtime tags, never `resetApiState` | A stock-sync burst produces several hub messages per second; refetches per tab must stay bounded (review 015) | Users need sub-second freshness |
+| Polling and refetch-on-open | Order-entry outcome: push (tag invalidation) while connected, the 013 polling (1.5 s, 60 s window) only while the connection is not connected. Lists keep `refetchOnMountOrArgChange` | Hints are best effort; one request per page open is cheap and covers the disconnected case | — |
+| Connection indicator | Header shows *live* / *reconnecting* / *offline* as icon + text (not colour alone), localised | Users must know when the screen is not live | — |
+| Dashboard | Tiles and tables from `GET /api/dashboard/summary`, no chart library; range presets (last 24 h default, today, 7 days, 30 days) and a custom range kept in the address; the 92-day rule is the server's (400 shown on the field) | No business rule in the client; a chart library is a decision for 021 | Reports (021) |
+| Sync & Processing page | `/processing`: task list (filters type, status, channel, created range, correlation id, error code; address-backed) and a detail route `/processing/tasks/:taskId` (attempts, message status — never `lastError`), retry for Manager/Admin on `Failed` with confirmation; the same retry on the order detail | Doc §3.2 and §16 "trace an order to task, worker, instance, attempt, error"; retry from the processing page is the recovery path for long channel outages (review 014) | — |
+| Product of a task | `productSku` added to the task summary and detail (left join in the same query); channel names from the channel list | A task list must not show product GUIDs or look products up per row | — |

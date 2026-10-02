@@ -3,11 +3,12 @@
 This file is an index and a snapshot of what is in flight. The repository documents are the memory; follow the links.
 
 ## 1. Snapshot
-- Written: 2026-10-02 14:15 (+07:00).
-- Branch `master` (nothing pushed). HEAD `ca8c2aa` — "docs: review 014, task 015".
-- Working tree: clean.
-- Newest migration: `20261002053501_StockSync` (task 014). Review 014 records that the user applied it to the development
-  database; check with `dotnet ef migrations list` if in doubt.
+- Written: 2026-10-02 (+07:00), by Cowork after review 015.
+- Branch `master` (nothing pushed). HEAD: the Cowork commit "docs: review 015, task 016" on top of `a8c0cfd`
+  ("task 015: report").
+- Working tree: clean after that commit.
+- Newest migration: `20261002053501_StockSync` (task 014; applied to the development database by the user). Task 015
+  added none.
 
 ## 2. Project in 5 lines
 Multi-channel order and inventory management: React dashboard → ASP.NET Core API → PostgreSQL (source of truth) →
@@ -39,40 +40,36 @@ Source-of-truth order when documents disagree:
 - 012 — Frontend: inventory list, stock import, movement history — Done
 - 013 — Frontend: order entry, orders list/detail — Done
 - 014 — ChannelProduct mapping API + Stock Sync Worker (simulated channels, Polly); expected 23505 not logged as errors — Done
-- 015 — Realtime hints (PostgreSQL `NOTIFY` → SignalR hub) + `GET /api/dashboard/summary`; Part A from review 014 — **Open**
-- 016 — Frontend: dashboard, realtime, Sync & Processing page, channel product mappings — Planned
+- 015 — Realtime hints (PostgreSQL `NOTIFY` → SignalR hub) + `GET /api/dashboard/summary`; Part A from review 014 — Done
+- 016 — Frontend: realtime client, dashboard, Sync & Processing page, order entry by push; Part A from reviews 013–015 — **Open**
+- 016b — Frontend: channel product mapping UI on the Channels page (split from 016, user 2026-10-02) — Planned
 - 017 — Alerts (low stock, processing failures), `GET /api/alerts` — Planned
 - 018 — Frontend: Alerts page, Logs/Audit page — Planned
 
 ## 5. In flight
-**Task 015: task file written, not started.** Nothing is half-finished and nothing is uncommitted.
-- Task: [docs/tasks/015-realtime-hints-and-dashboard-summary.md](tasks/015-realtime-hints-and-dashboard-summary.md);
-  its design decisions are in the implementation log, "Task 015 plan" (read first; stop and report `Blocked` for anything
-  not settled there).
-- Part A (separate commits, from [review 014](tasks/014-channel-product-mapping-and-stock-sync.review.md)):
-  1. **P2:** a stock-sync task can stay `RetryScheduled` / `Pending` forever when its mapping or channel is deactivated
-     while a retry copy waits — in `StockSyncService.ResolveInventoryChangeAsync` look up the task by idempotency key
-     *before* the channel/mapping check (same for the final-failure path); tests + mutation;
-  2. `GET /api/channels/{channelId}/products/{channelProductId}` (the 201 `Location` of 014 must resolve);
-  3. README section 6: remove "`order.processing` has no consumer yet";
-  4. `Omnichannel.Api.http`: samples for the mapping endpoints and the two new endpoints.
-- Part B: `pg_notify` in the committing transaction → one `LISTEN` connection per API instance → hub
-  `/api/hubs/notifications`. Part C: dashboard summary. No migration expected; frontend untouched;
-  `scripts/smoke/task-015.ps1` required.
-- Task 014 as delivered: [report](tasks/014-channel-product-mapping-and-stock-sync.report.md) — commits `6b62354`,
-  `bc68cc7`, `4d06813`, `0c612a4`, `2a6ddfc`; backend 669/669 (459 unit, 210 integration), frontend 168/168; review:
-  accepted, all 16 deviations accepted.
-- From the last Claude Code chat, not in any repository file: nothing that matters. The throwaway PostgreSQL / RabbitMQ
-  containers used for the 014 smoke run were removed; only the compose containers remain.
+**Task 016: task file written, not started.** Nothing is half-finished and nothing is uncommitted.
+- Task: [docs/tasks/016-realtime-dashboard-and-processing-page.md](tasks/016-realtime-dashboard-and-processing-page.md);
+  its design decisions are in the implementation log, "Task 016 plan" (read first; stop and report `Blocked` for
+  anything not settled there).
+- Part A (separate commits): A1 smoke scripts start hosts only for the local default (review 015); A2 pickers hide only
+  stale answers (`currentData`); A3 panel title repetition; A4 orders table at 1280 px; A5 load only the active language
+  (all review 013); A6 committed bundle-measurement script (review 014).
+- Part B (backend, small): `productSku` on task summary and detail. Parts C–E: realtime client (`@microsoft/signalr`,
+  lazy), dashboard, Sync & Processing list + detail route + retry. `scripts/smoke/task-016.ps1` and a real-browser check
+  (WebSockets through the Vite proxy) required.
+- Task 015 as delivered: [report](tasks/015-realtime-hints-and-dashboard-summary.report.md) — commits `55993e4`,
+  `47ff45a`, `a41165a`, `f74251b`, `d15281e`, `945e9a8`, `a8c0cfd`; backend 745/745 (505 unit, 240 integration), frontend
+  untouched; [review](tasks/015-realtime-hints-and-dashboard-summary.review.md): accepted, all 10 deviations accepted, no
+  P0–P2.
+- Split tasks use a letter suffix (`016b` after `016`, before `017`) — `docs/tasks/README.md`, `/next-task`.
 
 ## 6. Pending for the user
-- Nothing open from 014: review 014 records migration, smoke run and the manual checks of 012, 013 and 014 as done
-  (the smoke table of the development run was not pasted into a file).
-- After task 015: its smoke script and the short manual check (hint batch in the API log) — see the task's acceptance
-  criteria; the report will list them.
-- API and Workers were **not** started on the development environment by Claude Code in task 014.
-- Test data in the development database: `SMOKE-014-*` products, `Smoke customer 014-*`, locked users `smoke-014-*`
-  from the user's smoke run, plus everything listed in reports 011–013.
+- Nothing open from 014 and 015: the user confirmed (2026-10-02) the 014 migration on the development database and the
+  015 smoke run and manual check (the smoke table of the development run was not pasted into a file).
+- After task 016: its smoke script and the short manual check (two tabs, an order, the dashboard updates) — see the
+  task's acceptance criteria; the report will list them.
+- Test data in the development database: `SMOKE-014-*` / `SMOKE-015-*` products, smoke customers, locked users
+  `smoke-01x-*` from the smoke runs, plus everything listed in reports 011–013.
 - Open decisions (roadmap, "Decisions still needed"): before 017 — where alerts are stored; before 019 — S3 in
   development; before 024 — where "payment succeeded" comes from.
 
@@ -107,6 +104,9 @@ Source-of-truth order when documents disagree:
 - **Failing integration tests wait for 60 s timeouts**: run mutations against one targeted test each. → report 014.
 - **A running API or Workers process locks `bin/Debug`**; start them one after the other, stop them before building.
   → report 008; report 013.
+- **Every `SaveChanges` that stores an order, a movement or a task status sends one `pg_notify`** (`RealtimeHintInterceptor`, API and Workers); a set-based `ExecuteUpdate`/raw SQL write of those tables would bypass it. Each API instance holds one `LISTEN` connection (`application_name` `omnichannel-hint-listener`). → report 015.
+- **The hub takes the token from the query string**; `AccessTokenRedactionEnricher` keeps it out of the API log. Never log URLs of `/api/hubs/*` elsewhere (client logging at Warning, proxies). → review 015.
+- **Smoke scripts start an API with the development user-secrets** when the configured URL is unreachable — until 016 Part A1 restricts that to the local default. → report 015, "Incident".
 - **Workers must run in their own terminal**; migrations run with the migrator role, never on start-up. → README §4, §6.
 - **PowerShell 5.1:** scripts are ASCII only; an `if` that returns a one-element array is unrolled — wrap it in `@( )`.
   `Assert-Step` compares with `-eq` (ignores case). → `scripts/smoke/_common.ps1`, `task-014.ps1`.
@@ -123,9 +123,9 @@ Source-of-truth order when documents disagree:
   file with the Write tool and run the file.
 
 ## 9. Next action
-**Claude Code:** `/next-task` → task 015 (Part A first, separate commits; then Parts B and C; report with the smoke table).
-Then **the user:** smoke script and manual check of 015 if Claude Code cannot run them; then **Cowork:** review 015 and
-write task 016.
+**Claude Code:** `/next-task` → task 016 (Part A first, separate commits; then Part B backend, Parts C–E; report with
+smoke table, bundle numbers and browser check). Then **the user:** smoke script and manual check of 016 if Claude Code
+cannot run them; then **Cowork:** review 016 and write task 016b (channel product mapping UI; Part A from review 016).
 
 ## 10. Resume prompts
 New Claude Code chat:
@@ -137,5 +137,5 @@ docs/handoff.md.")
 
 New Cowork chat:
 ```
-Dự án Management System. Đọc docs/handoff.md, docs/roadmap.md và docs/implementation-log.md trong thư mục đã kết nối, rồi tiếp tục vai trò lập kế hoạch/review theo docs/tasks/README.md. Việc tiếp theo: task 014 đã được review và chấp nhận; task 015 (realtime hints qua PostgreSQL NOTIFY → SignalR hub + GET /api/dashboard/summary, Part A từ review 014) đã có file task và đang chờ Claude Code chạy /next-task. Khi có docs/tasks/015-realtime-hints-and-dashboard-summary.report.md thì review task 015, cập nhật roadmap và implementation log, rồi viết task 016 (frontend: dashboard, realtime, trang Sync & Processing, mapping sản phẩm theo kênh; Part A từ review 013 và 014).
+Dự án Management System. Đọc docs/handoff.md, docs/roadmap.md và docs/implementation-log.md trong thư mục đã kết nối, rồi tiếp tục vai trò lập kế hoạch/review theo docs/tasks/README.md. Việc tiếp theo: task 015 đã được review và chấp nhận; task 016 (frontend: realtime client, dashboard, trang Sync & Processing, order entry qua push; Part A từ review 013–015) đã có file task và đang chờ Claude Code chạy /next-task. Khi có docs/tasks/016-realtime-dashboard-and-processing-page.report.md thì review task 016, cập nhật roadmap và implementation log, rồi viết task 016b (frontend: mapping sản phẩm theo kênh trên trang Channels; Part A từ review 016).
 ```

@@ -11,7 +11,8 @@ This folder is the shared mailbox between them. Git history is the audit trail.
 | `NNN-short-name.report.md` | Claude Code | What was done, files changed, **real** build/test output, open issues |
 | `NNN-short-name.review.md` | Cowork (optional) | Review findings; may lead to a follow-up task |
 
-`NNN` is a zero-padded sequence (`001`, `002`, ...). A task is **open** while it has no `.report.md`.
+`NNN` is a zero-padded sequence (`001`, `002`, ...); a task split after planning gets a letter suffix (`016b`, ordered
+after `016` and before `017`). A task is **open** while it has no `.report.md`.
 
 ## Cycle
 
