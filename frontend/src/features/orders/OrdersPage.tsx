@@ -38,6 +38,12 @@ import { orderPath, type OrderDetailLocationState } from './paths';
 const FILTER_PARAMS = ['channel', 'status', 'customerId', 'from', 'to'] as const;
 
 /**
+ * Sum of the column widths without the action column. The columns users scan (created, order id, status, total) come
+ * first and fit into the content area of the smallest supported window (1280 px wide: 992 px); the rest scrolls.
+ */
+const COLUMNS_WIDTH = 1140;
+
+/**
  * Orders (every role), newest first unless the user sorts. Paging, sorting, search and filters live in the address;
  * values there that are not valid (an unknown status, a customer id that is no GUID, a bad date) are ignored and never
  * sent. The channel slug is sent as it is: the API matches an unknown slug to nothing. The date range is a range of
@@ -101,7 +107,7 @@ export function OrdersPage() {
         key: 'createdAt',
         dataIndex: 'createdAt',
         title: t('orders.columns.createdAt'),
-        width: 170,
+        width: 160,
         ellipsis: true,
         sorter: true,
         // Starts descending (the default order), so the next click asks for ascending.
@@ -113,7 +119,7 @@ export function OrdersPage() {
         key: 'externalOrderId',
         dataIndex: 'externalOrderId',
         title: t('orders.columns.externalOrderId'),
-        width: 240,
+        width: 210,
         ellipsis: { showTitle: false },
         sorter: true,
         sortOrder: sortOrder('externalOrderId'),
@@ -136,22 +142,6 @@ export function OrdersPage() {
         ),
       },
       {
-        key: 'channel',
-        dataIndex: 'channel',
-        title: t('orders.columns.channel'),
-        width: 200,
-        ellipsis: { showTitle: false },
-        render: (orderChannel: OrderChannel) => <TruncatedText text={orderChannel.name} />,
-      },
-      {
-        key: 'customer',
-        dataIndex: 'customer',
-        title: t('orders.columns.customer'),
-        width: 240,
-        ellipsis: { showTitle: false },
-        render: (customer: OrderCustomer) => <TruncatedText text={customer.name} />,
-      },
-      {
         key: 'status',
         dataIndex: 'status',
         title: t('orders.columns.status'),
@@ -160,24 +150,40 @@ export function OrdersPage() {
         render: (orderStatus: OrderStatus) => <OrderStatusTag status={orderStatus} />,
       },
       {
-        key: 'itemCount',
-        dataIndex: 'itemCount',
-        title: t('orders.columns.itemCount'),
-        width: 110,
-        align: 'right',
-        ellipsis: true,
-        render: (itemCount: number) => formatNumber(itemCount),
-      },
-      {
         key: 'totalAmount',
         dataIndex: 'totalAmount',
         title: t('orders.columns.totalAmount'),
-        width: 170,
+        width: 150,
         align: 'right',
         ellipsis: true,
         sorter: true,
         sortOrder: sortOrder('totalAmount'),
         render: (totalAmount: number) => formatMoney(totalAmount),
+      },
+      {
+        key: 'customer',
+        dataIndex: 'customer',
+        title: t('orders.columns.customer'),
+        width: 200,
+        ellipsis: { showTitle: false },
+        render: (customer: OrderCustomer) => <TruncatedText text={customer.name} />,
+      },
+      {
+        key: 'channel',
+        dataIndex: 'channel',
+        title: t('orders.columns.channel'),
+        width: 160,
+        ellipsis: { showTitle: false },
+        render: (orderChannel: OrderChannel) => <TruncatedText text={orderChannel.name} />,
+      },
+      {
+        key: 'itemCount',
+        dataIndex: 'itemCount',
+        title: t('orders.columns.itemCount'),
+        width: 100,
+        align: 'right',
+        ellipsis: true,
+        render: (itemCount: number) => formatNumber(itemCount),
       },
       {
         key: 'actions',
@@ -280,7 +286,7 @@ export function OrdersPage() {
         dataSource={isError ? [] : data?.items}
         loading={isFetching}
         tableLayout="fixed"
-        scroll={{ x: 1290 + SINGLE_ACTION_COLUMN_WIDTH }}
+        scroll={{ x: COLUMNS_WIDTH + SINGLE_ACTION_COLUMN_WIDTH }}
         sortDirections={['ascend', 'descend']}
         onChange={list.onTableChange}
         pagination={list.pagination(isError ? 0 : data?.totalCount)}
