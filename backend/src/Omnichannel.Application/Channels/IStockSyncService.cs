@@ -11,8 +11,9 @@ public interface IStockSyncService
 {
     /// <summary>
     /// The stock-sync task of one <c>inventory.changed</c> message on one channel: found or created by its idempotency key
-    /// (<see cref="StockSyncIdempotencyKey"/>), so a redelivered message never creates a second task. No task is created when
-    /// the channel does not exist, is Inactive, or has no Active mapping for the product.
+    /// (<see cref="StockSyncIdempotencyKey"/>), so a redelivered message never creates a second task. An existing task is
+    /// returned whatever the state of its channel and mapping (its attempt ends it); no <b>new</b> task is created when the
+    /// channel does not exist, is Inactive, or has no Active mapping for the product.
     /// </summary>
     Task<StockSyncResolution> ResolveInventoryChangeAsync(
         string channelSlug,

@@ -25,7 +25,7 @@ namespace Omnichannel.Tests.Integration.Workers;
 /// </summary>
 [Collection(WorkersCollection.Name)]
 [Trait("Category", "Integration")]
-public sealed class StockSyncWorkerTests(WorkersFixture fixture) : IAsyncLifetime
+public sealed partial class StockSyncWorkerTests(WorkersFixture fixture) : IAsyncLifetime
 {
     private const string Website = "website";
     private const string Pos = "pos";

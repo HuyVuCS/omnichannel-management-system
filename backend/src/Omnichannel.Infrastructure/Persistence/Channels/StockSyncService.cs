@@ -42,16 +42,19 @@ internal sealed class StockSyncService(
             return StockSyncResolution.ChannelNotFound;
         }
 
-        if (channel.Status != ChannelStatus.Active || !channel.IsMapped)
-        {
-            return StockSyncResolution.NotMapped;
-        }
-
-        // A redelivery or a delayed retry copy of the same message finds its task here.
+        // A redelivery or a delayed retry copy of the same message finds its task here - before the mapping is looked at:
+        // a task that exists must be brought to an end even when its mapping or channel was deactivated meanwhile
+        // (the attempt then completes it without a push). Otherwise it would stay RetryScheduled with no message left.
         var idempotencyKey = StockSyncIdempotencyKey.For(channel.ChannelId, messageId);
         if (await FindByKeyAsync(idempotencyKey, cancellationToken) is { } existing)
         {
             return existing;
+        }
+
+        // Only a new task depends on the channel selling the product right now.
+        if (channel.Status != ChannelStatus.Active || !channel.IsMapped)
+        {
+            return StockSyncResolution.NotMapped;
         }
 
         var task = ProcessingTask.ForStockSync(channel.ChannelId, productId, correlationId, messageId, idempotencyKey);
