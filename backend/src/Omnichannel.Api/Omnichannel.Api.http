@@ -92,6 +92,29 @@ Authorization: Bearer {{token}}
 GET {{baseUrl}}/api/dashboard/summary?from=2026-10-01T00:00:00%2B07:00&to=2026-10-02T23:59:59%2B07:00
 Authorization: Bearer {{token}}
 
+### ---- Alerts (task 017) ----
+
+### Alerts that need attention (default: Open and Acknowledged, most recent occurrence first)
+GET {{baseUrl}}/api/alerts
+Authorization: Bearer {{token}}
+
+### Alerts by type and status (both repeatable), most frequent first
+GET {{baseUrl}}/api/alerts?type=StockSyncFailed&type=ProcessingFailed&status=Open&sortBy=occurrenceCount
+Authorization: Bearer {{token}}
+
+### Resolved low-stock alerts of a product, in a range of their last occurrence (at most 92 days)
+GET {{baseUrl}}/api/alerts?status=Resolved&type=LowStock&productId={{productId}}&from=2026-10-01T00:00:00%2B07:00&to=2026-10-03T23:59:59%2B07:00
+Authorization: Bearer {{token}}
+
+### One alert (pick an alertId from the list)
+@alertId = 00000000-0000-0000-0000-000000000000
+GET {{baseUrl}}/api/alerts/{{alertId}}
+Authorization: Bearer {{token}}
+
+### Acknowledge an alert (Manager/Admin) - 200 with the alert, 409 alert_resolved, 404 alert_not_found
+POST {{baseUrl}}/api/alerts/{{alertId}}/acknowledge
+Authorization: Bearer {{token}}
+
 ### Realtime hub: negotiate (what a SignalR client does first). 401 without a token.
 # A browser passes the token as ?access_token=... on the hub's requests; here the header is used so that no token ends up
 # in a URL of this file.

@@ -36,6 +36,15 @@ public static class RealtimeEventTypes
     /// the client filters by <c>taskType</c> and <c>status</c>.
     /// </summary>
     public const string ProcessingTaskChanged = "processing.task.changed";
+
+    /// <summary>
+    /// An alert was opened, refreshed, acknowledged or resolved (<c>alertId</c>, <c>alertType</c>, <c>status</c>,
+    /// <c>productId</c>, <c>channelId</c>).
+    /// </summary>
+    public const string AlertChanged = "alert.changed";
+
+    /// <summary>A low-stock alert was opened (<c>alertId</c>, <c>productId</c>); sent in addition to <see cref="AlertChanged"/>.</summary>
+    public const string LowStockCreated = "low_stock.created";
 }
 
 /// <summary>
@@ -50,6 +59,8 @@ public sealed record RealtimeHint(string Type)
     public Guid? TaskId { get; init; }
     public string? TaskType { get; init; }
     public string? Status { get; init; }
+    public Guid? AlertId { get; init; }
+    public string? AlertType { get; init; }
     public IReadOnlyList<Guid>? ProductIds { get; init; }
     public bool? All { get; init; }
 
@@ -78,6 +89,19 @@ public sealed record RealtimeHint(string Type)
             ChannelId = channelId,
             ProductId = productId
         };
+
+    public static RealtimeHint AlertChanged(Guid alertId, AlertType alertType, AlertStatus status, Guid? productId, Guid? channelId) =>
+        new(RealtimeEventTypes.AlertChanged)
+        {
+            AlertId = alertId,
+            AlertType = alertType.ToString(),
+            Status = status.ToString(),
+            ProductId = productId,
+            ChannelId = channelId
+        };
+
+    public static RealtimeHint LowStockCreated(Guid alertId, Guid productId) =>
+        new(RealtimeEventTypes.LowStockCreated) { AlertId = alertId, ProductId = productId };
 
     public static RealtimeHint AllOf(string type) => new(type) { All = true };
 }

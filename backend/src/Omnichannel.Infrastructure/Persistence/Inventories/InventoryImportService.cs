@@ -3,6 +3,7 @@ using FluentValidation.Results;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Npgsql;
+using Omnichannel.Application.Alerts;
 using Omnichannel.Application.Common.Abstractions;
 using Omnichannel.Application.Common.Exceptions;
 using Omnichannel.Application.Common.Messaging;
@@ -10,11 +11,13 @@ using Omnichannel.Application.Common.Validation;
 using Omnichannel.Application.Inventory;
 using Omnichannel.Domain.Entities;
 using Omnichannel.Domain.Enums;
+using Omnichannel.Infrastructure.Persistence.Alerts;
 
 namespace Omnichannel.Infrastructure.Persistence.Inventories;
 
 internal sealed class InventoryImportService(
     OmnichannelDbContext dbContext,
+    AlertStore alerts,
     ICurrentUser currentUser,
     ICorrelationContext correlationContext,
     TimeProvider timeProvider,
@@ -130,6 +133,11 @@ internal sealed class InventoryImportService(
                 InventoryErrorCodes.ImportAlreadyApplied,
                 $"Stock import '{referenceId}' has already been applied.");
         }
+
+        // Alerts follow the stock as it is now, under the row locks of the updates above: low stock is reconciled, and
+        // stock that arrived answers the orders rejected for lack of it.
+        await alerts.ReconcileLowStockAsync(results.Keys, cancellationToken);
+        await alerts.ResolveAsync(results.Keys.Select(AlertDedupKey.InsufficientStock).ToList(), cancellationToken);
 
         await transaction.CommitAsync(cancellationToken);
 

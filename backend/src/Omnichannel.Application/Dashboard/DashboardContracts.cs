@@ -25,7 +25,8 @@ public sealed record DashboardSummaryResponse(
     DashboardInventory Inventory,
     IReadOnlyList<DashboardProcessing> Processing,
     IReadOnlyList<DashboardStockSync> StockSync,
-    DashboardOutbox Outbox);
+    DashboardOutbox Outbox,
+    DashboardAlerts Alerts);
 
 /// <param name="Total">Orders created in the range.</param>
 /// <param name="ByStatus">One entry per <see cref="OrderStatus"/>, zeros included.</param>
@@ -77,6 +78,12 @@ public sealed record DashboardStockSync(
 /// <param name="Failed">Rows the publisher gave up on.</param>
 /// <param name="OldestPendingAt">When the oldest waiting row was written; null when none waits.</param>
 public sealed record DashboardOutbox(int Pending, int Failed, DateTimeOffset? OldestPendingAt);
+
+/// <summary>Current unresolved alerts (the range does not apply).</summary>
+/// <param name="ByType">One entry per <see cref="AlertType"/>, zeros included.</param>
+public sealed record DashboardAlerts(int Open, int Acknowledged, IReadOnlyList<DashboardAlertTypeCount> ByType);
+
+public sealed record DashboardAlertTypeCount(AlertType Type, int Open, int Acknowledged);
 
 public interface IDashboardService
 {

@@ -125,6 +125,88 @@ namespace Omnichannel.Infrastructure.Persistence.Migrations
                     b.ToTable("AspNetUserTokens", (string)null);
                 });
 
+            modelBuilder.Entity("Omnichannel.Domain.Entities.Alert", b =>
+                {
+                    b.Property<Guid>("AlertId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("AcknowledgedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("AcknowledgedBy")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<Guid?>("ChannelId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("DedupKey")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("ErrorCode")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTimeOffset>("FirstOccurredAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("LastOccurredAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("OccurrenceCount")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid?>("OrderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("ProductId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("ResolvedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<Guid?>("TaskId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.HasKey("AlertId");
+
+                    b.HasIndex("ChannelId");
+
+                    b.HasIndex("DedupKey")
+                        .IsUnique()
+                        .HasDatabaseName("UX_Alerts_DedupKey_Unresolved")
+                        .HasFilter("\"Status\" <> 'Resolved'");
+
+                    b.HasIndex("OrderId");
+
+                    b.HasIndex("ProductId");
+
+                    b.HasIndex("TaskId");
+
+                    b.HasIndex("Status", "LastOccurredAt");
+
+                    b.ToTable("Alerts", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_Alerts_Acknowledged_By", "(\"AcknowledgedAt\" IS NULL) = (\"AcknowledgedBy\" IS NULL)");
+
+                            t.HasCheckConstraint("CK_Alerts_OccurrenceCount_Positive", "\"OccurrenceCount\" >= 1");
+
+                            t.HasCheckConstraint("CK_Alerts_Resolved_ResolvedAt", "(\"Status\" = 'Resolved') = (\"ResolvedAt\" IS NOT NULL)");
+                        });
+                });
+
             modelBuilder.Entity("Omnichannel.Domain.Entities.Channel", b =>
                 {
                     b.Property<Guid>("ChannelId")
@@ -994,6 +1076,33 @@ namespace Omnichannel.Infrastructure.Persistence.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("Omnichannel.Domain.Entities.Alert", b =>
+                {
+                    b.HasOne("Omnichannel.Domain.Entities.Channel", "Channel")
+                        .WithMany()
+                        .HasForeignKey("ChannelId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Omnichannel.Domain.Entities.Order", null)
+                        .WithMany()
+                        .HasForeignKey("OrderId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Omnichannel.Domain.Entities.Product", "Product")
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Omnichannel.Domain.Entities.ProcessingTask", null)
+                        .WithMany()
+                        .HasForeignKey("TaskId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Channel");
+
+                    b.Navigation("Product");
                 });
 
             modelBuilder.Entity("Omnichannel.Domain.Entities.ChannelProduct", b =>

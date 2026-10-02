@@ -5,6 +5,7 @@ using Omnichannel.Application.Orders;
 using Omnichannel.Application.Processing;
 using Omnichannel.Domain.Entities;
 using Omnichannel.Domain.Enums;
+using Omnichannel.Infrastructure.Persistence.Alerts;
 
 namespace Omnichannel.Infrastructure.Persistence.Processing;
 
@@ -15,6 +16,7 @@ namespace Omnichannel.Infrastructure.Persistence.Processing;
 /// </summary>
 internal sealed class ProcessingAttemptStore(
     OmnichannelDbContext dbContext,
+    AlertStore alerts,
     TimeProvider timeProvider,
     ILogger<ProcessingAttemptStore> logger)
 {
@@ -64,8 +66,9 @@ internal sealed class ProcessingAttemptStore(
     }
 
     /// <summary>
-    /// Attempt Failed (<paramref name="attemptId"/>, or a new attempt when null), task Failed and SystemEventLog Error
-    /// <c>processing.failed</c>, in one transaction.
+    /// Attempt Failed (<paramref name="attemptId"/>, or a new attempt when null), task Failed, SystemEventLog Error
+    /// <c>processing.failed</c> and the alert of the failure (per channel and product for stock sync, per task otherwise),
+    /// in one transaction.
     /// </summary>
     /// <returns>The failed attempt number; null when the task was already completed (nothing to fail).</returns>
     public async Task<int?> RecordFinalFailureAsync(
@@ -118,6 +121,14 @@ internal sealed class ProcessingAttemptStore(
             now));
 
         await dbContext.SaveChangesAsync(cancellationToken);
+
+        // Stock sync: one alert per channel and product (only the newest task of a pair matters, every push sends the
+        // current stock). Every other task type: one alert per task.
+        var failure = task is { TaskType: ProcessingTaskType.StockSync, ChannelId: { } channelId, ProductId: { } productId }
+            ? AlertOccurrence.StockSyncFailed(channelId, productId, task.TaskId, errorCode)
+            : AlertOccurrence.ProcessingFailed(task.TaskId, task.OrderId, errorCode);
+        await alerts.OpenOrRefreshAsync([failure], cancellationToken);
+
         await transaction.CommitAsync(cancellationToken);
 
         logger.LogError(

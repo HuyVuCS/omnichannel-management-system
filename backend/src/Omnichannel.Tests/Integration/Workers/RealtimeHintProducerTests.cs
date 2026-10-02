@@ -119,12 +119,16 @@ public sealed class RealtimeHintProducerTests(WorkersFixture fixture) : IAsyncLi
         await probe.WaitForAsync(_ => StatusesOf(probe, failing.SyncTaskId.Value).Count == 4, "hint of the manual retry");
         Assert.Equal(["Pending", "InProgress", "Failed", "Pending"], StatusesOf(probe, failing.SyncTaskId.Value));
 
-        // No hint carries anything but types and ids; outbox publishing and attempts produced none.
+        // No hint carries anything but types and ids; outbox publishing and attempts produced none. (Task 017: the alert
+        // writer announces the alerts these changes open - the failed stock sync, the product that became low.)
         Assert.All(probe.Notifications, n => Assert.NotNull(n.Batch));
         Assert.All(probe.Events, e => Assert.Contains(e.Type, new[]
         {
-            RealtimeEventTypes.OrderCreated, RealtimeEventTypes.InventoryChanged, RealtimeEventTypes.ProcessingTaskChanged
+            RealtimeEventTypes.OrderCreated, RealtimeEventTypes.InventoryChanged, RealtimeEventTypes.ProcessingTaskChanged,
+            RealtimeEventTypes.AlertChanged, RealtimeEventTypes.LowStockCreated
         }));
+        var failedSync = Assert.Single(probe.Events, e => e.Type == RealtimeEventTypes.AlertChanged && e.AlertType == "StockSyncFailed");
+        Assert.Equal(("Open", (Guid?)posId, (Guid?)rejected.ProductId), (failedSync.Status, failedSync.ChannelId, failedSync.ProductId));
     }
 
     private static List<string?> StatusesOf(HintProbe probe, Guid taskId) =>

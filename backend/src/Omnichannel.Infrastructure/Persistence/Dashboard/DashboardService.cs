@@ -7,7 +7,7 @@ using Omnichannel.Infrastructure.RabbitMQ;
 namespace Omnichannel.Infrastructure.Persistence.Dashboard;
 
 /// <summary>
-/// The numbers of the overview page. Every number is an SQL aggregate (nine small statements, none depends on the number
+/// The numbers of the overview page. Every number is an SQL aggregate (ten small statements, none depends on the number
 /// of rows returned by another, no entity is loaded); the lists are completed with zeros in memory so the client never has
 /// to know which statuses, task types or channels exist.
 /// </summary>
@@ -73,12 +73,23 @@ internal sealed class DashboardService(OmnichannelDbContext dbContext, TimeProvi
             .SingleOrDefaultAsync(cancellationToken);
         var outboxFailed = await dbContext.OutboxEvents.CountAsync(e => e.Status == OutboxEventStatus.Failed, cancellationToken);
 
+        // What needs attention now; resolved alerts are history.
+        var alertGroups = await dbContext.Alerts
+            .AsNoTracking()
+            .Where(a => a.Status != AlertStatus.Resolved)
+            .GroupBy(a => new { a.Type, a.Status })
+            .Select(g => new { g.Key.Type, g.Key.Status, Count = g.Count() })
+            .ToListAsync(cancellationToken);
+
         int Orders(Guid? channelId = null, OrderStatus? status = null) => orderGroups
             .Where(g => (channelId is null || g.ChannelId == channelId) && (status is null || g.Status == status))
             .Sum(g => g.Count);
 
         int Tasks(ProcessingTaskType type, ProcessingTaskStatus status) =>
             taskGroups.Where(g => g.TaskType == type && g.Status == status).Sum(g => g.Count);
+
+        int Alerts(AlertStatus status, AlertType? type = null) =>
+            alertGroups.Where(g => g.Status == status && (type is null || g.Type == type)).Sum(g => g.Count);
 
         return new DashboardSummaryResponse(
             now,
@@ -116,6 +127,12 @@ internal sealed class DashboardService(OmnichannelDbContext dbContext, TimeProvi
                         c.ChannelId, c.Slug, c.Name, sync?.RetryScheduled ?? 0, sync?.Failed ?? 0, sync?.LastSucceededAt);
                 })
                 .ToList(),
-            new DashboardOutbox(outboxPending?.Count ?? 0, outboxFailed, outboxPending?.OldestAt));
+            new DashboardOutbox(outboxPending?.Count ?? 0, outboxFailed, outboxPending?.OldestAt),
+            new DashboardAlerts(
+                Alerts(AlertStatus.Open),
+                Alerts(AlertStatus.Acknowledged),
+                Enum.GetValues<AlertType>()
+                    .Select(type => new DashboardAlertTypeCount(type, Alerts(AlertStatus.Open, type), Alerts(AlertStatus.Acknowledged, type)))
+                    .ToList()));
     }
 }

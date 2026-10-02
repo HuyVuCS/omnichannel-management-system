@@ -4,6 +4,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
+using Omnichannel.Application.Alerts;
 using Omnichannel.Application.Auth;
 using Omnichannel.Application.Channels;
 using Omnichannel.Application.Customers;
@@ -16,6 +17,7 @@ using Omnichannel.Application.Users;
 using Omnichannel.Infrastructure.Identity;
 using Omnichannel.Infrastructure.Logging;
 using Omnichannel.Infrastructure.Persistence;
+using Omnichannel.Infrastructure.Persistence.Alerts;
 using Omnichannel.Infrastructure.Persistence.Channels;
 using Omnichannel.Infrastructure.Persistence.Customers;
 using Omnichannel.Infrastructure.Persistence.Dashboard;
@@ -63,6 +65,8 @@ public static class DependencyInjection
         });
 
         services.AddScoped<ProcessingAttemptStore>();
+        services.AddScoped<AlertStore>();
+        services.AddScoped<IAlertService, AlertService>();
         services.AddScoped<IChannelService, ChannelService>();
         services.AddScoped<IStockSyncService, StockSyncService>();
         services.AddScoped<ICustomerService, CustomerService>();
