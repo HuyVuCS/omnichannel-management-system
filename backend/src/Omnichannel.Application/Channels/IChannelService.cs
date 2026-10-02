@@ -22,6 +22,11 @@ public interface IChannelService
         ChannelProductListQuery query,
         CancellationToken cancellationToken);
 
+    /// <exception cref="Common.Exceptions.NotFoundException">
+    /// <see cref="ChannelProductErrorCodes.MappingNotFound"/>: no such mapping on this channel (also when it belongs to another one).
+    /// </exception>
+    Task<ChannelProductResponse> GetProductAsync(Guid channelId, Guid channelProductId, CancellationToken cancellationToken);
+
     /// <summary>
     /// Maps a product on the channel. When the channel is Active and has stock sync, a <c>StockSync</c> task and its directed
     /// <c>stock.sync.requested</c> message are written in the same transaction (initial sync).

@@ -55,6 +55,16 @@ public sealed class ChannelsController(IChannelService channelService) : Control
         CancellationToken cancellationToken) =>
         Ok(await channelService.ListProductsAsync(channelId, query, cancellationToken));
 
+    /// <summary>One mapping of the channel (the address a created mapping's <c>Location</c> header points to).</summary>
+    [HttpGet("{channelId:guid}/products/{channelProductId:guid}")]
+    [ProducesResponseType<ChannelProductResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ChannelProductResponse>> GetProduct(
+        Guid channelId,
+        Guid channelProductId,
+        CancellationToken cancellationToken) =>
+        Ok(await channelService.GetProductAsync(channelId, channelProductId, cancellationToken));
+
     /// <summary>Maps a product on the channel; <c>syncTaskId</c> is the task that pushes its current stock to the channel.</summary>
     [HttpPost("{channelId:guid}/products")]
     [Authorize(Policy = AuthorizationPolicies.ManagerOrAdmin)]

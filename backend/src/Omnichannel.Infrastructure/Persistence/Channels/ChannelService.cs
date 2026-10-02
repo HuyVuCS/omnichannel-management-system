@@ -118,6 +118,14 @@ internal sealed class ChannelService(
         return new PagedResult<ChannelProductResponse>(items, query.Page, query.PageSize, totalCount);
     }
 
+    public async Task<ChannelProductResponse> GetProductAsync(Guid channelId, Guid channelProductId, CancellationToken cancellationToken) =>
+        await dbContext.ChannelProducts
+            .AsNoTracking()
+            .Where(m => m.ChannelProductId == channelProductId && m.ChannelId == channelId)
+            .Select(ToProductResponse)
+            .SingleOrDefaultAsync(cancellationToken)
+        ?? throw new NotFoundException(nameof(ChannelProduct), channelProductId, ChannelProductErrorCodes.MappingNotFound);
+
     public async Task<ChannelProductSavedResponse> CreateProductAsync(
         Guid channelId,
         CreateChannelProductRequest request,
