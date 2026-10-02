@@ -16,6 +16,7 @@ public sealed record ProcessingAttemptResponse(
 
 /// <param name="ChannelId">The channel of a <c>StockSync</c> task; null for other task types.</param>
 /// <param name="ProductId">The product of a <c>StockSync</c> task; null for other task types.</param>
+/// <param name="ProductSku">The SKU of <paramref name="ProductId"/>; null when the task has no product.</param>
 /// <param name="AttemptBudgetStart">Attempts that existed at the last manual retry (0 = never retried manually).</param>
 /// <param name="LastAttempt">The attempt with the highest number; null when none was started yet.</param>
 public sealed record ProcessingTaskSummaryResponse(
@@ -25,6 +26,7 @@ public sealed record ProcessingTaskSummaryResponse(
     Guid? OrderId,
     Guid? ChannelId,
     Guid? ProductId,
+    string? ProductSku,
     int RetryCount,
     int AttemptBudgetStart,
     string CorrelationId,
@@ -36,6 +38,7 @@ public sealed record ProcessingTaskSummaryResponse(
 
 /// <param name="ChannelId">The channel of a <c>StockSync</c> task; null for other task types.</param>
 /// <param name="ProductId">The product of a <c>StockSync</c> task; null for other task types.</param>
+/// <param name="ProductSku">The SKU of <paramref name="ProductId"/>; null when the task has no product.</param>
 /// <param name="Attempts">Ordered by <c>attemptNo</c>.</param>
 /// <param name="Message">
 /// The outbox row that carries the task's current message (<see cref="MessageId"/>); null when the task has no message or
@@ -49,6 +52,7 @@ public sealed record ProcessingTaskDetailResponse(
     Guid? OrderId,
     Guid? ChannelId,
     Guid? ProductId,
+    string? ProductSku,
     int RetryCount,
     int AttemptBudgetStart,
     string CorrelationId,

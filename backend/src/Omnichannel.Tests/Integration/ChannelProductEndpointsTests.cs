@@ -486,6 +486,50 @@ public sealed class ChannelProductEndpointsTests(ApiFactory factory)
     }
 
     [Fact]
+    public async Task Task_list_and_detail_carry_the_product_sku_of_a_stock_sync_task_and_null_for_a_task_without_a_product()
+    {
+        var website = await ChannelAsync("website");
+        var (first, second) = (await CreateProductAsync(), await CreateProductAsync());
+        var correlationId = $"sku-{TestData.UniqueSuffix()}";
+        var syncOfFirst = ProcessingTask.ForStockSync(website.ChannelId, first.ProductId, correlationId, null);
+        var orderTask = new ProcessingTask(ProcessingTaskType.OrderProcessing, null, correlationId, null);
+        var syncOfSecond = ProcessingTask.ForStockSync(website.ChannelId, second.ProductId, correlationId, null);
+        await factory.QueryDbAsync(async db =>
+        {
+            db.ProcessingTasks.AddRange(syncOfFirst, orderTask, syncOfSecond);
+            await db.SaveChangesAsync();
+            // Distinct creation times, so the order of the list is defined: first, order task, second.
+            foreach (var (task, minute) in new[] { (syncOfFirst, 1), (orderTask, 2), (syncOfSecond, 3) })
+            {
+                await db.Database.ExecuteSqlAsync(
+                    $"""UPDATE "ProcessingTasks" SET "CreatedAt" = {T0.AddMinutes(minute)} WHERE "TaskId" = {task.TaskId}""");
+            }
+
+            return 0;
+        });
+
+        var newestFirst = await TasksAsync($"correlationId={correlationId}");
+        var oldestFirst = await TasksAsync($"correlationId={correlationId}&sortDir=asc");
+        var secondPage = await TasksAsync($"correlationId={correlationId}&sortDir=asc&page=2&pageSize=2");
+
+        // The join keeps the order and the paging of the task query.
+        Assert.Equal(
+            [(syncOfSecond.TaskId, second.Sku), (orderTask.TaskId, null), (syncOfFirst.TaskId, first.Sku)],
+            newestFirst.Items.Select(t => (t.TaskId, t.ProductSku)));
+        Assert.Equal(
+            [(syncOfFirst.TaskId, first.Sku), (orderTask.TaskId, null), (syncOfSecond.TaskId, second.Sku)],
+            oldestFirst.Items.Select(t => (t.TaskId, t.ProductSku)));
+        Assert.Equal(3, secondPage.TotalCount);
+        var onSecondPage = Assert.Single(secondPage.Items);
+        Assert.Equal((syncOfSecond.TaskId, second.Sku), (onSecondPage.TaskId, onSecondPage.ProductSku));
+
+        var syncDetail = await (await _staff.GetAsync($"/api/processing/tasks/{syncOfFirst.TaskId}")).ReadAsync<ProcessingTaskDetailResponse>();
+        var orderDetail = await (await _staff.GetAsync($"/api/processing/tasks/{orderTask.TaskId}")).ReadAsync<ProcessingTaskDetailResponse>();
+        Assert.Equal(((Guid?)first.ProductId, first.Sku), (syncDetail.ProductId, syncDetail.ProductSku));
+        Assert.Equal(((Guid?)null, (string?)null), (orderDetail.ProductId, orderDetail.ProductSku));
+    }
+
+    [Fact]
     public async Task Manual_retry_of_a_stock_sync_task_writes_a_directed_message_instead_of_a_copy_of_the_fanned_out_event()
     {
         var pos = await ChannelAsync("pos");
