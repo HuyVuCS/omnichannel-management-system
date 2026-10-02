@@ -55,6 +55,7 @@
     "network": "Cannot reach the server. Check your connection and try again.",
     "server": "The server reported an error. Please try again later.",
     "unexpectedTitle": "Something went wrong",
+    "languageLoadFailed": "The selected language could not be loaded. Please try again.",
     "correlationId": "Reference code",
     "correlationHint": "Quote this code when you report the problem.",
     "unauthorized": "Your session has ended. Please sign in again.",

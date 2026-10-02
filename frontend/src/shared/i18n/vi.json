@@ -55,6 +55,7 @@
     "network": "Không kết nối được máy chủ. Hãy kiểm tra mạng và thử lại.",
     "server": "Máy chủ báo lỗi. Vui lòng thử lại sau.",
     "unexpectedTitle": "Đã xảy ra lỗi",
+    "languageLoadFailed": "Không tải được ngôn ngữ đã chọn. Vui lòng thử lại.",
     "correlationId": "Mã tham chiếu",
     "correlationHint": "Hãy gửi kèm mã này khi báo lỗi.",
     "unauthorized": "Phiên làm việc đã kết thúc. Vui lòng đăng nhập lại.",

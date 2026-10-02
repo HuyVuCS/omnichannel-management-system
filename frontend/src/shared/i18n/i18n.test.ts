@@ -4,7 +4,7 @@ import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 import { formatDateTime, formatMoney } from '@/shared/utils/format';
 import en from './en.json';
-import i18n, { DEFAULT_LANGUAGE, LANGUAGE_STORAGE_KEY, readStoredLanguage } from './index';
+import { changeLanguage, DEFAULT_LANGUAGE, LANGUAGE_STORAGE_KEY, readStoredLanguage } from './index';
 import vi from './vi.json';
 
 type Tree = { [key: string]: string | Tree };
@@ -61,7 +61,7 @@ describe('translations', () => {
 
 describe('formatting is the same in both languages', () => {
   it.each(['vi', 'en'] as const)('money and date-time in %s', async (language) => {
-    await i18n.changeLanguage(language);
+    await changeLanguage(language);
 
     // Non-breaking space before the currency sign.
     expect(formatMoney(1234567)).toBe('1.234.567 ₫');
