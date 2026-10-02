@@ -5,17 +5,6 @@
 # Usage (repository root):  powershell -ExecutionPolicy Bypass -File scripts\smoke\task-013.ps1
 . (Join-Path $PSScriptRoot '_common.ps1')
 
-function Invoke-Npm([string]$Arguments) {
-    $frontend = Join-Path $script:RepoRoot 'frontend'
-    Push-Location $frontend
-    try {
-        cmd /c "npm $Arguments > NUL 2>&1"
-        return $LASTEXITCODE
-    } finally {
-        Pop-Location
-    }
-}
-
 # Asks for the task once per second until it is Succeeded or Failed; returns the last answer (or $null after the limit).
 function Wait-Task([string]$TaskId, [string]$Token, [int]$Seconds) {
     $deadline = (Get-Date).AddSeconds($Seconds)
@@ -125,16 +114,6 @@ try {
     Assert-Step '26 orders: search by external order id' 1 (Invoke-Api GET "/api/orders?search=$externalId" $staff).Body.totalCount
     $filtered = (Invoke-Api GET "/api/orders?channel=pos&status=InsufficientStock&customerId=$customerId" $staff).Body
     Assert-Step '27 orders: channel + status + customer contains the second order' $true (@($filtered.items | Where-Object { $_.orderId -eq $secondOrderId }).Count -eq 1)
-
-    # Frontend: production build and tests.
-    if (-not (Test-Path (Join-Path $script:RepoRoot 'frontend\node_modules'))) {
-        Write-Host 'Installing frontend packages (npm ci)...'
-        Assert-Step '28 npm ci' 0 (Invoke-Npm 'ci')
-    }
-    Write-Host 'Building the frontend...'
-    Assert-Step '29 npm run build' 0 (Invoke-Npm 'run build')
-    Write-Host 'Running the frontend tests...'
-    Assert-Step '30 npm test' 0 (Invoke-Npm 'test')
 }
 catch {
     Assert-Step "unexpected error: $($_.Exception.Message)" 'no error' 'error'
@@ -142,10 +121,12 @@ catch {
 finally {
     # The smoke accounts are locked again, also after a failed step.
     if ($admin -and $managerUser -and $managerUser.Body) {
-        Assert-Step '31 lock the smoke manager' 200 (Invoke-Api POST "/api/users/$($managerUser.Body.userId)/lock" $admin).Status
+        Assert-Step '28 lock the smoke manager' 200 (Invoke-Api POST "/api/users/$($managerUser.Body.userId)/lock" $admin).Status
     }
     if ($admin -and $staffUser -and $staffUser.Body) {
-        Assert-Step '32 lock the smoke staff' 200 (Invoke-Api POST "/api/users/$($staffUser.Body.userId)/lock" $admin).Status
+        Assert-Step '29 lock the smoke staff' 200 (Invoke-Api POST "/api/users/$($staffUser.Body.userId)/lock" $admin).Status
     }
 }
+# Frontend: production build and tests (steps 30-32), after the API this script started is stopped.
+Invoke-FrontendChecks 30
 Complete-Smoke

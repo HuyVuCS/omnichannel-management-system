@@ -35,17 +35,6 @@ function Get-ValidationMessage([string]$Method, [string]$Path, [string]$Token, [
 # True when the text contains a character outside ASCII (Vietnamese messages do, the English ones do not).
 function Test-NonAscii([string]$Text) { return ($Text -cmatch '[^\x00-\x7F]') }
 
-function Invoke-Npm([string]$Arguments) {
-    $frontend = Join-Path $script:RepoRoot 'frontend'
-    Push-Location $frontend
-    try {
-        cmd /c "npm $Arguments > NUL 2>&1"
-        return $LASTEXITCODE
-    } finally {
-        Pop-Location
-    }
-}
-
 try {
     Start-Smoke 'Task 011 - localised validation messages, isLowStock, frontend'
     $cred  = Get-AdminCredential
@@ -88,18 +77,10 @@ try {
     Assert-Step '13 available stock in the list' 6 $listed.availableStock
     $inventory = (Invoke-Api GET "/api/inventory?search=$sku" $admin).Body.items[0]
     Assert-Step '14 inventory list agrees with the product list' $listed.isLowStock $inventory.isLowStock
-
-    # Frontend: production build and tests.
-    if (-not (Test-Path (Join-Path $script:RepoRoot 'frontend\node_modules'))) {
-        Write-Host 'Installing frontend packages (npm ci)...'
-        Assert-Step '15 npm ci' 0 (Invoke-Npm 'ci')
-    }
-    Write-Host 'Building the frontend...'
-    Assert-Step '16 npm run build' 0 (Invoke-Npm 'run build')
-    Write-Host 'Running the frontend tests...'
-    Assert-Step '17 npm test' 0 (Invoke-Npm 'test')
 }
 catch {
     Assert-Step "unexpected error: $($_.Exception.Message)" 'no error' 'error'
 }
+# Frontend: production build and tests (steps 15-17), after the API this script started is stopped.
+Invoke-FrontendChecks 15
 Complete-Smoke

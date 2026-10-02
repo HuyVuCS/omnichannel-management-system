@@ -6,18 +6,6 @@
 # Usage (repository root):  powershell -ExecutionPolicy Bypass -File scripts\smoke\task-016.ps1
 . (Join-Path $PSScriptRoot '_common.ps1')
 
-# Runs npm in the frontend folder without showing its output; returns the exit code.
-function Invoke-Npm([string]$Arguments) {
-    $frontend = Join-Path $script:RepoRoot 'frontend'
-    Push-Location $frontend
-    try {
-        cmd /c "npm $Arguments > NUL 2>&1"
-        return $LASTEXITCODE
-    } finally {
-        Pop-Location
-    }
-}
-
 # Asks for the task once per second until it is Succeeded or Failed; returns the last answer (or $null after the limit).
 function Wait-Task([string]$TaskId, [string]$Token, [int]$Seconds) {
     $deadline = (Get-Date).AddSeconds($Seconds)
@@ -113,16 +101,6 @@ try {
     Assert-Step '17 staff reads the dashboard summary' 200 (Invoke-Api GET '/api/dashboard/summary' $staff).Status
     $staffRetry = Invoke-ApiProblem POST "/api/processing/tasks/$($mapping.Body.syncTaskId)/retry" $staff $null 'en'
     Assert-Step '18 staff cannot retry a task' 403 $staffRetry.Status
-
-    # Frontend: production build and tests.
-    if (-not (Test-Path (Join-Path $script:RepoRoot 'frontend\node_modules\@microsoft\signalr'))) {
-        Write-Host 'Installing frontend packages (npm ci)...'
-        Assert-Step '19 npm ci' 0 (Invoke-Npm 'ci')
-    }
-    Write-Host 'Building the frontend...'
-    Assert-Step '20 npm run build' 0 (Invoke-Npm 'run build')
-    Write-Host 'Running the frontend tests...'
-    Assert-Step '21 npm test' 0 (Invoke-Npm 'test')
 }
 catch {
     Assert-Step "unexpected error: $($_.Exception.Message)" 'no error' 'error'
@@ -131,13 +109,15 @@ finally {
     # The smoke mapping is deactivated and the smoke accounts are locked again, also after a failed step.
     if ($manager -and $website -and $mapping -and $mapping.Body -and $mapping.Body.channelProductId) {
         $off = Invoke-ApiProblem PUT "/api/channels/$website/products/$($mapping.Body.channelProductId)" $manager @{ externalSku = $externalSku; status = 'Inactive' } 'en'
-        Assert-Step '22 deactivate the smoke mapping' 200 $off.Status
+        Assert-Step '19 deactivate the smoke mapping' 200 $off.Status
     }
     if ($admin -and $managerUser -and $managerUser.Body) {
-        Assert-Step '23 lock the smoke manager' 200 (Invoke-Api POST "/api/users/$($managerUser.Body.userId)/lock" $admin).Status
+        Assert-Step '20 lock the smoke manager' 200 (Invoke-Api POST "/api/users/$($managerUser.Body.userId)/lock" $admin).Status
     }
     if ($admin -and $staffUser -and $staffUser.Body) {
-        Assert-Step '24 lock the smoke staff' 200 (Invoke-Api POST "/api/users/$($staffUser.Body.userId)/lock" $admin).Status
+        Assert-Step '21 lock the smoke staff' 200 (Invoke-Api POST "/api/users/$($staffUser.Body.userId)/lock" $admin).Status
     }
 }
+# Frontend: production build and tests (steps 22-24), after the hosts this script started are stopped.
+Invoke-FrontendChecks 22 @('@microsoft\signalr')
 Complete-Smoke

@@ -6,22 +6,6 @@
 # Usage (repository root):  powershell -ExecutionPolicy Bypass -File scripts\smoke\task-016b.ps1
 . (Join-Path $PSScriptRoot '_common.ps1')
 
-# Runs npm in the frontend folder; returns the exit code. The output goes to a log file, which is named when npm fails
-# (which test failed is in there).
-function Invoke-Npm([string]$Arguments) {
-    $frontend = Join-Path $script:RepoRoot 'frontend'
-    $log = Join-Path ([System.IO.Path]::GetTempPath()) ('omnichannel-smoke-npm-' + ($Arguments -replace '[^a-z]', '') + '-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.log')
-    Push-Location $frontend
-    try {
-        cmd /c "npm $Arguments > `"$log`" 2>&1"
-        $code = $LASTEXITCODE
-        if ($code -ne 0) { Write-Host "npm $Arguments failed (exit code $code); output: $log" -ForegroundColor Yellow }
-        return $code
-    } finally {
-        Pop-Location
-    }
-}
-
 # Asks for the task once per second until it is Succeeded or Failed; returns the last answer (or $null after the limit).
 function Wait-Task([string]$TaskId, [string]$Token, [int]$Seconds) {
     $deadline = (Get-Date).AddSeconds($Seconds)
@@ -128,16 +112,6 @@ try {
     Assert-Step '20 staff finds the mapping by its SKU' 1 $listed.totalCount
     $listedStatus = if (@($listed.items).Count -ge 1) { @($listed.items)[0].status } else { 'none' }
     Assert-Step '21 ... and it is Inactive' 'Inactive' $listedStatus
-
-    # Frontend: production build and tests.
-    if (-not (Test-Path (Join-Path $script:RepoRoot 'frontend\node_modules\@microsoft\signalr'))) {
-        Write-Host 'Installing frontend packages (npm ci)...'
-        Assert-Step '22 npm ci' 0 (Invoke-Npm 'ci')
-    }
-    Write-Host 'Building the frontend...'
-    Assert-Step '23 npm run build' 0 (Invoke-Npm 'run build')
-    Write-Host 'Running the frontend tests (several minutes)...'
-    Assert-Step '24 npm test' 0 (Invoke-Npm 'test')
 }
 catch {
     Assert-Step "unexpected error: $($_.Exception.Message)" 'no error' 'error'
@@ -146,13 +120,15 @@ finally {
     # The smoke mapping never stays Active and the smoke accounts are locked again, also after a failed step.
     if ($manager -and $website -and $mapping -and $mapping.Body -and $mapping.Body.channelProductId -and (-not $deactivated)) {
         $cleanup = Invoke-ApiProblem PUT "/api/channels/$website/products/$($mapping.Body.channelProductId)" $manager @{ externalSku = "WEB-SMOKE-016B-$n"; status = 'Inactive' } 'en'
-        Assert-Step '25 deactivate the smoke mapping (clean-up)' 200 $cleanup.Status
+        Assert-Step '22 deactivate the smoke mapping (clean-up)' 200 $cleanup.Status
     }
     if ($admin -and $managerUser -and $managerUser.Body) {
-        Assert-Step '26 lock the smoke manager' 200 (Invoke-Api POST "/api/users/$($managerUser.Body.userId)/lock" $admin).Status
+        Assert-Step '23 lock the smoke manager' 200 (Invoke-Api POST "/api/users/$($managerUser.Body.userId)/lock" $admin).Status
     }
     if ($admin -and $staffUser -and $staffUser.Body) {
-        Assert-Step '27 lock the smoke staff' 200 (Invoke-Api POST "/api/users/$($staffUser.Body.userId)/lock" $admin).Status
+        Assert-Step '24 lock the smoke staff' 200 (Invoke-Api POST "/api/users/$($staffUser.Body.userId)/lock" $admin).Status
     }
 }
+# Frontend: production build and tests (steps 25-27), after the hosts this script started are stopped.
+Invoke-FrontendChecks 25 @('@microsoft\signalr')
 Complete-Smoke
