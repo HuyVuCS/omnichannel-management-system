@@ -156,4 +156,12 @@
     <value>Lần thử</value>
     <comment>Processing task filter.</comment>
   </data>
+  <data name="externalProductId" xml:space="preserve">
+    <value>Mã sản phẩm trên kênh</value>
+    <comment>Channel product mapping.</comment>
+  </data>
+  <data name="externalSku" xml:space="preserve">
+    <value>SKU trên kênh</value>
+    <comment>Channel product mapping.</comment>
+  </data>
 </root>

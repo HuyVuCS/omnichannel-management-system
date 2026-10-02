@@ -7,6 +7,8 @@ using Omnichannel.Application.Common.Paging;
 using Omnichannel.Application.Processing;
 using Omnichannel.Domain.Entities;
 using Omnichannel.Domain.Enums;
+using Omnichannel.Infrastructure.Persistence.Channels;
+using Omnichannel.Infrastructure.RabbitMQ;
 
 namespace Omnichannel.Infrastructure.Persistence.Processing;
 
@@ -42,6 +44,11 @@ internal sealed class ProcessingTaskService(
         if (query.OrderId is { } orderId)
         {
             tasks = tasks.Where(t => t.OrderId == orderId);
+        }
+
+        if (query.ChannelId is { } channelId)
+        {
+            tasks = tasks.Where(t => t.ChannelId == channelId);
         }
 
         if (!string.IsNullOrWhiteSpace(query.CorrelationId))
@@ -93,6 +100,8 @@ internal sealed class ProcessingTaskService(
                 t.TaskType,
                 t.Status,
                 t.OrderId,
+                t.ChannelId,
+                t.ProductId,
                 t.RetryCount,
                 t.AttemptBudgetStart,
                 t.CorrelationId,
@@ -117,6 +126,8 @@ internal sealed class ProcessingTaskService(
                 t.TaskType,
                 t.Status,
                 t.OrderId,
+                t.ChannelId,
+                t.ProductId,
                 t.RetryCount,
                 t.AttemptBudgetStart,
                 t.CorrelationId,
@@ -151,6 +162,8 @@ internal sealed class ProcessingTaskService(
             task.TaskType,
             task.Status,
             task.OrderId,
+            task.ChannelId,
+            task.ProductId,
             task.RetryCount,
             task.AttemptBudgetStart,
             task.CorrelationId,
@@ -187,22 +200,11 @@ internal sealed class ProcessingTaskService(
                 $"Task '{taskId}' is {task.Status}; only a Failed task can be retried.");
         }
 
-        var source = Guid.TryParse(task.MessageId, out var sourceId)
-            ? await dbContext.OutboxEvents.AsNoTracking().SingleOrDefaultAsync(e => e.OutboxEventId == sourceId, cancellationToken)
-            : null;
-        if (source is null)
-        {
-            throw new ConflictException(
-                ProcessingErrorCodes.RetrySourceMissing,
-                $"The message of task '{taskId}' ({task.MessageId ?? "none"}) is not in the outbox; there is nothing to republish.");
-        }
-
-        // A new message (new id) with the original content; it is published with its original routing key (event type), so it
-        // reaches the same consumer. The copy of the failed message stays in the DLQ for inspection. No movement link: the
-        // movement is already referenced by the original row (1:0..1).
-        var copy = new OutboxEvent(source.EventType, source.AggregateId, source.Payload, source.CorrelationId, inventoryMovementId: null);
-        dbContext.OutboxEvents.Add(copy);
-        var newMessageId = copy.OutboxEventId.ToString();
+        var retryMessage = task.TaskType == ProcessingTaskType.StockSync
+            ? await StockSyncRetryMessageAsync(task, cancellationToken)
+            : await CopyOfSourceMessageAsync(task, cancellationToken);
+        dbContext.OutboxEvents.Add(retryMessage);
+        var newMessageId = retryMessage.OutboxEventId.ToString();
         var previousMessageId = task.RequeueForManualRetry(newMessageId);
 
         dbContext.SystemEventLogs.Add(new SystemEventLog(
@@ -231,6 +233,58 @@ internal sealed class ProcessingTaskService(
             task.TaskId, requestedBy, newMessageId, previousMessageId, task.AttemptBudgetStart);
 
         return new RetryProcessingTaskResponse(task.TaskId, task.Status, newMessageId);
+    }
+
+    /// <summary>
+    /// A new message (new id) with the original content; it is published with its original routing key, so it reaches the same
+    /// consumer. The copy of the failed message stays in the DLQ for inspection. No movement link: the movement is already
+    /// referenced by the original row (1:0..1).
+    /// </summary>
+    private async Task<OutboxEvent> CopyOfSourceMessageAsync(ProcessingTask task, CancellationToken cancellationToken)
+    {
+        var source = Guid.TryParse(task.MessageId, out var sourceId)
+            ? await dbContext.OutboxEvents.AsNoTracking().SingleOrDefaultAsync(e => e.OutboxEventId == sourceId, cancellationToken)
+            : null;
+        if (source is null)
+        {
+            throw new ConflictException(
+                ProcessingErrorCodes.RetrySourceMissing,
+                $"The message of task '{task.TaskId}' ({task.MessageId ?? "none"}) is not in the outbox; there is nothing to republish.");
+        }
+
+        return new OutboxEvent(
+            source.EventType,
+            source.AggregateId,
+            source.Payload,
+            source.CorrelationId,
+            inventoryMovementId: null,
+            routingKey: source.RoutingKey);
+    }
+
+    /// <summary>
+    /// A stock-sync task usually comes from an <c>inventory.changed</c> that fans out to every channel: a copy of it would
+    /// create unrelated tasks on the other channels and leave this one Pending. The retry is a message for this task only,
+    /// routed to the queue of its channel.
+    /// </summary>
+    private async Task<OutboxEvent> StockSyncRetryMessageAsync(ProcessingTask task, CancellationToken cancellationToken)
+    {
+        var channelSlug = await dbContext.Channels
+            .AsNoTracking()
+            .Where(c => c.ChannelId == task.ChannelId)
+            .Select(c => c.Slug)
+            .SingleOrDefaultAsync(cancellationToken);
+
+        if (task.ChannelId is not { } channelId
+            || task.ProductId is not { } productId
+            || channelSlug is null
+            || RabbitMqTopology.StockSyncQueueOf(channelSlug) is not { } queue)
+        {
+            throw new ConflictException(
+                ProcessingErrorCodes.RetrySourceMissing,
+                $"Stock-sync task '{task.TaskId}' has no channel with a stock-sync queue; there is nothing to send.");
+        }
+
+        return StockSyncRequests.MessageFor(task.TaskId, channelId, productId, queue, task.CorrelationId);
     }
 
     private static string? Trimmed(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();

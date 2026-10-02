@@ -42,6 +42,22 @@ public static class RabbitMqTopology
         // processing.retry is reserved for manual retry (task 008): no binding yet.
     ];
 
+    /// <summary>
+    /// Channel slug → the queue that channel's stock sync consumes (doc §10). A channel without an entry (one created through
+    /// the API) can have product mappings but is never synced. Each of these queues is also bound to its own name on
+    /// <see cref="Exchange"/>, so a directed <c>stock.sync.requested</c> (routing key = queue name) reaches one channel only,
+    /// while <c>inventory.changed</c> fans out to all of them.
+    /// </summary>
+    public static readonly IReadOnlyDictionary<string, string> StockSyncQueues = new Dictionary<string, string>(StringComparer.Ordinal)
+    {
+        ["website"] = StockSyncWebsiteQueue,
+        ["pos"] = StockSyncPosQueue,
+        ["digital-platform"] = StockSyncMarketplaceQueue
+    };
+
+    /// <summary>The stock-sync queue of the channel with <paramref name="channelSlug"/>; null when the channel is not synced.</summary>
+    public static string? StockSyncQueueOf(string channelSlug) => StockSyncQueues.GetValueOrDefault(channelSlug);
+
     public static string DeadLetterQueueOf(string queue) => queue + DeadLetterSuffix;
 
     /// <summary>Arguments of every main queue.</summary>
@@ -141,6 +157,12 @@ public static class RabbitMqTopology
                     arguments: MainQueueArguments(queue), cancellationToken: cancellationToken);
                 await channel.QueueBindAsync(queue, Exchange, routingKey, cancellationToken: cancellationToken);
                 await channel.QueueBindAsync(queue, RetryExchange, queue, cancellationToken: cancellationToken);
+            }
+
+            // Directed stock-sync messages. A binding only: no argument of an existing queue changes.
+            foreach (var queue in StockSyncQueues.Values)
+            {
+                await channel.QueueBindAsync(queue, Exchange, routingKey: queue, cancellationToken: cancellationToken);
             }
 
             foreach (var delay in retryDelays.Distinct())

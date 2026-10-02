@@ -249,10 +249,12 @@ namespace Omnichannel.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("ChannelId", "ExternalProductId")
                         .IsUnique()
+                        .HasDatabaseName("IX_ChannelProducts_ChannelId_ExternalProductId")
                         .HasFilter("\"ExternalProductId\" IS NOT NULL");
 
                     b.HasIndex("ChannelId", "ProductId")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasDatabaseName("IX_ChannelProducts_ChannelId_ProductId");
 
                     b.ToTable("ChannelProducts", (string)null);
                 });
@@ -559,6 +561,10 @@ namespace Omnichannel.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset?>("PublishedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("RoutingKey")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(32)
@@ -646,6 +652,9 @@ namespace Omnichannel.Infrastructure.Persistence.Migrations
                         .HasColumnType("integer")
                         .HasDefaultValue(0);
 
+                    b.Property<Guid?>("ChannelId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("CorrelationId")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -663,6 +672,9 @@ namespace Omnichannel.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(100)");
 
                     b.Property<Guid?>("OrderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("ProductId")
                         .HasColumnType("uuid");
 
                     b.Property<string>("RequestHash")
@@ -687,6 +699,8 @@ namespace Omnichannel.Infrastructure.Persistence.Migrations
 
                     b.HasKey("TaskId");
 
+                    b.HasIndex("ChannelId");
+
                     b.HasIndex("CorrelationId");
 
                     b.HasIndex("IdempotencyKey")
@@ -696,6 +710,8 @@ namespace Omnichannel.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("OrderId");
 
+                    b.HasIndex("ProductId");
+
                     b.HasIndex("TaskType", "Status", "CreatedAt");
 
                     b.ToTable("ProcessingTasks", null, t =>
@@ -703,6 +719,8 @@ namespace Omnichannel.Infrastructure.Persistence.Migrations
                             t.HasCheckConstraint("CK_ProcessingTasks_AttemptBudgetStart_NonNegative", "\"AttemptBudgetStart\" >= 0");
 
                             t.HasCheckConstraint("CK_ProcessingTasks_RetryCount_NonNegative", "\"RetryCount\" >= 0");
+
+                            t.HasCheckConstraint("CK_ProcessingTasks_StockSync_ChannelAndProduct", "\"TaskType\" <> 'StockSync' OR (\"ChannelId\" IS NOT NULL AND \"ProductId\" IS NOT NULL)");
                         });
                 });
 
@@ -1078,9 +1096,19 @@ namespace Omnichannel.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("Omnichannel.Domain.Entities.ProcessingTask", b =>
                 {
+                    b.HasOne("Omnichannel.Domain.Entities.Channel", null)
+                        .WithMany()
+                        .HasForeignKey("ChannelId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("Omnichannel.Domain.Entities.Order", "Order")
                         .WithMany()
                         .HasForeignKey("OrderId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Omnichannel.Domain.Entities.Product", null)
+                        .WithMany()
+                        .HasForeignKey("ProductId")
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("Order");

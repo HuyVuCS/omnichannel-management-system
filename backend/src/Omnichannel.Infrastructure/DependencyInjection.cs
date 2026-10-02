@@ -55,7 +55,9 @@ public static class DependencyInjection
             DatabaseFailureLogInterceptor.Configure(options, serviceProvider.GetRequiredService<DatabaseFailureLogInterceptor>());
         });
 
+        services.AddScoped<ProcessingAttemptStore>();
         services.AddScoped<IChannelService, ChannelService>();
+        services.AddScoped<IStockSyncService, StockSyncService>();
         services.AddScoped<ICustomerService, CustomerService>();
         services.AddScoped<IProductService, ProductService>();
         services.AddScoped<IInventoryQueryService, InventoryQueryService>();

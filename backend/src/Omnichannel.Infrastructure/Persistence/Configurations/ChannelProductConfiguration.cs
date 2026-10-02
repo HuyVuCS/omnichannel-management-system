@@ -12,8 +12,8 @@ internal sealed class ChannelProductConfiguration : IEntityTypeConfiguration<Cha
         builder.HasKey(x => x.ChannelProductId);
         builder.Property(x => x.ChannelProductId).ValueGeneratedNever();
 
-        builder.Property(x => x.ExternalProductId).HasMaxLength(128);
-        builder.Property(x => x.ExternalSku).HasMaxLength(128);
+        builder.Property(x => x.ExternalProductId).HasMaxLength(ChannelProduct.MaxExternalIdLength);
+        builder.Property(x => x.ExternalSku).HasMaxLength(ChannelProduct.MaxExternalIdLength);
         builder.Property(x => x.Status).HasEnumAsString();
         builder.ConfigureAuditColumns();
 

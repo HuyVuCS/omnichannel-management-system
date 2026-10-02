@@ -69,10 +69,10 @@ public sealed class QueryShapeTests(WorkersFixture fixture)
             AddFailures(orderTask, 2);
             orderTask.Succeed(order.OrderId, orderTask.StartAttempt("OrderWorker", "i-1", T0).AttemptId, T0);
 
-            var syncTask = new ProcessingTask(ProcessingTaskType.StockSync, order.OrderId, correlationId, null);
-            var sync = syncTask.StartAttempt("StockSyncWorker", "i-2", T0);
-            syncTask.ScheduleRetry(sync.AttemptId, "timeout", "slow", T0);
-            syncTask.StartAttempt("StockSyncWorker", "i-2", T0);
+            var invoiceTask = new ProcessingTask(ProcessingTaskType.Invoice, order.OrderId, correlationId, null);
+            var invoice = invoiceTask.StartAttempt("InvoiceWorker", "i-2", T0);
+            invoiceTask.ScheduleRetry(invoice.AttemptId, "timeout", "slow", T0);
+            invoiceTask.StartAttempt("InvoiceWorker", "i-2", T0);
 
             var others = Enumerable.Range(1, 6).Select(n =>
             {
@@ -84,7 +84,7 @@ public sealed class QueryShapeTests(WorkersFixture fixture)
             db.Customers.Add(customer);
             db.Products.AddRange(products);
             db.Orders.Add(order);
-            db.ProcessingTasks.AddRange([orderTask, syncTask, .. others]);
+            db.ProcessingTasks.AddRange([orderTask, invoiceTask, .. others]);
             await db.SaveChangesAsync();
             return order.OrderId;
         });

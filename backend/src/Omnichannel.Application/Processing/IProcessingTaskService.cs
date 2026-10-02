@@ -15,6 +15,8 @@ public interface IProcessingTaskService
     /// original message (same event type, aggregate, payload and correlation id; original routing key), the task becomes
     /// <c>Pending</c> with the new message id and a fresh attempt budget (attempts are kept), and a
     /// <see cref="ProcessingEvents.RetryRequested"/> audit event is written. The Outbox Publisher and the worker take it from there.
+    /// A <c>StockSync</c> task is not retried with a copy of its source message (an <c>inventory.changed</c> that every channel
+    /// receives): it gets a new <c>stock.sync.requested</c> directed at its own channel.
     /// </summary>
     /// <exception cref="Common.Exceptions.NotFoundException"><c>task_not_found</c>.</exception>
     /// <exception cref="Common.Exceptions.ConflictException"><c>task_not_failed</c>, <c>retry_source_missing</c>.</exception>

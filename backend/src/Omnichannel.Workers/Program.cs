@@ -30,7 +30,7 @@ try
         }
     });
 
-    // RabbitMQ topology + Outbox Publisher; further workers (OrderWorker, StockSyncWorker, ...) follow in later steps.
+    // RabbitMQ topology, Outbox Publisher, Order Worker, Stock Sync Worker; further workers follow in later steps.
     builder.Services.AddWorkerServices(builder.Configuration);
 
     var host = builder.Build();

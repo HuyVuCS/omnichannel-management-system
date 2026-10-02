@@ -1,8 +1,9 @@
 using System.Net.Sockets;
 using System.Text.RegularExpressions;
 using Npgsql;
+using Omnichannel.Application.Channels;
 
-namespace Omnichannel.Workers.OrderWorker;
+namespace Omnichannel.Workers.Processing;
 
 /// <summary>A classified failure of an attempt.</summary>
 /// <param name="IsPermanent">True when retrying cannot help (bad input or state): final failure without retry.</param>
@@ -16,7 +17,10 @@ public sealed record ProcessingError(string ErrorCode, string ErrorMessage, bool
 /// exceptions are retried, but only up to the attempt limit).</item>
 /// <item>Permanent → no retry: PostgreSQL class 22 (data exception), 23514 (check), 23502 (not null), 23503 (foreign key).
 /// 23505 (unique) is handled explicitly where it is expected and otherwise treated as unexpected.</item>
+/// <item>A channel call (<see cref="ChannelApiException"/>) keeps its own code and message; it says itself whether trying again
+/// can help: timeout, unavailable, rate limited and open circuit → retry; rejected by the channel → permanent.</item>
 /// </list>
+/// Shared by every worker, so all task types follow the same retry/DLQ model.
 /// </summary>
 public static partial class ProcessingErrorClassifier
 {
@@ -37,8 +41,13 @@ public static partial class ProcessingErrorClassifier
 
     public static ProcessingError Classify(Exception exception)
     {
+        if (FindInChain<ChannelApiException>(exception) is { } channel)
+        {
+            return new ProcessingError(channel.ErrorCode, Sanitize(channel.Message), IsPermanent: !channel.IsTransient);
+        }
+
         var code = CodeOf(exception);
-        var message = FindPostgresException(exception) is { } postgres
+        var message = FindInChain<PostgresException>(exception) is { } postgres
             ? $"PostgreSQL {postgres.SqlState}: {postgres.MessageText}"
             : $"{exception.GetType().Name}: {exception.Message}";
 
@@ -66,13 +75,14 @@ public static partial class ProcessingErrorClassifier
         _ => Unexpected
     };
 
-    private static PostgresException? FindPostgresException(Exception? exception)
+    private static TException? FindInChain<TException>(Exception? exception)
+        where TException : Exception
     {
         for (; exception is not null; exception = exception.InnerException)
         {
-            if (exception is PostgresException postgres)
+            if (exception is TException found)
             {
-                return postgres;
+                return found;
             }
         }
 

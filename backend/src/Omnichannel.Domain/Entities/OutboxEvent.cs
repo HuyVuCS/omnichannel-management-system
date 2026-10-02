@@ -17,19 +17,29 @@ public class OutboxEvent : IHasTimestamps
     /// Pre-generated id, for callers that must reference the RabbitMQ messageId before creating the row
     /// (e.g. <c>ProcessingTask.MessageId</c>). A new UUIDv7 when null.
     /// </param>
+    /// <param name="routingKey">
+    /// RabbitMQ routing key of a directed message (one channel's stock-sync queue); null = the event type, which reaches
+    /// every queue bound to it.
+    /// </param>
     public OutboxEvent(
         string eventType,
         string aggregateId,
         string payload,
         string correlationId,
         Guid? inventoryMovementId,
-        Guid? outboxEventId = null)
+        Guid? outboxEventId = null,
+        string? routingKey = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(eventType);
         ArgumentException.ThrowIfNullOrWhiteSpace(aggregateId);
         ArgumentException.ThrowIfNullOrWhiteSpace(payload);
         ArgumentException.ThrowIfNullOrWhiteSpace(correlationId);
         if (outboxEventId == Guid.Empty) throw new ArgumentException("Outbox event id must not be empty.", nameof(outboxEventId));
+        if (routingKey is not null)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(routingKey);
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(routingKey.Length, MaxRoutingKeyLength, nameof(routingKey));
+        }
 
         OutboxEventId = outboxEventId ?? Guid.CreateVersion7();
         EventType = eventType;
@@ -37,12 +47,17 @@ public class OutboxEvent : IHasTimestamps
         Payload = payload;
         CorrelationId = correlationId;
         InventoryMovementId = inventoryMovementId;
+        RoutingKey = routingKey;
         Status = OutboxEventStatus.Pending;
     }
 
     public Guid OutboxEventId { get; private set; }
     public Guid? InventoryMovementId { get; private set; }
     public string EventType { get; private set; } = null!;
+
+    /// <summary>Null = publish with <see cref="EventType"/> as the routing key.</summary>
+    public string? RoutingKey { get; private set; }
+
     public string AggregateId { get; private set; } = null!;
 
     /// <summary>JSON payload (jsonb).</summary>
@@ -67,6 +82,12 @@ public class OutboxEvent : IHasTimestamps
     public InventoryMovement? InventoryMovement { get; private set; }
 
     public const int MaxLastErrorLength = 1000;
+
+    /// <summary>AMQP 0-9-1 short string.</summary>
+    public const int MaxRoutingKeyLength = 255;
+
+    /// <summary>The routing key the publisher uses.</summary>
+    public string EffectiveRoutingKey => RoutingKey ?? EventType;
 
     /// <summary>Only after a positive publisher confirm.</summary>
     public void MarkPublished(DateTimeOffset publishedAt)

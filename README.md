@@ -112,6 +112,7 @@ dotnet run --project src/Omnichannel.Workers
   in queue `order.processing` (no consumer yet).
 - Optional settings: `OutboxPublisher:BatchSize` (100), `PollInterval` (1 s), `MaxAttempts` (10), `InitialBackoff` (1 s),
   `MaxBackoff` (5 min), `ConfirmTimeout` (10 s); `Worker:InstanceId` (default `{MachineName}-{ProcessId}`).
+- Stock Sync Worker (queues `stock.sync.*`): see section 7.
 - Order Worker (queue `order.processing`): `OrderWorker:Concurrency` (4), `OrderWorker:MaxAttempts` (5).
   Temporary failures are retried after 5 s / 30 s / 2 min / 10 min (delay queues `omnichannel.delay.*`,
   `RabbitMq:RetryDelays` to change the tiers). After the last attempt, or at once for a permanent error (bad data, check or
@@ -121,6 +122,68 @@ dotnet run --project src/Omnichannel.Workers
   into a new outbox row (new message id, original routing key), the task becomes `Pending` with a fresh attempt budget
   (`OrderWorker:MaxAttempts` new attempts; attempt numbers keep counting), and `processing.retry_requested` is logged. The copy in
   the DLQ is left there for inspection. Look up the result with `GET /api/processing/tasks/{id}` or `GET /api/orders/{orderId}`.
+
+### 7. Stock sync (Stock Sync Worker, simulated channels)
+
+The Workers host pushes the **available stock** of a product to every channel that sells it. A channel sells a product
+when the product is mapped on it (`/api/channels/{channelId}/products`, see "API conventions").
+
+- **What triggers a sync**
+  - every stock change (stock import, reservation by an order): the `inventory.changed` event reaches the three queues
+    `stock.sync.website`, `stock.sync.pos` and `stock.sync.marketplace` (channel `digital-platform`); each channel with an
+    Active mapping for the product gets its own `StockSync` task, the others just acknowledge the message;
+  - a mapping that is created, re-activated, or whose external ids change while it is Active: the API writes the task and
+    a `stock.sync.requested` message directed at the queue of that channel (the response carries `syncTaskId`);
+  - a manual retry of a failed stock-sync task (`POST /api/processing/tasks/{id}/retry`): again a directed message, for
+    that channel only.
+  A channel created through the API has no stock-sync queue: it can have mappings, but it is not synced.
+- **What is pushed**: the stock as it is when the worker runs, never the value in the message; after a push the stock is
+  read again and pushed again while it differs (`StockSyncWorker:MaxPushesPerAttempt`, default 3). One consumer per
+  channel queue (`StockSyncWorker:Concurrency`, default 1, at most 16), so one slow or failing channel never holds back
+  the others.
+- **Failures** follow the Order Worker: a temporary error (channel timeout, channel unavailable, rate limited, open
+  circuit breaker, temporary database error) is retried after 5 s / 30 s / 2 min / 10 min up to
+  `StockSyncWorker:MaxAttempts` (5); a rejection by the channel fails at once. A failed task is `Failed`, writes
+  `processing.failed` and its message goes to `<queue>.dlq`. Look at the tasks with
+  `GET /api/processing/tasks?taskType=StockSync&channelId=...`.
+- **Calls to a channel** go through a timeout (`StockSyncWorker:ChannelCallTimeout`, 10 s) and a circuit breaker per
+  channel (`StockSyncWorker:CircuitBreaker:FailureRatio` 0.5, `MinimumThroughput` 5, `SamplingDuration` 30 s,
+  `BreakDuration` 30 s; only temporary failures and timeouts count). There is no retry inside a call: every retry is an
+  attempt in the task's history.
+- **The channels are simulated** (`SimulatedChannelStockClient`; no real channel accounts exist). A push is logged and
+  accepted unless the `ChannelSimulation` section says otherwise. The section is read on every push, so a change of
+  `src/Omnichannel.Workers/appsettings.Development.json` applies **without restarting** the Workers host:
+
+  ```json
+  "ChannelSimulation": {
+    "SkuRules": true,
+    "Channels": {
+      "website": { "Mode": "Succeed", "LatencyMs": 0 },
+      "pos": { "Mode": "TransientError" },
+      "digital-platform": { "Mode": "Succeed" }
+    }
+  }
+  ```
+
+  | `Mode` | Effect |
+  | --- | --- |
+  | `Succeed` (default) | the channel accepts the push |
+  | `TransientError` | `channel_unavailable`: retried with delay, `Failed` + DLQ after the last attempt |
+  | `PermanentError` | `channel_rejected`: `Failed` + DLQ at once |
+  | `Timeout` | the channel never answers: `channel_timeout` after `ChannelCallTimeout`, then as `TransientError` |
+
+  `LatencyMs` delays every answer of that channel. `SkuRules` (on in `appsettings.Development.json` only, off by default)
+  adds failures by **external SKU** of the mapping, for a single product instead of a whole channel: an external SKU
+  starting with `SIM-PERM-` is rejected (`channel_rejected`), one starting with `SIM-TEMP-` fails with
+  `channel_unavailable` on attempt 1 and succeeds from attempt 2. These prefixes exist only in the simulator.
+- **Demo of retry and DLQ**: with the Workers host running, set `ChannelSimulation:Channels:website:Mode` to
+  `TransientError`, save the file, import stock for a product mapped on `website`, and watch the task's attempts
+  (`GET /api/processing/tasks/{id}`) and the worker log (`Retry 1 of message ...: waits 00:00:05 in omnichannel.delay.5s`,
+  then 30 s, ...). Set the mode back to `Succeed`: the next attempt succeeds.
+- **Scripted check**: `powershell -ExecutionPolicy Bypass -File scripts\smoke\task-014.ps1` (needs the `StockSync`
+  migration, section 4; uses a running API / Workers host or starts them, the Workers host in Development).
+- Messages that were in the stock-sync queues before this worker existed are processed like any other: no mapping
+  existed, so they are acknowledged without a task.
 
 ## Frontend
 
@@ -193,6 +256,28 @@ npm run dev     # http://localhost:5173 - needs the API on http://localhost:5080
   alike. Only the body paths reported for malformed JSON start with `$` (`$.items[0].stock`).
 - Send `X-Correlation-Id` to correlate a request across logs; the API echoes it (or generates one).
 - Enums are serialised as strings.
+
+### Channel product mappings and stock-sync tasks
+
+- `GET /api/channels/{channelId}/products` (any role): paged list (`page`, `pageSize`, `search` over SKU, product name,
+  external product id and external SKU; `sortBy` = `sku` (default) or `createdAt`).
+- `POST /api/channels/{channelId}/products` (Manager/Admin): `{productId, externalProductId?, externalSku?}` - at least one
+  of the two external ids, at most 128 characters each. 201 with the mapping and `syncTaskId`.
+- `PUT /api/channels/{channelId}/products/{channelProductId}` (Manager/Admin): `{externalProductId?, externalSku?, status}`
+  (`Active` / `Inactive`). Product and channel of a mapping cannot change; there is no delete (deactivate instead).
+- `syncTaskId` is the stock-sync task the request started (section 7), or null: channel or mapping not Active, channel
+  without stock sync, or nothing changed that the channel has to learn. Deactivating sends nothing to the channel.
+- Errors: 404 `not_found` (channel), 404 `channel_product_not_found` (mapping, also when it belongs to another channel),
+  400 on `productId` (product does not exist) or `externalProductId` (neither external id given),
+  409 `channel_product_exists` (product already mapped on this channel), 409 `external_product_id_taken` (the external
+  product id belongs to another product on this channel).
+- `GET /api/processing/tasks` accepts `channelId`; task responses carry `channelId` and `productId` (set for `StockSync`
+  tasks). Attempt error codes of stock sync: `channel_timeout`, `channel_unavailable`, `channel_rate_limited`,
+  `channel_circuit_open` (temporary), `channel_rejected` (permanent).
+- A business conflict that the API answers with 409 (the two above, `product_sku_exists`, `stock_import_already_applied`,
+  ...) is logged once at Information (`Request failed with 409: <errorCode>`). EF Core's own entries for such a unique
+  violation are written at Debug; every other database failure is logged at Error as before
+  (`ExpectedUniqueViolations`, `DatabaseFailureLogInterceptor`).
 
 ### Users and token revocation
 

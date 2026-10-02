@@ -39,6 +39,7 @@ public static class ValidationMessages
         public const string EmailInvalid = nameof(EmailInvalid);
         public const string ProductNotFound = nameof(ProductNotFound);
         public const string CustomerNotFound = nameof(CustomerNotFound);
+        public const string ExternalIdRequired = nameof(ExternalIdRequired);
         public const string PasswordTooShort = nameof(PasswordTooShort);
         public const string PasswordRequiresDigit = nameof(PasswordRequiresDigit);
         public const string PasswordRequiresLower = nameof(PasswordRequiresLower);

@@ -13,6 +13,7 @@ using Omnichannel.Domain.Enums;
 using Omnichannel.Infrastructure.RabbitMQ;
 using Omnichannel.Workers.OrderWorker;
 using Omnichannel.Workers.OutboxPublisher;
+using Omnichannel.Workers.StockSyncWorker;
 using RabbitMQ.Client;
 
 namespace Omnichannel.Tests.Integration.Workers;
@@ -268,7 +269,7 @@ public sealed class OutboxPublisherTests(WorkersFixture fixture) : IAsyncLifetim
         Assert.False(string.IsNullOrEmpty(logPayload["lastError"]!.GetValue<string>()));
     }
 
-    /// <summary>Workers host without the Order Worker, so published messages stay in their queues for inspection.</summary>
+    /// <summary>Workers host without the consuming workers, so published messages stay in their queues for inspection.</summary>
     private IHost CreatePublisherHost(
         string instanceId,
         IDictionary<string, string?>? overrides = null,
@@ -276,6 +277,7 @@ public sealed class OutboxPublisherTests(WorkersFixture fixture) : IAsyncLifetim
         fixture.CreateHost(instanceId, overrides, services =>
         {
             services.RemoveHostedService<OrderWorkerService>();
+            services.RemoveHostedService<StockSyncWorkerService>();
             configureServices?.Invoke(services);
         });
 

@@ -92,4 +92,8 @@
     <value>Mật khẩu phải có ít nhất {UniqueChars} ký tự khác nhau.</value>
     <comment>Identity password policy.</comment>
   </data>
+  <data name="ExternalIdRequired" xml:space="preserve">
+    <value>Hãy nhập '{PropertyName}' hoặc '{ExternalSku}'.</value>
+    <comment>Channel product mapping: at least one external identifier; {ExternalSku} is the field name of the external SKU.</comment>
+  </data>
 </root>

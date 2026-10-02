@@ -291,9 +291,10 @@ public sealed class OutboxPublisherService(
             Timestamp = new AmqpTimestamp(envelope.OccurredAt.ToUnixTimeSeconds())
         };
 
+        // Directed messages (stock.sync.requested) name the queue of one channel; everything else is routed by event type.
         await channel.BasicPublishAsync(
             RabbitMqTopology.Exchange,
-            routingKey: envelope.EventType,
+            routingKey: row.EffectiveRoutingKey,
             mandatory: true,
             properties,
             MessageJson.SerializeToUtf8Bytes(envelope),

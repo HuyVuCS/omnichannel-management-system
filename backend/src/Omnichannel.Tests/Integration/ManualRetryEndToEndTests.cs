@@ -15,6 +15,7 @@ using Omnichannel.Domain.Enums;
 using Omnichannel.Infrastructure.RabbitMQ;
 using Omnichannel.Tests.Integration.Workers;
 using Omnichannel.Workers.OrderWorker;
+using Omnichannel.Workers.Processing;
 using RabbitMQ.Client;
 using Testcontainers.RabbitMq;
 

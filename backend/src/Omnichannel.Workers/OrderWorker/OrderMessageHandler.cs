@@ -2,6 +2,7 @@ using Microsoft.Extensions.Options;
 using Omnichannel.Application.Orders;
 using Omnichannel.Domain.Enums;
 using Omnichannel.Infrastructure.RabbitMQ;
+using Omnichannel.Workers.Processing;
 
 namespace Omnichannel.Workers.OrderWorker;
 

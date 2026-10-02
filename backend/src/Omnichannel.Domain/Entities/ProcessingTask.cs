@@ -59,10 +59,37 @@ public class ProcessingTask : IHasTimestamps
         RetryCount = 0;
     }
 
+    /// <summary>
+    /// A stock-sync task: push the current available stock of <paramref name="productId"/> to <paramref name="channelId"/>.
+    /// Both are required (stock sync is per channel and product); the task is not tied to an order.
+    /// </summary>
+    public static ProcessingTask ForStockSync(
+        Guid channelId,
+        Guid productId,
+        string correlationId,
+        string? messageId,
+        string? idempotencyKey = null)
+    {
+        if (channelId == Guid.Empty) throw new ArgumentException("A stock-sync task needs a channel.", nameof(channelId));
+        if (productId == Guid.Empty) throw new ArgumentException("A stock-sync task needs a product.", nameof(productId));
+
+        return new ProcessingTask(ProcessingTaskType.StockSync, orderId: null, correlationId, messageId, idempotencyKey)
+        {
+            ChannelId = channelId,
+            ProductId = productId
+        };
+    }
+
     public Guid TaskId { get; private set; }
 
     /// <summary>Null for tasks not tied to an order (e.g. reconciliation stock sync).</summary>
     public Guid? OrderId { get; private set; }
+
+    /// <summary>The channel a <see cref="ProcessingTaskType.StockSync"/> task pushes to; null for other task types.</summary>
+    public Guid? ChannelId { get; private set; }
+
+    /// <summary>The product a <see cref="ProcessingTaskType.StockSync"/> task pushes; null for other task types.</summary>
+    public Guid? ProductId { get; private set; }
 
     public ProcessingTaskType TaskType { get; private set; }
     public ProcessingTaskStatus Status { get; private set; }
