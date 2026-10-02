@@ -3,6 +3,7 @@ import { delay, http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 import type { AuthUser } from '@/features/auth/session';
 import { productsApi } from '@/features/products/productsApi';
+import { baseApi } from '@/shared/api/baseApi';
 import {
   chooseProduct,
   coffeeProduct,
@@ -484,6 +485,35 @@ describe('product picker', () => {
     expect(productOptions()[0]).toHaveTextContent('COF-01 — Cà phê');
     await appUser.click(productOptions()[0]!);
     await waitFor(() => expect(pickerTexts()).toEqual(['COF-01 — Cà phê']));
+  });
+
+  it('keeps its options while the same search is fetched again (an invalidation while the dropdown is open)', async () => {
+    serveProductCatalog([teaProduct, coffeeProduct, sugarProduct]);
+    const { user: appUser, store } = renderImport();
+    await screen.findByLabelText('Số chứng từ');
+    await appUser.click(productOfLine(1));
+    await waitFor(() => expect(productOptions()).toHaveLength(3));
+
+    // The next answer takes its time and carries a changed stock, so the refetch can be watched from start to end.
+    let refetches = 0;
+    server.use(
+      http.get(api('/products'), async () => {
+        refetches += 1;
+        await delay(700);
+        const items = [{ ...teaProduct, availableStock: 1199 }, coffeeProduct, sugarProduct];
+        return HttpResponse.json({ items, page: 1, pageSize: 20, totalCount: items.length });
+      }),
+    );
+    store.dispatch(baseApi.util.invalidateTags(['Product']));
+
+    // While the request is on its way the options stay, as they were: they answer the search on screen.
+    await waitFor(() => expect(refetches).toBe(1));
+    expect(productOptions()).toHaveLength(3);
+    expect(productOptions()[0]).toHaveTextContent('TEA-01 — Trà xanhKhả dụng: 1.200');
+
+    await waitFor(() => expect(productOptions()[0]).toHaveTextContent('TEA-01 — Trà xanhKhả dụng: 1.199'));
+    expect(productOptions()).toHaveLength(3);
+    expect(refetches).toBe(1);
   });
 
   it('disables a product that is already on another line', async () => {
