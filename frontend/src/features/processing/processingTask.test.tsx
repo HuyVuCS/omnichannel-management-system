@@ -54,7 +54,7 @@ describe('processing task detail', () => {
     const message = screen.getByTestId('task-message');
     expect(message).toHaveTextContent('Loại sự kiệnstock.sync.requested');
     expect(within(message).getByText('Đã gửi').closest('.ant-tag')).toHaveClass('ant-tag-success');
-    expect(message).toHaveTextContent('Số lần gửi3');
+    expect(message).toHaveTextContent('Số lần gửi lỗi3');
     expect(message).toHaveTextContent('Mã thông điệpmessage-7');
 
     const attempts = [...screen.getByTestId('task-attempts').querySelectorAll('tbody tr.ant-table-row')];

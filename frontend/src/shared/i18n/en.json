@@ -550,7 +550,7 @@
         "status": "Publish status",
         "createdAt": "Created",
         "publishedAt": "Published",
-        "publishAttempts": "Publish attempts",
+        "publishAttempts": "Failed publish attempts",
         "messageId": "Message ID"
       },
       "attempts": {

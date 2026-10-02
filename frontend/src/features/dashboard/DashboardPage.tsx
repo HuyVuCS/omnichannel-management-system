@@ -47,6 +47,9 @@ dayjs.extend(relativeTime);
 
 const NUMBER_COLUMN_WIDTH = 130;
 
+/** A number column whose title says "(in the range)": the title must fit in both languages. */
+const RANGE_COLUMN_WIDTH = 200;
+
 /** A number that has a list behind it: a link when there is something to look at. */
 function CountLink({ count, to }: { count: number; to: string }) {
   const { token } = theme.useToken();
@@ -200,7 +203,7 @@ export function DashboardPage() {
       key,
       dataIndex: key,
       title: t(`dashboard.processing.${key}`),
-      width: NUMBER_COLUMN_WIDTH,
+      width: finished ? RANGE_COLUMN_WIDTH : NUMBER_COLUMN_WIDTH,
       align: 'right' as const,
       ellipsis: true,
       render: (count: number, row: DashboardProcessing) => (
@@ -261,7 +264,7 @@ export function DashboardPage() {
         key: 'failed',
         dataIndex: 'failed',
         title: t('dashboard.stockSync.failed'),
-        width: NUMBER_COLUMN_WIDTH,
+        width: RANGE_COLUMN_WIDTH,
         align: 'right',
         ellipsis: true,
         render: (count: number, row) => (

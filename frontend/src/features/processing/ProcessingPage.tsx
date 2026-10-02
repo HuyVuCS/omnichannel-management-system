@@ -42,7 +42,7 @@ const FILTER_PARAMS = ['taskType', 'status', 'channelId', 'correlationId', 'erro
  * Sum of the column widths without the action column. Created, type, status, channel and product come first and fit
  * into the content area of the smallest supported window (1280 px wide: 992 px); the attempt columns scroll.
  */
-const COLUMNS_WIDTH = 1760;
+const COLUMNS_WIDTH = 1810;
 
 /**
  * Sync & Processing (every role): every asynchronous task - order processing, stock sync per channel - with its
@@ -163,7 +163,7 @@ export function ProcessingPage() {
         key: 'productSku',
         dataIndex: 'productSku',
         title: t('processing.columns.productSku'),
-        width: 170,
+        width: 200,
         ellipsis: { showTitle: false },
         render: (sku: string | null) => <TruncatedText text={sku} />,
       },
@@ -184,7 +184,7 @@ export function ProcessingPage() {
         key: 'attemptCount',
         dataIndex: 'attemptCount',
         title: t('processing.columns.attemptCount'),
-        width: 100,
+        width: 120,
         align: 'right',
         ellipsis: true,
         render: (attemptCount: number) => formatNumber(attemptCount),
