@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AuthUser } from '@/features/auth/session';
 import { inventoryApi } from '@/features/inventory/inventoryApi';
 import type { ProcessingTaskDetail } from '@/features/processing/processingApi';
+import { FLUSH_WINDOW_MS } from '@/features/realtime/hintTags';
+import type { HubFactory } from '@/features/realtime/hub';
 import { productsApi } from '@/features/products/productsApi';
 import {
   AN_ID,
@@ -20,6 +22,7 @@ import {
   TEA_ID,
 } from '@/test/catalog';
 import { expectLanguageSwitchChangesTextOnly, switchLanguage, type AppUser } from '@/test/interactions';
+import { fakeHub } from '@/test/hub';
 import { attempt, channel, ORDER_ID, orderDetail, serveChannels, task, TASK_ID } from '@/test/orders';
 import { renderApp } from '@/test/renderApp';
 import { api, managerUser, problem, server, sessionOf, staffUser } from '@/test/server';
@@ -129,8 +132,8 @@ function watchLists(
   return () => ({ ...counts, products: products.listRequests.filter((request) => request.pageSize === '5').length });
 }
 
-async function renderOrderEntry(user: AuthUser = staffUser) {
-  const app = renderApp({ route: '/order-entry', session: sessionOf(user) });
+async function renderOrderEntry(user: AuthUser = staffUser, createHub?: HubFactory) {
+  const app = renderApp({ route: '/order-entry', session: sessionOf(user), createHub });
   await screen.findByRole('heading', { name: 'Nhập đơn hàng' });
   return app;
 }
@@ -687,6 +690,158 @@ describe('order entry: polling window', () => {
     jump(10 * POLL_INTERVAL_MS);
     await pause(200);
     expect(backend.taskRequests).toHaveLength(afterLeaving);
+  });
+});
+
+describe('order entry: outcome by push', () => {
+  const taskChanged = (status: string, orderId?: string) => ({
+    type: 'processing.task.changed',
+    taskId: TASK_ID,
+    taskType: 'OrderProcessing',
+    status,
+    ...(orderId ? { orderId } : {}),
+  });
+
+  /** The page with a live hub connection, after the refetch every new connection causes. */
+  async function renderLive() {
+    const everything = serveEverything();
+    const hub = fakeHub({ autoAccept: true });
+    const app = await renderOrderEntry(staffUser, hub.create);
+    await waitFor(() => expect(screen.getByTestId('connection-indicator')).toHaveTextContent('Trực tiếp'));
+    await pause(FLUSH_WINDOW_MS + 200);
+    return { ...everything, ...app, hub };
+  }
+
+  it('asks for the task once and then only when a hint for it arrives; the order is loaded once', async () => {
+    const { backend, products, hub, store, user: appUser } = await renderLive();
+    backend.taskAnswer = (requestNo) =>
+      requestNo === 1
+        ? task({ status: 'Pending' })
+        : requestNo === 2
+          ? task({ status: 'InProgress', attempts: [attempt({ status: 'Running', finishedAt: null })] })
+          : task({ status: 'Succeeded', orderId: ORDER_ID, attempts: [attempt()] });
+    const counts = watchLists(store, products);
+    await waitFor(() => expect(counts()).toEqual({ orders: 1, inventory: 1, movements: 1, products: 1 }));
+
+    const outcome = await submitOrder(appUser);
+    expect(await within(outcome).findByText('Đơn hàng đang chờ trong hàng đợi xử lý.')).toBeInTheDocument();
+
+    // No polling: two polling intervals later the task has still been asked for once.
+    await pause(2 * POLL_INTERVAL_MS + 300);
+    expect(backend.taskRequests).toHaveLength(1);
+
+    // The worker picked it up: the hint refetches the task.
+    await hub.latest().send([taskChanged('InProgress')]);
+    expect(await within(outcome).findByText('Đơn hàng đang được xử lý.')).toBeInTheDocument();
+    expect(backend.taskRequests).toHaveLength(2);
+
+    // Finished - as the Order Worker's transaction announces it: the order, its stock change and the task.
+    await hub
+      .latest()
+      .send([
+        { type: 'order.created', orderId: ORDER_ID, channelId: 'channel-website', status: 'Reserved' },
+        { type: 'inventory.changed', productIds: [TEA_ID] },
+        taskChanged('Succeeded', ORDER_ID),
+      ]);
+    expect(await within(outcome).findByText('Đã giữ hàng cho đơn hàng.')).toBeInTheDocument();
+    expect(outcome).toHaveTextContent('1.234.567 ₫');
+
+    // Nothing more is asked afterwards; the order was loaded once although its tag was among the hints.
+    await pause(POLL_INTERVAL_MS + 700);
+    expect(backend.taskRequests).toHaveLength(3);
+    expect(backend.orderRequests).toEqual([ORDER_ID]);
+    // The lists: once by the hints, once by the outcome when it saw the task finished (the rule of task 013).
+    expect(counts()).toEqual({ orders: 3, inventory: 3, movements: 3, products: 3 });
+  });
+
+  it('keeps the outcome when the connection is lost and comes back while waiting: polling in between, push again after', async () => {
+    const everything = serveEverything();
+    const { backend } = everything;
+    backend.taskAnswer = () => task({ status: 'Pending' });
+    const hub = fakeHub();
+    const { user: appUser } = await renderOrderEntry(staffUser, hub.create);
+    await hub.latest().accept();
+    await pause(FLUSH_WINDOW_MS + 200);
+
+    const outcome = await submitOrder(appUser);
+    await within(outcome).findByText('Đơn hàng đang chờ trong hàng đợi xử lý.');
+    const id = outcome.textContent?.match(/WEB-\d{8}-[A-Z0-9]{6}/)?.[0];
+    await pause(POLL_INTERVAL_MS + 300);
+    expect(backend.taskRequests).toHaveLength(1);
+
+    // Connection lost (the reconnect attempt stays open): the task is polled.
+    await hub.latest().drop();
+    await waitFor(() => expect(screen.getByTestId('connection-indicator')).toHaveTextContent('Đang kết nối lại'));
+    backend.taskAnswer = () =>
+      task({ status: 'InProgress', attempts: [attempt({ status: 'Running', finishedAt: null })] });
+    expect(await within(outcome).findByText('Đơn hàng đang được xử lý.')).toBeInTheDocument();
+    await waitFor(() => expect(backend.taskRequests.length).toBeGreaterThanOrEqual(3));
+    expect(screen.getByTestId('order-outcome-website')).toBe(outcome);
+    expect(outcome).toHaveTextContent(id!);
+
+    // Back: one refetch for what was missed, then no polling any more.
+    await hub.latest().accept();
+    await waitFor(() => expect(screen.getByTestId('connection-indicator')).toHaveTextContent('Trực tiếp'));
+    await pause(FLUSH_WINDOW_MS + POLL_INTERVAL_MS);
+    const afterReconnect = backend.taskRequests.length;
+    await pause(2 * POLL_INTERVAL_MS);
+    expect(backend.taskRequests).toHaveLength(afterReconnect);
+    expect(within(outcome).getByText('Đơn hàng đang được xử lý.')).toBeInTheDocument();
+
+    // And the push finishes it.
+    backend.taskAnswer = () => task({ status: 'Succeeded', orderId: ORDER_ID, attempts: [attempt()] });
+    await hub.latest().send([taskChanged('Succeeded', ORDER_ID)]);
+    expect(await within(outcome).findByText('Đã giữ hàng cho đơn hàng.')).toBeInTheDocument();
+    expect(screen.getByTestId('order-outcome-website')).toBe(outcome);
+    expect(outcome).toHaveTextContent(id!);
+  });
+});
+
+/** Fake timers as in "polling window": the 60 seconds are jumped over. */
+describe('order entry: waiting window in push mode', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const jump = (ms: number) =>
+    act(() => {
+      vi.advanceTimersByTime(ms);
+    });
+
+  it('says "still processing" after 60 seconds without having asked again, and "Check again" asks once', async () => {
+    const { backend } = serveEverything();
+    backend.taskAnswer = () => task({ status: 'Pending' });
+    const hub = fakeHub({ autoAccept: true });
+    const { user: appUser } = await renderOrderEntry(staffUser, hub.create);
+    await waitFor(() => expect(screen.getByTestId('connection-indicator')).toHaveTextContent('Trực tiếp'));
+    // The refetch every new connection causes is over before the order is submitted.
+    jump(FLUSH_WINDOW_MS);
+    const stillProcessing = 'Đơn hàng vẫn đang được xử lý; đã dừng tự động kiểm tra.';
+
+    const outcome = await submitOrder(appUser);
+    await within(outcome).findByText('Đơn hàng đang chờ trong hàng đợi xử lý.');
+    expect(backend.taskRequests).toHaveLength(1);
+
+    jump(POLL_WINDOW_MS);
+    expect(await within(outcome).findByText(stillProcessing)).toBeInTheDocument();
+    await pause(200);
+    // A timer, no requests.
+    expect(backend.taskRequests).toHaveLength(1);
+
+    await appUser.click(await within(outcome).findByRole('button', { name: 'Kiểm tra lại' }));
+    await waitFor(() => expect(backend.taskRequests).toHaveLength(2));
+    expect(within(outcome).queryByText(stillProcessing)).not.toBeInTheDocument();
+
+    // Another window, again without requests.
+    await pause(200);
+    jump(POLL_WINDOW_MS);
+    expect(await within(outcome).findByText(stillProcessing)).toBeInTheDocument();
+    await pause(200);
+    expect(backend.taskRequests).toHaveLength(2);
   });
 });
 

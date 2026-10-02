@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { Link, Outlet, useLocation } from 'react-router';
 import { selectCurrentUser, signedOut } from '@/features/auth/authSlice';
 import { hasAnyRole } from '@/features/auth/session';
+import { ConnectionIndicator } from '@/features/realtime/ConnectionIndicator';
 import { LanguageSwitch } from '@/shared/components/LanguageSwitch';
 import { PageLoading } from '@/shared/components/PageLoading';
 import {
@@ -20,8 +21,8 @@ import { activeNavigationPath, navigationItems } from './navigation';
 const { Sider, Header, Content } = Layout;
 
 /**
- * Shell of every signed-in page: collapsible menu (items filtered by role), header with the user, the language switch
- * and logout. All sizes are fixed constants, so the shell looks the same in both languages; long labels are truncated
+ * Shell of every signed-in page: collapsible menu (items filtered by role), header with the realtime connection state,
+ * the user, the language switch and logout. All sizes are fixed constants, so the shell looks the same in both languages; long labels are truncated
  * (menu labels by AntD, the e-mail and role here) and show the full text as a tooltip.
  */
 export function AppLayout() {
@@ -99,6 +100,7 @@ export function AppLayout() {
             borderBottom: `1px solid ${token.colorBorderSecondary}`,
           }}
         >
+          <ConnectionIndicator />
           <div
             data-testid="app-user"
             style={{

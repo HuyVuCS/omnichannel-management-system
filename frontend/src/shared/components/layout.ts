@@ -10,6 +10,9 @@ export const HEADER_HEIGHT = 56;
 export const USER_BLOCK_WIDTH = 320;
 export const ROLE_TAG_WIDTH = 96;
 
+/** Header: the state of the realtime connection (icon + "Đang kết nối lại" / "Reconnecting"). */
+export const CONNECTION_INDICATOR_WIDTH = 148;
+
 /** The `VI | EN` control. */
 export const LANGUAGE_SWITCH_WIDTH = 96;
 

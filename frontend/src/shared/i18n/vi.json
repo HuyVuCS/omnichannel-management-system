@@ -42,6 +42,20 @@
     "logout": "Đăng xuất",
     "menu": "Menu chính"
   },
+  "realtime": {
+    "state": {
+      "connected": "Trực tiếp",
+      "connecting": "Đang kết nối",
+      "reconnecting": "Đang kết nối lại",
+      "disconnected": "Mất kết nối"
+    },
+    "tooltip": {
+      "connected": "Dữ liệu trên màn hình được cập nhật tự động.",
+      "connecting": "Đang kết nối kênh cập nhật trực tiếp; dữ liệu có thể chưa mới nhất.",
+      "reconnecting": "Mất kết nối cập nhật trực tiếp, đang kết nối lại; dữ liệu có thể chưa mới nhất.",
+      "disconnected": "Mất kết nối cập nhật trực tiếp; dữ liệu có thể đã cũ. Hệ thống vẫn tự thử kết nối lại."
+    }
+  },
   "auth": {
     "title": "Đăng nhập",
     "email": "E-mail",

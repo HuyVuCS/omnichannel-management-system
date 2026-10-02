@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { App } from './app/App';
 import { createAppRouter } from './app/router';
 import { createAppStore } from './app/store';
+import { createSignalrHub } from './features/realtime/signalrHub';
 import { loadActiveLanguage } from './shared/i18n';
 import './index.css';
 
@@ -17,7 +18,7 @@ loadActiveLanguage().then(
   () => {
     createRoot(container).render(
       <StrictMode>
-        <App store={createAppStore()} router={createAppRouter()} />
+        <App store={createAppStore()} router={createAppRouter()} createHub={createSignalrHub} />
       </StrictMode>,
     );
   },

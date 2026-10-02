@@ -42,6 +42,20 @@
     "logout": "Log out",
     "menu": "Main menu"
   },
+  "realtime": {
+    "state": {
+      "connected": "Live",
+      "connecting": "Connecting",
+      "reconnecting": "Reconnecting",
+      "disconnected": "Offline"
+    },
+    "tooltip": {
+      "connected": "The data on screen is updated automatically.",
+      "connecting": "Connecting to live updates; the data may be outdated.",
+      "reconnecting": "Live updates were interrupted, reconnecting; the data may be outdated.",
+      "disconnected": "Live updates are not available; the data may be outdated. The connection is retried automatically."
+    }
+  },
   "auth": {
     "title": "Sign in",
     "email": "E-mail",

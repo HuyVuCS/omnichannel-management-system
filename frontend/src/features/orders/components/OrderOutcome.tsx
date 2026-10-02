@@ -6,10 +6,11 @@ import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
 import { TaskStatusTag } from '@/features/processing/components/TaskStatusTag';
 import { isTerminalTaskStatus, processingApi, type ProcessingTaskDetail } from '@/features/processing/processingApi';
+import { selectIsLive } from '@/features/realtime/realtimeSlice';
 import { baseApi } from '@/shared/api/baseApi';
 import { problemMessages } from '@/shared/api/problemDetails';
 import { PAGE_ACTION_WIDTH, SECONDARY_ACTION_WIDTH, SUMMARY_LABEL_WIDTH } from '@/shared/components/layout';
-import { useAppDispatch } from '@/shared/hooks/store';
+import { useAppDispatch, useAppSelector } from '@/shared/hooks/store';
 import { formatMoney } from '@/shared/utils/format';
 import { ORDER_LIST_TAG, useGetOrderQuery, type OrderDetail } from '../ordersApi';
 import { orderPath } from '../paths';
@@ -19,7 +20,7 @@ import { OrderStatusTag } from './OrderStatusTag';
 /** How often the task is asked for while it is not finished. */
 export const POLL_INTERVAL_MS = 1500;
 
-/** For how long after the order was accepted (or after "Check again") the task is polled. */
+/** For how long after the order was accepted (or after "Check again") the task is waited for. */
 export const POLL_WINDOW_MS = 60_000;
 
 interface OrderOutcomeProps {
@@ -115,12 +116,18 @@ function describeState(
 
 /**
  * What became of an order the API accepted (202). The order itself is created in the background by the Order Worker,
- * and the database is the source of truth, so this view asks for the processing task until it is finished
- * (`Succeeded` / `Failed`): every 1.5 s, for at most 60 s, and not while the tab is hidden. After 60 s it stops and
- * offers "Check again". A finished task that produced an order loads that order once (status and total amount).
+ * and the database is the source of truth, so this view follows the processing task until it is finished
+ * (`Succeeded` / `Failed`):
+ * - while the realtime connection is live, by push: a hint for the task invalidates its cache tag and the task is
+ *   fetched again (`features/realtime`); nothing is asked in between;
+ * - while it is not, by polling: every 1.5 s, and not while the tab is hidden.
+ * Either way it waits for at most 60 s, then says so and offers "Check again" (one request, another 60 s). The task and
+ * the window live in the cache and in this component, so a connection that is lost or comes back while waiting changes
+ * how the task is followed, not what is shown. A finished task that produced an order loads that order once (status
+ * and total amount).
  *
  * When the task is first seen finished, the lists it changed (orders, stock, movements, products) are invalidated
- * once - not on every poll. Realtime push replaces the polling in a later task.
+ * once - not on every poll.
  */
 export function OrderOutcome({ slug, channelLabel, accepted, onNewOrder }: OrderOutcomeProps) {
   const { t } = useTranslation();
@@ -128,7 +135,9 @@ export function OrderOutcome({ slug, channelLabel, accepted, onNewOrder }: Order
   const dispatch = useAppDispatch();
   const { taskId } = accepted;
 
-  const [pollUntil, setPollUntil] = useState(accepted.acceptedAt + POLL_WINDOW_MS);
+  const live = useAppSelector(selectIsLive);
+
+  const [waitUntil, setWaitUntil] = useState(accepted.acceptedAt + POLL_WINDOW_MS);
   const [windowOver, setWindowOver] = useState(false);
 
   // State and subscription are separate hooks because the subscription's polling depends on the state it produces.
@@ -139,9 +148,10 @@ export function OrderOutcome({ slug, channelLabel, accepted, onNewOrder }: Order
     isFetching: checking,
   } = processingApi.endpoints.getProcessingTask.useQueryState(taskId);
   const finished = task !== undefined && isTerminalTaskStatus(task.status);
-  const polling = !finished && !windowOver;
+  const waiting = !finished && !windowOver;
   const { refetch } = processingApi.endpoints.getProcessingTask.useQuerySubscription(taskId, {
-    pollingInterval: polling ? POLL_INTERVAL_MS : 0,
+    // Live: the hint for this task refetches it. Not live: ask.
+    pollingInterval: waiting && !live ? POLL_INTERVAL_MS : 0,
     skipPollingIfUnfocused: true,
     // A resubmitted order shows the task as it is now, not as an earlier outcome view left it in the cache.
     refetchOnMountOrArgChange: true,
@@ -151,13 +161,14 @@ export function OrderOutcome({ slug, channelLabel, accepted, onNewOrder }: Order
   const order = useGetOrderQuery(orderId ?? skipToken);
 
   useEffect(() => {
-    if (!polling) {
+    if (!waiting) {
       return;
     }
 
-    const timer = window.setTimeout(() => setWindowOver(true), Math.max(0, pollUntil - Date.now()));
+    // A timer only: in push mode nothing is requested while it runs.
+    const timer = window.setTimeout(() => setWindowOver(true), Math.max(0, waitUntil - Date.now()));
     return () => window.clearTimeout(timer);
-  }, [polling, pollUntil]);
+  }, [waiting, waitUntil]);
 
   const announced = useRef(false);
   useEffect(() => {
@@ -169,7 +180,7 @@ export function OrderOutcome({ slug, channelLabel, accepted, onNewOrder }: Order
   }, [dispatch, finished]);
 
   const checkAgain = () => {
-    setPollUntil(Date.now() + POLL_WINDOW_MS);
+    setWaitUntil(Date.now() + POLL_WINDOW_MS);
     setWindowOver(false);
     void refetch();
   };
