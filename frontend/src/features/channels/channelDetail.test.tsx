@@ -299,30 +299,47 @@ describe('channel detail: mapping list', () => {
 });
 
 describe('channel detail: mapping a product', () => {
-  it('sends the mapping, refreshes the list, and shows the stock-sync task the API started - live', async () => {
-    const { state, creates, listRequests } = serveChannelDetail(websiteChannel, []);
+  /**
+   * The website channel without mappings, with a live hub connection. A new mapping is answered with the tea mapping and
+   * the stock-sync task the API started for it (Pending).
+   */
+  async function renderUnmappedLive() {
+    const detail = serveChannelDetail(websiteChannel, []);
     serveProductCatalog([teaProduct, coffeeProduct]);
     const taskBackend = serveTask(syncTask('Pending'));
-    state.createAnswer = () => {
-      state.items = [teaMapping];
+    detail.state.createAnswer = () => {
+      detail.state.items = [teaMapping];
       return HttpResponse.json(savedMapping(teaMapping, SYNC_TASK_ID), { status: 201 });
     };
     const hub = fakeHub({ autoAccept: true });
-    const { user } = renderDetail(WEBSITE_PATH, managerUser, hub.create);
+    const app = renderDetail(WEBSITE_PATH, managerUser, hub.create);
     await screen.findByTestId('channel-summary');
     await waitFor(() => expect(screen.getByTestId('connection-indicator')).toHaveTextContent('Trực tiếp'));
+    return { ...detail, ...app, hub, taskBackend };
+  }
+
+  /** The create dialog with tea and the external SKU WEB-TEA, not sent yet. */
+  async function fillTeaMapping(user: AppUser) {
+    const dialog = await openCreateDialog(user);
+    await chooseProduct(user, within(dialog).getByLabelText('Sản phẩm'), 'TEA-01 — Trà xanh');
+    await user.type(within(dialog).getByLabelText('SKU trên kênh'), 'WEB-TEA');
+    return dialog;
+  }
+
+  const createButton = (dialog: HTMLElement) => within(dialog).getByRole('button', { name: 'Tạo' });
+
+  it('sends the mapping, refreshes the list, and shows the stock-sync task the API started', async () => {
+    const { creates, listRequests, taskBackend, user } = await renderUnmappedLive();
     await pause(FLUSH_WINDOW_MS + 300);
     // Mappings are no realtime data: the connection did not fetch the list again.
     expect(listRequests).toHaveLength(1);
 
-    const dialog = await openCreateDialog(user);
+    const dialog = await fillTeaMapping(user);
     // The channel is shown, not chosen.
     expect(within(dialog).getByDisplayValue('Website')).toBeDisabled();
-    await chooseProduct(user, within(dialog).getByLabelText('Sản phẩm'), 'TEA-01 — Trà xanh');
-    await user.type(within(dialog).getByLabelText('SKU trên kênh'), 'WEB-TEA');
     expect(within(dialog).getByLabelText('SKU trên kênh')).toHaveAttribute('maxlength', '128');
     expect(within(dialog).getByLabelText('Mã sản phẩm trên kênh')).toHaveAttribute('maxlength', '128');
-    await user.click(within(dialog).getByRole('button', { name: 'Tạo' }));
+    await user.click(createButton(dialog));
 
     expect(await screen.findByText('Đã gắn sản phẩm vào kênh.')).toBeInTheDocument();
     // An external id that was not typed is sent as null; the status is not part of a new mapping.
@@ -343,8 +360,20 @@ describe('channel detail: mapping a product', () => {
     );
     expect(taskBackend.reads).toEqual([SYNC_TASK_ID]);
 
+    // Dismissed by the user.
+    await user.click(within(result).getByRole('button', { name: 'Đóng' }));
+    await waitFor(() => expect(screen.queryByTestId('sync-result')).not.toBeInTheDocument());
+  });
+
+  it('follows the sync task live: only a hint for this task fetches it again, and the mapping list is left alone', async () => {
+    const { hub, listRequests, taskBackend, user } = await renderUnmappedLive();
+    await user.click(createButton(await fillTeaMapping(user)));
+    const result = await screen.findByTestId('sync-result');
+    await within(result).findByText('Đang chờ');
+    await waitFor(() => expect(listRequests).toHaveLength(2));
+    expect(taskBackend.reads).toHaveLength(1);
+
     // A hint about another task asks for nothing; the hint for this task fetches it again.
-    await pause(FLUSH_WINDOW_MS + 300);
     await hub.latest().send([{ type: 'processing.task.changed', taskId: TASK_ID, taskType: 'OrderProcessing' }]);
     await pause(FLUSH_WINDOW_MS + 300);
     expect(taskBackend.reads).toHaveLength(1);
@@ -358,10 +387,6 @@ describe('channel detail: mapping a product', () => {
     expect(screen.getByTestId('sync-result')).toBe(result);
     // The mapping list is not touched by task hints.
     expect(listRequests).toHaveLength(2);
-
-    // Dismissed by the user.
-    await user.click(within(result).getByRole('button', { name: 'Đóng' }));
-    await waitFor(() => expect(screen.queryByTestId('sync-result')).not.toBeInTheDocument());
   });
 
   it('shows a failed sync task as failed, with the way to its attempts', async () => {

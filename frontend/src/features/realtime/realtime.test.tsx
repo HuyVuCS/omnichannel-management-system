@@ -163,46 +163,58 @@ describe('connection indicator', () => {
 });
 
 describe('hints and the cache', () => {
-  it('refetches a list on screen at most once per second during a burst and removes a cached list nobody shows', async () => {
-    let orderRequests = 0;
+  /**
+   * The orders list on screen with a live connection, once it is idle. `loaded` counts the page's own request and, when
+   * the page was there before the connection, the one every new connection causes (hints before it were missed). That
+   * invalidation goes out the moment the hub connects: a page that is loaded later has nothing to fetch again.
+   */
+  async function renderOrdersLive() {
+    const requests = { orders: 0 };
     server.use(
       http.get(api('/orders'), () => {
-        orderRequests += 1;
+        requests.orders += 1;
         return HttpResponse.json(emptyPage);
       }),
       http.get(api('/channels'), () => HttpResponse.json([])),
       http.get(api('/customers'), () => HttpResponse.json(emptyPage)),
     );
     const hub = fakeHub({ autoAccept: true });
-    const { store, user } = renderApp({ route: '/orders', session: sessionOf(staffUser), createHub: hub.create });
+    const app = renderApp({ route: '/orders', session: sessionOf(staffUser), createHub: hub.create });
     await screen.findByRole('heading', { name: 'Đơn hàng' });
     await waitFor(() => expect(indicator()).toHaveTextContent('Trực tiếp'));
-
-    // The page's own request and, when the page was there before the connection, the one every new connection causes
-    // (hints before it were missed). That invalidation goes out the moment the hub connects: a page that is loaded
-    // later has nothing to fetch again.
     await pause(FLUSH_WINDOW_MS + 300);
-    const loaded = orderRequests;
+    return { ...app, hub, requests, loaded: requests.orders };
+  }
+
+  it('refetches a list on screen at once when idle, and at most once per second during a burst', async () => {
+    const { hub, requests, loaded } = await renderOrdersLive();
     expect(loaded).toBeGreaterThanOrEqual(1);
     expect(loaded).toBeLessThanOrEqual(2);
 
     // Idle: the first hub message refetches at once.
     await hub.latest().send([{ type: 'order.created', orderId: 'o1' }]);
-    await waitFor(() => expect(orderRequests).toBe(loaded + 1));
+    await waitFor(() => expect(requests.orders).toBe(loaded + 1));
 
     // Three more within the second of that refetch: one refetch, when the second is over.
     await hub.latest().send([{ type: 'order.created', orderId: 'o2' }]);
     await hub.latest().send([{ type: 'order.created', orderId: 'o3' }]);
     await hub.latest().send([{ type: 'processing.task.changed', taskId: 't1', orderId: 'o1' }]);
     await pause(200);
-    expect(orderRequests).toBe(loaded + 1);
+    expect(requests.orders).toBe(loaded + 1);
     await pause(FLUSH_WINDOW_MS + 300);
-    expect(orderRequests).toBe(loaded + 2);
+    expect(requests.orders).toBe(loaded + 2);
+  });
 
-    // A hint about something that is not shown anywhere asks for nothing.
+  it('asks for nothing on a hint about something that is not shown anywhere', async () => {
+    const { hub, requests, loaded } = await renderOrdersLive();
+
     await hub.latest().send([{ type: 'unknown.event', all: true }]);
     await pause(FLUSH_WINDOW_MS + 300);
-    expect(orderRequests).toBe(loaded + 2);
+    expect(requests.orders).toBe(loaded);
+  });
+
+  it('removes a cached list nobody shows instead of refetching it', async () => {
+    const { hub, requests, loaded, store, user } = await renderOrdersLive();
 
     // The list is left: its entry stays in the cache for a while, without a subscriber.
     const cachedOrderLists = () =>
@@ -216,6 +228,6 @@ describe('hints and the cache', () => {
     await hub.latest().send([{ type: 'order.created', orderId: 'o4' }]);
     await waitFor(() => expect(cachedOrderLists()).toHaveLength(0));
     await pause(FLUSH_WINDOW_MS + 300);
-    expect(orderRequests).toBe(loaded + 2);
+    expect(requests.orders).toBe(loaded);
   });
 });

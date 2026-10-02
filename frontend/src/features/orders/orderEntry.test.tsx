@@ -175,6 +175,44 @@ async function submitOrder(appUser: AppUser, slug: Slug = 'website') {
 
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/**
+ * For the tests that wait for a polling interval, a flush window or the 60-second polling window: the time is jumped
+ * over instead of waited for. `setTimeout` and `Date` are fake; `shouldAdvanceTime` lets the fake clock follow real
+ * time between the jumps, so the application (debounced pickers, AntD, user-event) behaves as usual.
+ */
+function useJumpableClock() {
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+}
+
+const jump = (ms: number) =>
+  act(() => {
+    vi.advanceTimersByTime(ms);
+  });
+
+/** What `watchLists` counts after the first load, and after one invalidation. */
+const LOADED_ONCE = { orders: 1, inventory: 1, movements: 1, products: 1 };
+const LOADED_TWICE = { orders: 2, inventory: 2, movements: 2, products: 2 };
+
+const succeededTask = () => task({ status: 'Succeeded', orderId: ORDER_ID, attempts: [attempt()] });
+const runningTask = () => task({ status: 'InProgress', attempts: [attempt({ status: 'Running', finishedAt: null })] });
+
+/** A task that is first not handed to the queue yet, then picked up by the worker, then finished. */
+function answerInThreeSteps(backend: OrderBackend) {
+  backend.taskAnswer = (requestNo) => {
+    if (requestNo === 1) {
+      return task({ status: 'Pending', message: { ...task().message!, status: 'Pending', publishedAt: null } });
+    }
+
+    return requestNo === 2 ? runningTask() : succeededTask();
+  };
+}
+
 describe('order entry', () => {
   it('shows the three channel panels in order, each with its channel; an inactive or missing channel is a warning and the form stays usable', async () => {
     const { backend } = serveEverything();
@@ -231,21 +269,9 @@ describe('order entry', () => {
     await waitFor(() => expect(titles()).toEqual(['Digital Platform Online', 'Website', 'POS']));
   });
 
-  // No live connection here (the default hub of the tests never connects): the outcome view itself refreshes the lists.
-  it('submits the order of the website panel, follows its task until it succeeded, loads the order once and refreshes the lists once', async () => {
-    const { backend, products } = serveEverything();
-    backend.taskAnswer = (requestNo) => {
-      if (requestNo === 1) {
-        return task({ status: 'Pending', message: { ...task().message!, status: 'Pending', publishedAt: null } });
-      }
-
-      return requestNo === 2
-        ? task({ status: 'InProgress', attempts: [attempt({ status: 'Running', finishedAt: null })] })
-        : task({ status: 'Succeeded', orderId: ORDER_ID, attempts: [attempt()] });
-    };
-    const { user: appUser, store } = await renderOrderEntry();
-    const counts = watchLists(store, products);
-    await waitFor(() => expect(counts()).toEqual({ orders: 1, inventory: 1, movements: 1, products: 1 }));
+  it('submits the order of the website panel as it was filled in, and the outcome replaces the form', async () => {
+    const { backend } = serveEverything();
+    const { user: appUser } = await renderOrderEntry();
 
     // Generated when the panel opened: prefix of the channel, today's local date, six characters.
     const id = externalOrderId('website').value;
@@ -275,34 +301,6 @@ describe('order entry', () => {
     expect(panelOf('website').queryByLabelText('Mã đơn hàng bên ngoài')).not.toBeInTheDocument();
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(outcome).toHaveTextContent(id);
-
-    // Not handed to the queue yet.
-    expect(await within(outcome).findByText('Đơn hàng đang chờ được chuyển vào hàng đợi xử lý.')).toBeInTheDocument();
-    expect(within(outcome).getByText('Đang chờ').closest('.ant-tag')).toHaveClass('ant-tag-default');
-    expect(counts()).toEqual({ orders: 1, inventory: 1, movements: 1, products: 1 });
-
-    // Picked up by the worker.
-    expect(await within(outcome).findByText('Đơn hàng đang được xử lý.')).toBeInTheDocument();
-    expect(within(outcome).getByText('Đang xử lý').closest('.ant-tag')).toHaveClass('ant-tag-processing');
-    expect(backend.orderRequests).toEqual([]);
-    expect(counts()).toEqual({ orders: 1, inventory: 1, movements: 1, products: 1 });
-
-    // Finished: the order is loaded, with the status and the total the API computed.
-    expect(await within(outcome).findByText('Đã giữ hàng cho đơn hàng.')).toBeInTheDocument();
-    expect(within(outcome).getByText('Thành công').closest('.ant-tag')).toHaveClass('ant-tag-success');
-    expect(within(outcome).getByText('Đã giữ hàng').closest('.ant-tag')).toHaveClass('ant-tag-processing');
-    expect(outcome).toHaveTextContent('1.234.567 ₫');
-    expect(within(outcome).getByRole('link', { name: 'Mở đơn hàng' })).toHaveAttribute('href', `/orders/${ORDER_ID}`);
-    expect(within(outcome).getByRole('button', { name: 'Đơn hàng mới' })).toHaveStyle({ width: '176px' });
-
-    // Orders, stock, movements and products were invalidated - once.
-    await waitFor(() => expect(counts()).toEqual({ orders: 2, inventory: 2, movements: 2, products: 2 }));
-
-    // A finished task is not asked for again, the order was loaded once, and nothing is invalidated a second time.
-    await pause(POLL_INTERVAL_MS + 700);
-    expect(backend.taskRequests).toHaveLength(3);
-    expect(backend.orderRequests).toEqual([ORDER_ID]);
-    expect(counts()).toEqual({ orders: 2, inventory: 2, movements: 2, products: 2 });
   });
 
   it('says so when the channel had already accepted the order, and shows the existing task', async () => {
@@ -581,26 +579,74 @@ describe('order entry', () => {
   });
 });
 
-/**
- * Fake timers are needed here, and only here: the 60-second polling window is jumped over instead of waited for.
- * `setTimeout` and `Date` are fake; `shouldAdvanceTime` lets the fake clock follow real time between the jumps, so the
- * application (debounced pickers, AntD, user-event) behaves as usual.
- */
-describe('order entry: polling window', () => {
-  beforeEach(() => {
-    vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+// No live connection here (the default hub of the tests never connects): the task is polled, and the outcome view itself
+// refreshes the lists.
+describe('order entry: outcome by polling', () => {
+  useJumpableClock();
+
+  it('shows each state of the task: not handed to the queue yet, being processed, then the order with its status and total', async () => {
+    const { backend } = serveEverything();
+    answerInThreeSteps(backend);
+    const { user: appUser } = await renderOrderEntry();
+
+    const outcome = await submitOrder(appUser);
+
+    // Not handed to the queue yet.
+    expect(await within(outcome).findByText('Đơn hàng đang chờ được chuyển vào hàng đợi xử lý.')).toBeInTheDocument();
+    expect(within(outcome).getByText('Đang chờ').closest('.ant-tag')).toHaveClass('ant-tag-default');
+
+    // Picked up by the worker.
+    jump(POLL_INTERVAL_MS + 100);
+    expect(await within(outcome).findByText('Đơn hàng đang được xử lý.')).toBeInTheDocument();
+    expect(within(outcome).getByText('Đang xử lý').closest('.ant-tag')).toHaveClass('ant-tag-processing');
+    expect(backend.orderRequests).toEqual([]);
+
+    // Finished: the order is loaded, with the status and the total the API computed.
+    jump(POLL_INTERVAL_MS + 100);
+    expect(await within(outcome).findByText('Đã giữ hàng cho đơn hàng.')).toBeInTheDocument();
+    expect(within(outcome).getByText('Thành công').closest('.ant-tag')).toHaveClass('ant-tag-success');
+    expect(within(outcome).getByText('Đã giữ hàng').closest('.ant-tag')).toHaveClass('ant-tag-processing');
+    expect(outcome).toHaveTextContent('1.234.567 ₫');
+    expect(within(outcome).getByRole('link', { name: 'Mở đơn hàng' })).toHaveAttribute('href', `/orders/${ORDER_ID}`);
+    expect(within(outcome).getByRole('button', { name: 'Đơn hàng mới' })).toHaveStyle({ width: '176px' });
   });
 
+  it('refreshes the lists once, when the task has finished; a finished task is not asked for again and the order is loaded once', async () => {
+    const { backend, products } = serveEverything();
+    answerInThreeSteps(backend);
+    const { user: appUser, store } = await renderOrderEntry();
+    const counts = watchLists(store, products);
+    await waitFor(() => expect(counts()).toEqual(LOADED_ONCE));
+
+    const outcome = await submitOrder(appUser);
+    await within(outcome).findByText('Đơn hàng đang chờ được chuyển vào hàng đợi xử lý.');
+    expect(counts()).toEqual(LOADED_ONCE);
+
+    jump(POLL_INTERVAL_MS + 100);
+    await within(outcome).findByText('Đơn hàng đang được xử lý.');
+    expect(counts()).toEqual(LOADED_ONCE);
+
+    // Orders, stock, movements and products were invalidated - once.
+    jump(POLL_INTERVAL_MS + 100);
+    await within(outcome).findByText('Đã giữ hàng cho đơn hàng.');
+    await waitFor(() => expect(counts()).toEqual(LOADED_TWICE));
+
+    // A finished task is not asked for again, the order was loaded once, and nothing is invalidated a second time.
+    jump(POLL_INTERVAL_MS + 700);
+    await pause(200);
+    expect(backend.taskRequests).toHaveLength(3);
+    expect(backend.orderRequests).toEqual([ORDER_ID]);
+    expect(counts()).toEqual(LOADED_TWICE);
+  });
+});
+
+describe('order entry: polling window', () => {
+  useJumpableClock();
+
   afterEach(() => {
-    vi.useRealTimers();
     // Back to jsdom's own value (see `setTabVisibility`).
     delete (document as { visibilityState?: unknown }).visibilityState;
   });
-
-  const jump = (ms: number) =>
-    act(() => {
-      vi.advanceTimersByTime(ms);
-    });
 
   /** What a browser does when the tab is hidden or shown. */
   function setTabVisibility(state: 'visible' | 'hidden') {
@@ -695,6 +741,8 @@ describe('order entry: polling window', () => {
 });
 
 describe('order entry: outcome by push', () => {
+  useJumpableClock();
+
   const taskChanged = (status: string, orderId?: string) => ({
     type: 'processing.task.changed',
     taskId: TASK_ID,
@@ -703,66 +751,101 @@ describe('order entry: outcome by push', () => {
     ...(orderId ? { orderId } : {}),
   });
 
-  /** The page with a live hub connection, after the refetch every new connection causes. */
-  async function renderLive() {
+  /** What the Order Worker's transaction announces when it finished an order: the order, its stock change and the task. */
+  const orderFinished = () => [
+    { type: 'order.created', orderId: ORDER_ID, channelId: 'channel-website', status: 'Reserved' },
+    { type: 'inventory.changed', productIds: [TEA_ID] },
+    taskChanged('Succeeded', ORDER_ID),
+  ];
+
+  const indicator = () => screen.getByTestId('connection-indicator');
+
+  /**
+   * The page with a live hub connection, after the refetch every new connection causes. With `autoAccept: false` the
+   * test decides about every later connection attempt (a lost connection stays lost until it accepts the next one).
+   */
+  async function renderLive({ autoAccept = true }: { autoAccept?: boolean } = {}) {
     const everything = serveEverything();
-    const hub = fakeHub({ autoAccept: true });
+    const hub = fakeHub({ autoAccept });
     const app = await renderOrderEntry(staffUser, hub.create);
-    await waitFor(() => expect(screen.getByTestId('connection-indicator')).toHaveTextContent('Trực tiếp'));
-    await pause(FLUSH_WINDOW_MS + 200);
+    if (!autoAccept) {
+      await hub.latest().accept();
+    }
+
+    await waitFor(() => expect(indicator()).toHaveTextContent('Trực tiếp'));
+    jump(FLUSH_WINDOW_MS);
     return { ...everything, ...app, hub };
   }
 
-  it('asks for the task once and then only when a hint for it arrives; the order is loaded once', async () => {
-    const { backend, products, hub, store, user: appUser } = await renderLive();
-    backend.taskAnswer = (requestNo) =>
-      requestNo === 1
-        ? task({ status: 'Pending' })
-        : requestNo === 2
-          ? task({ status: 'InProgress', attempts: [attempt({ status: 'Running', finishedAt: null })] })
-          : task({ status: 'Succeeded', orderId: ORDER_ID, attempts: [attempt()] });
-    const counts = watchLists(store, products);
-    await waitFor(() => expect(counts()).toEqual({ orders: 1, inventory: 1, movements: 1, products: 1 }));
+  /** An order submitted while live whose task waits in the queue. */
+  async function submitWhileLive(options?: { autoAccept?: boolean }) {
+    const live = await renderLive(options);
+    live.backend.taskAnswer = () => task({ status: 'Pending' });
+    const outcome = await submitOrder(live.user);
+    await within(outcome).findByText('Đơn hàng đang chờ trong hàng đợi xử lý.');
+    return { ...live, outcome };
+  }
 
-    const outcome = await submitOrder(appUser);
-    expect(await within(outcome).findByText('Đơn hàng đang chờ trong hàng đợi xử lý.')).toBeInTheDocument();
+  /** The connection is lost; the reconnect attempt stays open. */
+  async function loseConnection(hub: ReturnType<typeof fakeHub>) {
+    await hub.latest().drop();
+    await waitFor(() => expect(indicator()).toHaveTextContent('Đang kết nối lại'));
+  }
 
-    // No polling: two polling intervals later the task has still been asked for once.
-    await pause(2 * POLL_INTERVAL_MS + 300);
+  it('does not poll while live: two polling intervals later the task has been asked for once', async () => {
+    const { backend } = await submitWhileLive();
+
+    jump(2 * POLL_INTERVAL_MS + 300);
+    await pause(200);
     expect(backend.taskRequests).toHaveLength(1);
+  });
+
+  it('asks for the task again only when a hint for it arrives; the order is loaded once', async () => {
+    const { backend, hub, outcome } = await submitWhileLive();
 
     // The worker picked it up: the hint refetches the task.
+    backend.taskAnswer = runningTask;
     await hub.latest().send([taskChanged('InProgress')]);
     expect(await within(outcome).findByText('Đơn hàng đang được xử lý.')).toBeInTheDocument();
     expect(backend.taskRequests).toHaveLength(2);
 
-    // Finished - as the Order Worker's transaction announces it: the order, its stock change and the task.
-    await hub
-      .latest()
-      .send([
-        { type: 'order.created', orderId: ORDER_ID, channelId: 'channel-website', status: 'Reserved' },
-        { type: 'inventory.changed', productIds: [TEA_ID] },
-        taskChanged('Succeeded', ORDER_ID),
-      ]);
+    // Finished. (Hints within the second of the previous refetch go out when that second is over.)
+    backend.taskAnswer = succeededTask;
+    await hub.latest().send(orderFinished());
+    jump(FLUSH_WINDOW_MS);
     expect(await within(outcome).findByText('Đã giữ hàng cho đơn hàng.')).toBeInTheDocument();
     expect(outcome).toHaveTextContent('1.234.567 ₫');
 
     // Nothing more is asked afterwards; the order was loaded once although its tag was among the hints.
-    await pause(POLL_INTERVAL_MS + 700);
+    jump(POLL_INTERVAL_MS + 700);
+    await pause(200);
     expect(backend.taskRequests).toHaveLength(3);
     expect(backend.orderRequests).toEqual([ORDER_ID]);
-    // The lists: once, by the hints. The outcome invalidates nothing while the connection is live.
-    expect(counts()).toEqual({ orders: 2, inventory: 2, movements: 2, products: 2 });
+  });
+
+  it('refreshes the lists once when the order is finished, by the hints: the outcome invalidates nothing while live', async () => {
+    const { backend, products, hub, store, user: appUser } = await renderLive();
+    backend.taskAnswer = (requestNo) => (requestNo === 1 ? task({ status: 'Pending' }) : succeededTask());
+    const counts = watchLists(store, products);
+    await waitFor(() => expect(counts()).toEqual(LOADED_ONCE));
+
+    const outcome = await submitOrder(appUser);
+    await within(outcome).findByText('Đơn hàng đang chờ trong hàng đợi xử lý.');
+
+    await hub.latest().send(orderFinished());
+    expect(await within(outcome).findByText('Đã giữ hàng cho đơn hàng.')).toBeInTheDocument();
+    await waitFor(() => expect(counts()).toEqual(LOADED_TWICE));
+
+    jump(POLL_INTERVAL_MS + 700);
+    await pause(200);
+    expect(counts()).toEqual(LOADED_TWICE);
   });
 
   it('leaves the lists alone when it sees the task finished while live: only hints refresh them', async () => {
     const { backend, products, hub, store, user: appUser } = await renderLive();
-    backend.taskAnswer = (requestNo) =>
-      requestNo === 1
-        ? task({ status: 'Pending' })
-        : task({ status: 'Succeeded', orderId: ORDER_ID, attempts: [attempt()] });
+    backend.taskAnswer = (requestNo) => (requestNo === 1 ? task({ status: 'Pending' }) : succeededTask());
     const counts = watchLists(store, products);
-    await waitFor(() => expect(counts()).toEqual({ orders: 1, inventory: 1, movements: 1, products: 1 }));
+    await waitFor(() => expect(counts()).toEqual(LOADED_ONCE));
 
     const outcome = await submitOrder(appUser);
     expect(await within(outcome).findByText('Đơn hàng đang chờ trong hàng đợi xử lý.')).toBeInTheDocument();
@@ -771,71 +854,67 @@ describe('order entry: outcome by push', () => {
     await hub.latest().send([taskChanged('Succeeded', ORDER_ID)]);
     expect(await within(outcome).findByText('Đã giữ hàng cho đơn hàng.')).toBeInTheDocument();
 
-    await pause(FLUSH_WINDOW_MS + 500);
-    expect(counts()).toEqual({ orders: 1, inventory: 1, movements: 1, products: 1 });
+    jump(FLUSH_WINDOW_MS + 500);
+    await pause(200);
+    expect(counts()).toEqual(LOADED_ONCE);
   });
 
   it('refreshes the lists once when the connection was lost while waiting and the task is finished by polling', async () => {
-    const { backend, products } = serveEverything();
+    const { backend, products, hub, store, user: appUser } = await renderLive({ autoAccept: false });
     backend.taskAnswer = () => task({ status: 'Pending' });
-    const hub = fakeHub();
-    const { user: appUser, store } = await renderOrderEntry(staffUser, hub.create);
-    await hub.latest().accept();
-    await pause(FLUSH_WINDOW_MS + 200);
     const counts = watchLists(store, products);
-    await waitFor(() => expect(counts()).toEqual({ orders: 1, inventory: 1, movements: 1, products: 1 }));
+    await waitFor(() => expect(counts()).toEqual(LOADED_ONCE));
 
     const outcome = await submitOrder(appUser);
     await within(outcome).findByText('Đơn hàng đang chờ trong hàng đợi xử lý.');
 
-    // Connection lost (the reconnect attempt stays open): no hint will come, the task is polled.
-    await hub.latest().drop();
-    await waitFor(() => expect(screen.getByTestId('connection-indicator')).toHaveTextContent('Đang kết nối lại'));
-    backend.taskAnswer = () => task({ status: 'Succeeded', orderId: ORDER_ID, attempts: [attempt()] });
+    // Connection lost: no hint will come, the task is polled.
+    await loseConnection(hub);
+    backend.taskAnswer = succeededTask;
+    jump(POLL_INTERVAL_MS + 100);
     expect(await within(outcome).findByText('Đã giữ hàng cho đơn hàng.')).toBeInTheDocument();
 
     // Not live when the task was seen finished: the outcome is the only one who can refresh the lists - once.
-    await waitFor(() => expect(counts()).toEqual({ orders: 2, inventory: 2, movements: 2, products: 2 }));
-    await pause(POLL_INTERVAL_MS + 700);
-    expect(counts()).toEqual({ orders: 2, inventory: 2, movements: 2, products: 2 });
+    await waitFor(() => expect(counts()).toEqual(LOADED_TWICE));
+    jump(POLL_INTERVAL_MS + 700);
+    await pause(200);
+    expect(counts()).toEqual(LOADED_TWICE);
   });
 
-  it('keeps the outcome when the connection is lost and comes back while waiting: polling in between, push again after', async () => {
-    const everything = serveEverything();
-    const { backend } = everything;
-    backend.taskAnswer = () => task({ status: 'Pending' });
-    const hub = fakeHub();
-    const { user: appUser } = await renderOrderEntry(staffUser, hub.create);
-    await hub.latest().accept();
-    await pause(FLUSH_WINDOW_MS + 200);
-
-    const outcome = await submitOrder(appUser);
-    await within(outcome).findByText('Đơn hàng đang chờ trong hàng đợi xử lý.');
+  it('polls while the connection is lost, in the same outcome view', async () => {
+    const { backend, hub, outcome } = await submitWhileLive({ autoAccept: false });
     const id = outcome.textContent?.match(/WEB-\d{8}-[A-Z0-9]{6}/)?.[0];
-    await pause(POLL_INTERVAL_MS + 300);
-    expect(backend.taskRequests).toHaveLength(1);
 
-    // Connection lost (the reconnect attempt stays open): the task is polled.
-    await hub.latest().drop();
-    await waitFor(() => expect(screen.getByTestId('connection-indicator')).toHaveTextContent('Đang kết nối lại'));
-    backend.taskAnswer = () =>
-      task({ status: 'InProgress', attempts: [attempt({ status: 'Running', finishedAt: null })] });
+    await loseConnection(hub);
+    backend.taskAnswer = runningTask;
+    jump(POLL_INTERVAL_MS + 100);
     expect(await within(outcome).findByText('Đơn hàng đang được xử lý.')).toBeInTheDocument();
+    jump(POLL_INTERVAL_MS + 100);
     await waitFor(() => expect(backend.taskRequests.length).toBeGreaterThanOrEqual(3));
     expect(screen.getByTestId('order-outcome-website')).toBe(outcome);
     expect(outcome).toHaveTextContent(id!);
+  });
+
+  it('stops polling when the connection is back - one refetch for what was missed - and the push finishes the order in the same view', async () => {
+    const { backend, hub, outcome } = await submitWhileLive({ autoAccept: false });
+    const id = outcome.textContent?.match(/WEB-\d{8}-[A-Z0-9]{6}/)?.[0];
+    await loseConnection(hub);
+    backend.taskAnswer = runningTask;
 
     // Back: one refetch for what was missed, then no polling any more.
     await hub.latest().accept();
-    await waitFor(() => expect(screen.getByTestId('connection-indicator')).toHaveTextContent('Trực tiếp'));
-    await pause(FLUSH_WINDOW_MS + POLL_INTERVAL_MS);
+    await waitFor(() => expect(indicator()).toHaveTextContent('Trực tiếp'));
+    expect(await within(outcome).findByText('Đơn hàng đang được xử lý.')).toBeInTheDocument();
+    jump(FLUSH_WINDOW_MS + POLL_INTERVAL_MS);
+    await pause(200);
     const afterReconnect = backend.taskRequests.length;
-    await pause(2 * POLL_INTERVAL_MS);
+    jump(2 * POLL_INTERVAL_MS);
+    await pause(200);
     expect(backend.taskRequests).toHaveLength(afterReconnect);
     expect(within(outcome).getByText('Đơn hàng đang được xử lý.')).toBeInTheDocument();
 
     // And the push finishes it.
-    backend.taskAnswer = () => task({ status: 'Succeeded', orderId: ORDER_ID, attempts: [attempt()] });
+    backend.taskAnswer = succeededTask;
     await hub.latest().send([taskChanged('Succeeded', ORDER_ID)]);
     expect(await within(outcome).findByText('Đã giữ hàng cho đơn hàng.')).toBeInTheDocument();
     expect(screen.getByTestId('order-outcome-website')).toBe(outcome);
@@ -843,20 +922,9 @@ describe('order entry: outcome by push', () => {
   });
 });
 
-/** Fake timers as in "polling window": the 60 seconds are jumped over. */
+/** The 60 seconds are jumped over, as in "polling window". */
 describe('order entry: waiting window in push mode', () => {
-  beforeEach(() => {
-    vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ['setTimeout', 'clearTimeout', 'Date'] });
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
-  const jump = (ms: number) =>
-    act(() => {
-      vi.advanceTimersByTime(ms);
-    });
+  useJumpableClock();
 
   it('says "still processing" after 60 seconds without having asked again, and "Check again" asks once', async () => {
     const { backend } = serveEverything();
