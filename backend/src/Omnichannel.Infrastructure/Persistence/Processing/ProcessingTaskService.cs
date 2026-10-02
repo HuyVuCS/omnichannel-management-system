@@ -14,8 +14,8 @@ namespace Omnichannel.Infrastructure.Persistence.Processing;
 
 /// <summary>
 /// Task search, detail and manual retry. The list is one COUNT plus one page query (attempt filters as <c>EXISTS</c>, attempt
-/// count and last attempt as correlated subqueries); the detail is one query for task + attempts and one primary-key lookup
-/// of the outbox row.
+/// count and last attempt as correlated subqueries, the product's SKU from a left join); the detail is one query for
+/// task + attempts + SKU and one primary-key lookup of the outbox row.
 /// </summary>
 internal sealed class ProcessingTaskService(
     OmnichannelDbContext dbContext,
@@ -95,13 +95,15 @@ internal sealed class ProcessingTaskService(
         var items = await (descending ? ordered.ThenByDescending(t => t.TaskId) : ordered.ThenBy(t => t.TaskId))
             .Skip(query.Skip)
             .Take(query.PageSize)
-            .Select(t => new ProcessingTaskSummaryResponse(
+            // Only stock-sync tasks have a product: a left join of the page, in the same statement.
+            .LeftJoin(dbContext.Products, t => t.ProductId, p => (Guid?)p.ProductId, (t, p) => new ProcessingTaskSummaryResponse(
                 t.TaskId,
                 t.TaskType,
                 t.Status,
                 t.OrderId,
                 t.ChannelId,
                 t.ProductId,
+                p != null ? p.Sku : null,
                 t.RetryCount,
                 t.AttemptBudgetStart,
                 t.CorrelationId,
@@ -120,7 +122,7 @@ internal sealed class ProcessingTaskService(
         var task = await dbContext.ProcessingTasks
             .AsNoTracking()
             .Where(t => t.TaskId == taskId)
-            .Select(t => new
+            .LeftJoin(dbContext.Products, t => t.ProductId, p => (Guid?)p.ProductId, (t, p) => new
             {
                 t.TaskId,
                 t.TaskType,
@@ -128,6 +130,7 @@ internal sealed class ProcessingTaskService(
                 t.OrderId,
                 t.ChannelId,
                 t.ProductId,
+                ProductSku = p != null ? p.Sku : null,
                 t.RetryCount,
                 t.AttemptBudgetStart,
                 t.CorrelationId,
@@ -164,6 +167,7 @@ internal sealed class ProcessingTaskService(
             task.OrderId,
             task.ChannelId,
             task.ProductId,
+            task.ProductSku,
             task.RetryCount,
             task.AttemptBudgetStart,
             task.CorrelationId,
