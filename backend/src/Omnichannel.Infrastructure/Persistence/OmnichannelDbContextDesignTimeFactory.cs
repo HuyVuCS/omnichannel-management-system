@@ -16,7 +16,7 @@ public sealed class OmnichannelDbContextDesignTimeFactory : IDesignTimeDbContext
     public OmnichannelDbContext CreateDbContext(string[] args)
     {
         var connectionString = Environment.GetEnvironmentVariable(ConnectionEnvironmentVariable)
-            ?? "Host=localhost;Port=5432;Database=omnichannel;Username=omnichannel_migrator";
+            ?? "Host=127.0.0.1;Port=5432;Database=omnichannel;Username=omnichannel_migrator";
 
         var options = new DbContextOptionsBuilder<OmnichannelDbContext>()
             .UseNpgsql(connectionString)

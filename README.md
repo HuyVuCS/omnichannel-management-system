@@ -59,7 +59,7 @@ Integration tests need Docker running (Testcontainers PostgreSQL); `dotnet test 
 
 ```powershell
 cd src/Omnichannel.Api
-dotnet user-secrets set "ConnectionStrings:Default" "Host=localhost;Port=5432;Database=omnichannel;Username=omnichannel_app;Password=<OMNI_APP_PASSWORD>"
+dotnet user-secrets set "ConnectionStrings:Default" "Host=127.0.0.1;Port=5432;Database=omnichannel;Username=omnichannel_app;Password=<OMNI_APP_PASSWORD>"
 dotnet user-secrets set "Jwt:SigningKey" "<at least 32 random bytes, e.g. output of: openssl rand -base64 48>"
 dotnet user-secrets set "BootstrapAdmin:Email" "admin@example.com"
 dotnet user-secrets set "BootstrapAdmin:Password" "<min 12 chars, upper+lower+digit>"
@@ -68,12 +68,16 @@ cd ../..
 
 `BootstrapAdmin` creates the first Admin on start-up if that email does not exist yet. Remove it afterwards.
 
+Local connection settings name `127.0.0.1`, not `localhost` (here, for the Workers in section 6, for the migrator in
+section 4, and `RabbitMq:HostName`): Windows tries `::1` first for `localhost`, the containers' ports are published on
+`127.0.0.1` only, and the refused IPv6 attempt costs about 2 s for every new connection.
+
 ### 4. Database migrations (run with the migrator role)
 
 The migrations already exist in `src/Omnichannel.Infrastructure/Persistence/Migrations`; apply them:
 
 ```powershell
-$env:OMNICHANNEL_MIGRATOR_CONNECTION = "Host=localhost;Port=5432;Database=omnichannel;Username=omnichannel_migrator;Password=<OMNI_MIGRATOR_PASSWORD>"
+$env:OMNICHANNEL_MIGRATOR_CONNECTION = "Host=127.0.0.1;Port=5432;Database=omnichannel;Username=omnichannel_migrator;Password=<OMNI_MIGRATOR_PASSWORD>"
 dotnet ef database update -p src/Omnichannel.Infrastructure -s src/Omnichannel.Api
 ```
 
@@ -105,7 +109,7 @@ It uses the **runtime** database role and the RabbitMQ user from `docker/.env` (
 
 ```powershell
 cd src/Omnichannel.Workers
-dotnet user-secrets set "ConnectionStrings:Default" "Host=localhost;Port=5432;Database=omnichannel;Username=omnichannel_app;Password=<OMNI_APP_PASSWORD>"
+dotnet user-secrets set "ConnectionStrings:Default" "Host=127.0.0.1;Port=5432;Database=omnichannel;Username=omnichannel_app;Password=<OMNI_APP_PASSWORD>"
 dotnet user-secrets set "RabbitMq:UserName" "<RABBITMQ_USER>"
 dotnet user-secrets set "RabbitMq:Password" "<RABBITMQ_PASSWORD>"
 cd ../..
