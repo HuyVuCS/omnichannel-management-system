@@ -4,7 +4,6 @@ using Omnichannel.Application.Common.Exceptions;
 using Omnichannel.Application.Common.Paging;
 using Omnichannel.Application.Products;
 using Omnichannel.Domain.Entities;
-using Omnichannel.Infrastructure.Persistence.Configurations;
 using Omnichannel.Infrastructure.Persistence.Inventories;
 
 namespace Omnichannel.Infrastructure.Persistence.Products;
@@ -87,7 +86,7 @@ internal sealed class ProductService(OmnichannelDbContext dbContext) : IProductS
         {
             await dbContext.SaveChangesAsync(cancellationToken);
         }
-        catch (DbUpdateException exception) when (exception.IsUniqueViolation(ProductConfiguration.SkuIndexName))
+        catch (DbUpdateException exception) when (exception.IsUniqueViolation(ExpectedUniqueViolations.ProductSku))
         {
             throw new ConflictException(ProductErrorCodes.SkuExists, $"A product with SKU '{product.Sku}' already exists.");
         }

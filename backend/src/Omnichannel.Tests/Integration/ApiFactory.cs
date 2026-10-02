@@ -159,6 +159,9 @@ public sealed class CapturingLogSink : ILogEventSink
 
     public void Emit(LogEvent logEvent) => _events.Enqueue(logEvent);
 
+    /// <summary>Every event logged at or after <paramref name="since"/>, in order.</summary>
+    public IReadOnlyList<LogEvent> EventsSince(DateTimeOffset since) => _events.Where(e => e.Timestamp >= since).ToList();
+
     /// <summary>Message, property values and exception of every event logged at or after <paramref name="since"/>.</summary>
     public IReadOnlyList<string> RenderedSince(DateTimeOffset since) =>
         _events

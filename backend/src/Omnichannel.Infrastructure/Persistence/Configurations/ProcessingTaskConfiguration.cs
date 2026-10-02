@@ -6,8 +6,6 @@ namespace Omnichannel.Infrastructure.Persistence.Configurations;
 
 internal sealed class ProcessingTaskConfiguration : IEntityTypeConfiguration<ProcessingTask>
 {
-    public const string IdempotencyKeyIndexName = "UX_ProcessingTasks_IdempotencyKey";
-
     public void Configure(EntityTypeBuilder<ProcessingTask> builder)
     {
         builder.ToTable("ProcessingTasks", t =>
@@ -50,6 +48,6 @@ internal sealed class ProcessingTaskConfiguration : IEntityTypeConfiguration<Pro
         builder.HasIndex(x => x.IdempotencyKey)
             .IsUnique()
             .HasFilter("\"IdempotencyKey\" IS NOT NULL")
-            .HasDatabaseName(IdempotencyKeyIndexName);
+            .HasDatabaseName(ExpectedUniqueViolations.ProcessingTaskIdempotencyKey);
     }
 }
