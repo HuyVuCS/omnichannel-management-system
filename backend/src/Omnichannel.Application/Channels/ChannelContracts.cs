@@ -2,6 +2,10 @@ using Omnichannel.Domain.Enums;
 
 namespace Omnichannel.Application.Channels;
 
+/// <param name="StockSyncEnabled">
+/// True when stock is pushed to this channel: its slug has a stock-sync queue. A capability of the channel, not its state -
+/// an Inactive channel keeps it. A channel without it can have product mappings, but they are never synced.
+/// </param>
 public sealed record ChannelResponse(
     Guid ChannelId,
     string Name,
@@ -9,7 +13,8 @@ public sealed record ChannelResponse(
     ChannelType Type,
     ChannelStatus Status,
     DateTimeOffset CreatedAt,
-    DateTimeOffset? UpdatedAt);
+    DateTimeOffset? UpdatedAt,
+    bool StockSyncEnabled);
 
 public sealed record CreateChannelRequest(string Name, string Slug, ChannelType Type);
 

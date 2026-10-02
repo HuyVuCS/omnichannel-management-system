@@ -301,6 +301,9 @@ npm run dev     # http://localhost:5173 - needs the API on http://localhost:5080
   alike. Only the body paths reported for malformed JSON start with `$` (`$.items[0].stock`).
 - Send `X-Correlation-Id` to correlate a request across logs; the API echoes it (or generates one).
 - Enums are serialised as strings.
+- Channel responses (`GET /api/channels`, `GET /api/channels/{id}`, create, update) carry `stockSyncEnabled`: true when
+  stock is pushed to the channel, i.e. its slug has a stock-sync queue (section 7). It is the capability, not the
+  status: an Inactive `website` is still `true`; a channel created through the API is `false`.
 
 ### Channel product mappings and stock-sync tasks
 
