@@ -91,12 +91,11 @@
     "stock_limit_exceeded": "The import would take the stock beyond the allowed maximum.",
     "order_conflict": "This order ID was already used on this channel with different content. Use a new number for this order.",
     "order_not_found": "The order does not exist.",
-    "task_not_found": "The processing task does not exist."
+    "task_not_found": "The processing task does not exist.",
+    "task_not_failed": "The task is not failed any more, so it cannot be retried.",
+    "retry_source_missing": "The original message of the task no longer exists, so there is nothing to send again."
   },
   "pages": {
-    "dashboard": {
-      "title": "Dashboard"
-    },
     "notFound": {
       "title": "Page not found",
       "description": "The address does not exist or the page was moved."
@@ -492,6 +491,78 @@
     }
   },
   "processing": {
+    "title": "Sync & processing",
+    "openOrder": "Open order",
+    "filters": {
+      "taskType": "Task type",
+      "status": "Status",
+      "channel": "Channel",
+      "from": "Created from",
+      "to": "To",
+      "correlationId": "Correlation ID",
+      "errorCode": "Error code",
+      "clear": "Clear filters"
+    },
+    "columns": {
+      "createdAt": "Created",
+      "taskType": "Task type",
+      "status": "Status",
+      "channel": "Channel",
+      "productSku": "SKU",
+      "order": "Order",
+      "attemptCount": "Attempts",
+      "lastErrorCode": "Last error code",
+      "lastWorkerInstance": "Worker instance",
+      "lastErrorMessage": "Error message",
+      "updatedAt": "Updated"
+    },
+    "actions": {
+      "detail": "Details"
+    },
+    "retry": {
+      "action": "Retry",
+      "confirmTitle": "Retry this task?",
+      "confirmContent": "The task is queued again and runs from the start.",
+      "requested": "The task was queued for another try."
+    },
+    "detail": {
+      "loadingTitle": "Processing task",
+      "back": "Back",
+      "taskType": "Task type",
+      "status": "Status",
+      "channel": "Channel",
+      "productSku": "SKU",
+      "order": "Order",
+      "retryCount": "Retries",
+      "correlationId": "Correlation ID",
+      "taskId": "Task ID",
+      "createdAt": "Created",
+      "updatedAt": "Updated",
+      "notFound": {
+        "title": "Task not found",
+        "description": "The task does not exist or the address is wrong.",
+        "toList": "Back to the list"
+      },
+      "message": {
+        "title": "Message",
+        "none": "This task has no message.",
+        "eventType": "Event type",
+        "status": "Publish status",
+        "createdAt": "Created",
+        "publishedAt": "Published",
+        "publishAttempts": "Publish attempts",
+        "messageId": "Message ID"
+      },
+      "attempts": {
+        "title": "Attempts",
+        "none": "This task has no attempt yet."
+      }
+    },
+    "messageStatuses": {
+      "Pending": "Not published",
+      "Published": "Published",
+      "Failed": "Publishing failed"
+    },
     "taskTypes": {
       "OrderProcessing": "Order processing",
       "StockSync": "Stock sync",
@@ -519,6 +590,60 @@
       "errorMessage": "Error message",
       "startedAt": "Started",
       "finishedAt": "Finished"
+    }
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "updatedAt": "Updated at {{time}}",
+    "range": {
+      "label": "Time range",
+      "24h": "Last 24 hours",
+      "today": "Today",
+      "7d": "Last 7 days",
+      "30d": "Last 30 days",
+      "from": "From",
+      "to": "To"
+    },
+    "orders": {
+      "title": "Orders in the range",
+      "total": "Orders",
+      "salesAmount": "Sales (reserved and completed)",
+      "status": "Status",
+      "count": "Orders",
+      "channel": "Channel",
+      "channelTotal": "Orders",
+      "channelReserved": "Reserved",
+      "channelInsufficientStock": "Insufficient stock"
+    },
+    "inventory": {
+      "title": "Inventory now",
+      "products": "Products",
+      "lowStock": "Low stock",
+      "outOfStock": "Out of stock"
+    },
+    "processing": {
+      "title": "Processing by task type",
+      "taskType": "Task type",
+      "pending": "Pending",
+      "inProgress": "In progress",
+      "retryScheduled": "Retry scheduled",
+      "failed": "Failed (in the range)",
+      "succeeded": "Succeeded (in the range)"
+    },
+    "stockSync": {
+      "title": "Stock sync by channel",
+      "channel": "Channel",
+      "retryScheduled": "Retry scheduled",
+      "failed": "Failed (in the range)",
+      "lastSucceededAt": "Last success",
+      "never": "Never"
+    },
+    "outbox": {
+      "title": "Message outbox",
+      "pending": "Waiting to be sent",
+      "failed": "Failed to send",
+      "oldestPending": "Oldest waiting",
+      "none": "None"
     }
   }
 }

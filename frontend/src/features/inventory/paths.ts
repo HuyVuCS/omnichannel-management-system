@@ -8,6 +8,14 @@ export const MOVEMENTS_PATH = '/inventory/movements';
  */
 export const STOCK_IMPORT_ROLES = ['Admin', 'Manager'] as const;
 
+/** Address parameter of the inventory list's low-stock filter. */
+export const LOW_STOCK_PARAM = 'lowStockOnly';
+
+/** The inventory list with its low-stock filter on (the rows the dashboard counts as "low stock"). */
+export function lowStockPath(): string {
+  return `${INVENTORY_PATH}?${LOW_STOCK_PARAM}=true`;
+}
+
 /** The stock-import form, optionally with its first line pre-filled. */
 export function importPath(productId?: string): string {
   return productId ? `${STOCK_IMPORT_PATH}?${new URLSearchParams({ productId }).toString()}` : STOCK_IMPORT_PATH;

@@ -17,9 +17,7 @@ import { TruncatedText } from '@/shared/components/TruncatedText';
 import { useListQueryState } from '@/shared/hooks/useListQueryState';
 import { formatDateTime, formatNumber } from '@/shared/utils/format';
 import { INVENTORY_SORT_FIELDS, useListInventoryQuery, type InventoryItem } from './inventoryApi';
-import { importPath, movementsPath, STOCK_IMPORT_ROLES } from './paths';
-
-const LOW_STOCK_PARAM = 'lowStockOnly';
+import { importPath, LOW_STOCK_PARAM, movementsPath, STOCK_IMPORT_ROLES } from './paths';
 
 /**
  * Stock per product. Every number and the low-stock flag come from the API as they are; nothing is computed here.

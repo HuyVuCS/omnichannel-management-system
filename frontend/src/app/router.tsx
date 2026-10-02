@@ -5,6 +5,7 @@ import { RequireRole } from '@/features/auth/RequireRole';
 import { LOGIN_PATH } from '@/features/auth/returnUrl';
 import { INVENTORY_PATH, MOVEMENTS_PATH, STOCK_IMPORT_PATH, STOCK_IMPORT_ROLES } from '@/features/inventory/paths';
 import { ORDER_DETAIL_ROUTE, ORDER_ENTRY_PATH, ORDERS_PATH } from '@/features/orders/paths';
+import { PROCESSING_PATH, PROCESSING_TASK_ROUTE } from '@/features/processing/paths';
 import { RouteErrorPage } from '@/pages/RouteErrorPage';
 import { ComingSoon } from '@/shared/components/ComingSoon';
 import { PageLoading } from '@/shared/components/PageLoading';
@@ -16,7 +17,9 @@ import { navigationItems } from './navigation';
 // guards, providers) stays in the main chunk. Inside the layout the Suspense boundary is in AppLayout. A chunk that
 // cannot be loaded ends on the route error page (see `lazyPage`).
 const LoginPage = lazyPage(() => import('@/features/auth/LoginPage').then((m) => ({ default: m.LoginPage })));
-const DashboardPage = lazyPage(() => import('@/pages/DashboardPage').then((m) => ({ default: m.DashboardPage })));
+const DashboardPage = lazyPage(() =>
+  import('@/features/dashboard/DashboardPage').then((m) => ({ default: m.DashboardPage })),
+);
 const NotFoundPage = lazyPage(() => import('@/pages/NotFoundPage').then((m) => ({ default: m.NotFoundPage })));
 const ProductsPage = lazyPage(() =>
   import('@/features/products/ProductsPage').then((m) => ({ default: m.ProductsPage })),
@@ -44,6 +47,12 @@ const OrdersPage = lazyPage(() => import('@/features/orders/OrdersPage').then((m
 const OrderDetailPage = lazyPage(() =>
   import('@/features/orders/OrderDetailPage').then((m) => ({ default: m.OrderDetailPage })),
 );
+const ProcessingPage = lazyPage(() =>
+  import('@/features/processing/ProcessingPage').then((m) => ({ default: m.ProcessingPage })),
+);
+const ProcessingTaskPage = lazyPage(() =>
+  import('@/features/processing/ProcessingTaskPage').then((m) => ({ default: m.ProcessingTaskPage })),
+);
 
 /** Pages that exist; every other menu item renders a placeholder until its task builds it. */
 const builtPages: Record<string, RouteObject['element']> = {
@@ -54,6 +63,7 @@ const builtPages: Record<string, RouteObject['element']> = {
   '/products': <ProductsPage />,
   '/customers': <CustomersPage />,
   '/channels': <ChannelsPage />,
+  [PROCESSING_PATH]: <ProcessingPage />,
   '/users': <UsersPage />,
 };
 
@@ -77,6 +87,7 @@ const pageRoutes: RouteObject[] = navigationItems
  */
 const pagesOutsideMenu: RouteObject[] = [
   { path: ORDER_DETAIL_ROUTE, element: <OrderDetailPage /> },
+  { path: PROCESSING_TASK_ROUTE, element: <ProcessingTaskPage /> },
   {
     path: STOCK_IMPORT_PATH,
     element: (

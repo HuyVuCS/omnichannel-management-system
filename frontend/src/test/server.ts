@@ -29,6 +29,18 @@ export function problem(status: number, body: Partial<ProblemDetails> = {}) {
   );
 }
 
+/** `GET /api/dashboard/summary` without anything in it (the fixtures with numbers are in `dashboard.ts`). */
+const EMPTY_SUMMARY = {
+  generatedAt: '2026-10-02T01:05:09+00:00',
+  from: '2026-10-01T01:05:09+00:00',
+  to: '2026-10-02T01:05:09+00:00',
+  orders: { total: 0, byStatus: [], byChannel: [], salesAmount: 0 },
+  inventory: { products: 0, lowStock: 0, outOfStock: 0 },
+  processing: [],
+  stockSync: [],
+  outbox: { pending: 0, failed: 0, oldestPendingAt: null },
+};
+
 const users: Record<string, AuthUser> = {
   [`Bearer ${sessionOf(adminUser).accessToken}`]: adminUser,
   [`Bearer ${sessionOf(managerUser).accessToken}`]: managerUser,
@@ -36,12 +48,14 @@ const users: Record<string, AuthUser> = {
 };
 
 /**
- * Default handlers: only the session check every signed-in page makes. Everything else must be declared by the test
- * (`server.use`), and a request without a handler fails the test.
+ * Default handlers: the session check every signed-in page makes, and an empty summary for the landing page (many
+ * tests only pass the dashboard on their way; its own tests serve their numbers). Everything else must be declared by
+ * the test (`server.use`), and a request without a handler fails the test.
  */
 export const server = setupServer(
   http.get(api('/auth/me'), ({ request }) => {
     const user = users[request.headers.get('Authorization') ?? ''];
     return user ? HttpResponse.json(user) : problem(401);
   }),
+  http.get(api('/dashboard/summary'), () => HttpResponse.json(EMPTY_SUMMARY)),
 );

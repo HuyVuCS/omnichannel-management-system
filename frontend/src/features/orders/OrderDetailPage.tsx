@@ -18,6 +18,7 @@ import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate, useParams } from 'react-router';
 import { movementsPath } from '@/features/inventory/paths';
 import { AttemptsTable } from '@/features/processing/components/AttemptsTable';
+import { RetryTaskButton } from '@/features/processing/components/RetryTaskButton';
 import { TaskStatusTag } from '@/features/processing/components/TaskStatusTag';
 import { problemMessages } from '@/shared/api/problemDetails';
 import { isApiError } from '@/shared/api/types';
@@ -48,7 +49,8 @@ function Copyable({ text }: { text: string }) {
 /**
  * One order (every role): its summary, its lines and every processing task with all attempts - which worker instance
  * ran it, when, and what went wrong. Everything is shown as the API sends it; no amount is computed here. The order
- * is fetched again whenever the page is opened and on "Refresh" (its tasks change in the background).
+ * is fetched again whenever the page is opened, on "Refresh" and when a realtime hint names one of its tasks (they
+ * change in the background). Manager and Admin can retry a failed task here, as on the task's own page.
  *
  * An id in the address that is no GUID is not sent; it and an order the API does not know end on the not-found view.
  */
@@ -267,6 +269,9 @@ export function OrderDetailPage() {
                     ) : (
                       <AttemptsTable attempts={task.attempts} />
                     )}
+                    <div style={{ marginTop: 12 }}>
+                      <RetryTaskButton taskId={task.taskId} status={task.status} orderId={order.orderId} />
+                    </div>
                   </div>
                 ))}
               </Flex>

@@ -72,7 +72,8 @@ export function uiSnapshot(location: () => string) {
     siderClass: sider.className,
     headerStyle: header.getAttribute('style'),
     userBlockStyle: screen.getByTestId('app-user').getAttribute('style'),
-    languageSwitchStyle: screen.getByRole('radiogroup').getAttribute('style'),
+    // By name: a page may have segmented controls of its own (the dashboard's range presets).
+    languageSwitchStyle: screen.getByRole('radiogroup', { name: /^(Ngôn ngữ|Language)$/ }).getAttribute('style'),
     pageActionStyles: [...document.querySelectorAll('main button.ant-btn-primary')].map((b) => b.getAttribute('style')),
     columnWidths: [...document.querySelectorAll('table colgroup col')].map((col) => col.getAttribute('style')),
     columnCount: document.querySelectorAll('thead th').length,
