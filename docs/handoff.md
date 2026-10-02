@@ -3,10 +3,11 @@
 This file is an index and a snapshot of what is in flight. The repository documents are the memory; follow the links.
 
 ## 1. Snapshot
-- Written: 2026-10-02 (+07:00), by Cowork after review 015.
-- Branch `master` (nothing pushed). HEAD: the Cowork commit "docs: review 015, task 016" on top of `a8c0cfd`
-  ("task 015: report").
-- Working tree: clean after that commit.
+- Written: 2026-10-02 17:55 (+07:00), by Claude Code (the sections below were written by Cowork after review 015 and
+  checked against the repository: roadmap, task files, newest migration — all still correct).
+- Branch `master` (nothing pushed). HEAD `1ce1658` — "docs: review 015, task 016".
+- Working tree: clean. The chat that wrote this snapshot changed no file: a `/next-task` run was interrupted while it
+  was still reading (it had picked up task 014, which is done since — see section 4).
 - Newest migration: `20261002053501_StockSync` (task 014; applied to the development database by the user). Task 015
   added none.
 
