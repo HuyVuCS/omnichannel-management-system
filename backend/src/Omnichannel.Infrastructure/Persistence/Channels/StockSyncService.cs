@@ -1,9 +1,11 @@
 using Microsoft.EntityFrameworkCore;
+using Omnichannel.Application.Alerts;
 using Omnichannel.Application.Channels;
 using Omnichannel.Application.Common.Messaging;
 using Omnichannel.Application.Orders;
 using Omnichannel.Domain.Entities;
 using Omnichannel.Domain.Enums;
+using Omnichannel.Infrastructure.Persistence.Alerts;
 using Omnichannel.Infrastructure.Persistence.Processing;
 
 namespace Omnichannel.Infrastructure.Persistence.Channels;
@@ -16,6 +18,7 @@ namespace Omnichannel.Infrastructure.Persistence.Channels;
 internal sealed class StockSyncService(
     OmnichannelDbContext dbContext,
     ProcessingAttemptStore attempts,
+    AlertStore alerts,
     TimeProvider timeProvider) : IStockSyncService
 {
     public async Task<StockSyncResolution> ResolveInventoryChangeAsync(
@@ -118,17 +121,26 @@ internal sealed class StockSyncService(
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
         var now = timeProvider.GetUtcNow();
         var task = await attempts.LockTaskAsync(taskId, cancellationToken);
-        if (task.IsTerminal)
+        var completed = !task.IsTerminal;
+        if (completed)
+        {
+            task.Succeed(orderId: null, attemptId, now);
+        }
+        else
         {
             // Another delivery of the same message finished first; this attempt pushed the current stock as well.
             task.CloseAttemptOfCompletedTask(attemptId, now);
         }
-        else
-        {
-            task.Succeed(orderId: null, attemptId, now);
-        }
 
         await dbContext.SaveChangesAsync(cancellationToken);
+
+        // Any task of the pair that succeeds ends the alert of the pair, not only the task that failed: the channel has
+        // the current stock now.
+        if (completed && task is { ChannelId: { } channelId, ProductId: { } productId })
+        {
+            await alerts.ResolveAsync([AlertDedupKey.StockSyncFailed(channelId, productId)], cancellationToken);
+        }
+
         await transaction.CommitAsync(cancellationToken);
     }
 

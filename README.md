@@ -358,6 +358,8 @@ npm run dev     # http://localhost:5173 - needs the API on http://localhost:5080
   | `order.created` | an order was stored (Order Worker) | `orderId`, `channelId`, `status` |
   | `inventory.changed` | stock changed (import, reservation) | `productIds`, or `all: true` when more than 100 products changed |
   | `processing.task.changed` | a task was created or its status changed | `taskId`, `taskType`, `status`, `orderId`, `channelId`, `productId` (those that apply) |
+  | `alert.changed` | an alert was opened, refreshed, acknowledged or resolved | `alertId`, `alertType`, `status`, `productId`, `channelId` (those that apply) |
+  | `low_stock.created` | a low-stock alert was opened (in addition to its `alert.changed`) | `alertId`, `productId` |
 
   A failed task or a finished stock sync is a `processing.task.changed` with that `taskType` / `status`. Members without
   a value are left out. `all: true` on an event means "more changed than is listed: refetch everything of this type".
@@ -366,7 +368,8 @@ npm run dev     # http://localhost:5173 - needs the API on http://localhost:5080
 - **How a hint gets there:** every `SaveChanges` that stores an order, a stock movement or a task change (API and Workers
   alike, `RealtimeHintInterceptor`) sends one `pg_notify('omnichannel_ui', ...)` on its connection: inside a transaction
   PostgreSQL delivers it at the commit and drops it on a rollback, otherwise it is sent right after the save was
-  committed. Each API instance holds one `LISTEN` connection (`PostgresHintListener`; no extra database right needed) and
+  committed. Alert hints are sent by the alert writer itself, always inside the transaction of the change that causes the
+  alert, as a notification of their own. Each API instance holds one `LISTEN` connection (`PostgresHintListener`; no extra database right needed) and
   pushes to its own clients, so several instances need no backplane. Hints that arrive within `Realtime:BatchWindow`
   (default `00:00:00.250`, 10 ms - 5 s) go out as one message.
 - **Authentication:** the same access token as for the API. Browsers cannot set headers on WebSocket requests, so the
@@ -384,10 +387,53 @@ npm run dev     # http://localhost:5173 - needs the API on http://localhost:5080
   - `processing` per task type: `pending`, `inProgress`, `retryScheduled` (now), `failed`, `succeeded` (status reached
     in the range);
   - `stockSync` per channel with a stock-sync queue: `retryScheduled` (now), `failed` (in the range), `lastSucceededAt`;
-  - `outbox` (now): `pending`, `failed`, `oldestPendingAt`.
+  - `outbox` (now): `pending`, `failed`, `oldestPendingAt`;
+  - `alerts` (now, unresolved only): `open`, `acknowledged`, `byType` (every alert type: `type`, `open`,
+    `acknowledged`).
 - Scripted check: `powershell -ExecutionPolicy Bypass -File scripts\smoke\task-015.ps1`; the frontend side (product
   SKU on tasks, build, tests): `scripts\smoke\task-016.ps1`. A smoke script starts an API or a Workers host only for
   the local default; with `SMOKE_BASE_URL` set they must already be running.
+
+### Alerts
+
+An alert is something that needs attention now. Alerts live in their own table (`Alerts`, migration `Alerts`) with a
+lifecycle `Open` → `Acknowledged` → `Resolved`; `SystemEventLog` stays the event history.
+
+| `type` | One unresolved alert per (`DedupKey`) | Opened / refreshed by | Resolved by |
+| --- | --- | --- | --- |
+| `LowStock` | product (`low_stock:{productId}`) | a stock or threshold change that leaves the product low (`AvailableStock <= LowStockThreshold`, the rule of the inventory list) | a stock or threshold change that leaves it not low |
+| `InsufficientStock` | product (`insufficient_stock:{productId}`) | an order stored as `InsufficientStock`, for each product that was short | the next stock import of the product |
+| `StockSyncFailed` | channel and product (`stock_sync_failed:{channelId}:{productId}`) | a stock-sync task that failed for good | any stock-sync task of the same channel and product that succeeds |
+| `ProcessingFailed` | task (`processing_failed:{taskId}`) | a task of another type that failed for good | that task succeeding (after a manual retry) |
+
+- **Refresh:** a condition that occurs again while its alert is unresolved updates that row (`lastOccurredAt`,
+  `occurrenceCount` + 1, latest `taskId` / `orderId` / `errorCode`) and keeps its status - an acknowledged alert stays
+  acknowledged. Low stock is a state, not a counter: its alert is left unchanged while the product stays low. A condition
+  that returns after its alert was resolved opens a new alert; resolved alerts are kept.
+- **Resolving is always the system's decision**, taken from the source tables; there is no manual resolve. A new product
+  has no stock, so it starts with a `LowStock` alert.
+- **Acknowledge** (`Manager` / `Admin`): "seen", nothing more - the alert stays until the condition is gone. It is audited
+  in `SystemEventLog` (`alert.acknowledged`).
+- **Consistency:** every alert row is written by one SQL statement inside the transaction of the change that causes it
+  (`AlertStore`: `INSERT … ON CONFLICT` on the partial unique index of unresolved keys, conditional
+  `UPDATE … RETURNING`), so an alert never exists without its cause and never survives a rollback. A code path that
+  changes stock or a threshold must call `AlertStore.ReconcileLowStockAsync` for its products before it commits (today:
+  stock import, reservation, product create and update; a future release / cancel path as well).
+- **Hints** (sent by the alert writer in the same transaction, see "Realtime hints"): `alert.changed` (`alertId`,
+  `alertType`, `status`, `productId`, `channelId`) for every alert that was opened, refreshed, acknowledged or resolved,
+  and `low_stock.created` (`alertId`, `productId`) in addition when a low-stock alert was opened.
+- `GET /api/alerts` (any role): paged (`page`, `pageSize`; `sortBy` = `lastOccurredAt` (default), `firstOccurredAt`,
+  `occurrenceCount`, each descending unless `sortDir=asc`). Filters: `status` and `type` (both repeatable), `productId`,
+  `channelId`, `from` / `to` on `lastOccurredAt` (inclusive, ISO 8601 with offset, at most 92 days). **Without `status`
+  the list shows `Open` and `Acknowledged`**; resolved alerts must be asked for (`status=Resolved`).
+  Item: `alertId`, `type`, `status`, `productId`, `productSku`, `productName`, `channelId`, `channelName`, `taskId`,
+  `orderId`, `errorCode`, `firstOccurredAt`, `lastOccurredAt`, `occurrenceCount`, `acknowledgedAt`,
+  `acknowledgedByEmail`, `resolvedAt`, and for `LowStock` the product's `availableStock` and `lowStockThreshold` as
+  they are **now** (null for the other types).
+- `GET /api/alerts/{alertId}` (any role): the same item; 404 `alert_not_found`.
+- `POST /api/alerts/{alertId}/acknowledge` (Manager/Admin): 200 with the item - also when it was acknowledged already
+  (nothing is written then); 409 `alert_resolved`; 404 `alert_not_found`.
+- Scripted check (needs the Workers host in Development): `powershell -ExecutionPolicy Bypass -File scripts\smoke\task-017.ps1`.
 
 ### Users and token revocation
 

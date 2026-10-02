@@ -14,6 +14,14 @@ public static class InventoryPredicates
         i => i.AvailableStock <= i.Product.LowStockThreshold;
 
     /// <summary>
+    /// <see cref="IsLowStock"/> as SQL text for the set-based alert statements (alert store, backfill of the
+    /// <c>Alerts</c> migration), which cannot be written with LINQ (<c>INSERT … ON CONFLICT</c>, <c>UPDATE … RETURNING</c>).
+    /// <c>i</c> is <c>"Inventories"</c>, <c>p</c> its <c>"Products"</c> row. The only second wording of the rule; a test
+    /// compares both on the same rows.
+    /// </summary>
+    public const string IsLowStockSql = "i.\"AvailableStock\" <= p.\"LowStockThreshold\"";
+
+    /// <summary>
     /// <see cref="IsLowStock"/> seen from the product: the same expression applied to the product's inventory row
     /// (false for a product without one, which cannot exist through the API).
     /// </summary>

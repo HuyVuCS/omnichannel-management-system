@@ -1,10 +1,12 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Omnichannel.Application.Alerts;
 using Omnichannel.Application.Common.Abstractions;
 using Omnichannel.Application.Common.Messaging;
 using Omnichannel.Application.Orders;
 using Omnichannel.Domain.Entities;
 using Omnichannel.Domain.Enums;
+using Omnichannel.Infrastructure.Persistence.Alerts;
 using Omnichannel.Infrastructure.Persistence.Processing;
 
 namespace Omnichannel.Infrastructure.Persistence.Orders;
@@ -20,11 +22,15 @@ namespace Omnichannel.Infrastructure.Persistence.Orders;
 /// in a separate transaction without touching stock.</item>
 /// <item>The task row is locked (<c>FOR UPDATE</c>) and re-checked inside the reservation transaction, so two concurrent
 /// deliveries of the same message cannot both reserve; <c>UX_Orders_ChannelId_ExternalOrderId</c> is the final guard.</item>
+/// <item>Alerts are written in the transaction that stores the order (after the save, before the commit): low stock is
+/// reconciled for the reserved products, an insufficient-stock alert is opened per short product, and every path that
+/// completes the task resolves the <c>ProcessingFailed</c> alert of an earlier final failure (manual retry).</item>
 /// </list>
 /// </summary>
 internal sealed class OrderReservationService(
     OmnichannelDbContext dbContext,
     ProcessingAttemptStore attempts,
+    AlertStore alerts,
     ICurrentUser currentUser,
     ICorrelationContext correlationContext,
     TimeProvider timeProvider,
@@ -105,6 +111,9 @@ internal sealed class OrderReservationService(
 
                 if (await TrySaveAsync(cancellationToken))
                 {
+                    // Still under the inventory row locks of the reservation.
+                    await alerts.ReconcileLowStockAsync(reserved.Select(r => r.Item.ProductId).ToList(), cancellationToken);
+                    await ResolveProcessingFailedAsync(order.TaskId, cancellationToken);
                     await transaction.CommitAsync(cancellationToken);
                     return new ReservationResult(ReservationOutcome.Reserved, stored.OrderId);
                 }
@@ -258,6 +267,14 @@ internal sealed class OrderReservationService(
             return await CompleteWithExistingOrderAsync(order, attemptId, workerName, cancellationToken);
         }
 
+        // One alert per product that was short in the read above; none when the stock arrived in between.
+        var shortages = order.Items
+            .Where(i => i.Stock > available.GetValueOrDefault(i.ProductId))
+            .Select(i => AlertOccurrence.InsufficientStock(i.ProductId, stored.OrderId))
+            .ToList();
+        await alerts.OpenOrRefreshAsync(shortages, cancellationToken);
+        await ResolveProcessingFailedAsync(order.TaskId, cancellationToken);
+
         await transaction.CommitAsync(cancellationToken);
 
         logger.LogInformation(
@@ -287,13 +304,14 @@ internal sealed class OrderReservationService(
             .Select(o => o.OrderId)
             .SingleAsync(cancellationToken);
 
-        if (task.IsTerminal)
+        var completed = !task.IsTerminal;
+        if (completed)
         {
-            task.CloseAttemptOfCompletedTask(attemptId, now);
+            task.Succeed(existingOrderId, attemptId, now);
         }
         else
         {
-            task.Succeed(existingOrderId, attemptId, now);
+            task.CloseAttemptOfCompletedTask(attemptId, now);
         }
 
         dbContext.SystemEventLogs.Add(new SystemEventLog(
@@ -307,6 +325,11 @@ internal sealed class OrderReservationService(
             now));
 
         await dbContext.SaveChangesAsync(cancellationToken);
+        if (completed)
+        {
+            await ResolveProcessingFailedAsync(order.TaskId, cancellationToken);
+        }
+
         await transaction.CommitAsync(cancellationToken);
 
         logger.LogWarning(
@@ -333,6 +356,10 @@ internal sealed class OrderReservationService(
 
     private Task<ProcessingTask> LockTaskAsync(Guid taskId, CancellationToken cancellationToken) =>
         attempts.LockTaskAsync(taskId, cancellationToken);
+
+    /// <summary>The task succeeded: the alert of its earlier final failure (it was retried manually) is over.</summary>
+    private Task ResolveProcessingFailedAsync(Guid taskId, CancellationToken cancellationToken) =>
+        alerts.ResolveAsync([AlertDedupKey.ProcessingFailed(taskId)], cancellationToken);
 
     /// <summary>Order lines keep the request order; unit price is the intake snapshot.</summary>
     private static void AddItems(Order stored, OrderCreatedPayload order)
