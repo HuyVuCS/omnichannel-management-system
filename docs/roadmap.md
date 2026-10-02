@@ -3,7 +3,7 @@
 Plan from the current state to the complete system (backend + frontend), following the implementation order in
 the architecture document (section 15). Maintained by Cowork; updated after every task review.
 
-Last updated: 2026-10-02 (after review 016)
+Last updated: 2026-10-03 (after review 016b)
 
 ## Conventions
 - One row = one task file `docs/tasks/NNN-*.md`, written by Cowork shortly before it is needed (not all up front),
@@ -36,9 +36,9 @@ Last updated: 2026-10-02 (after review 016)
 | 014 | BE | ChannelProduct mapping API + Stock Sync Worker (per-channel queues, **simulated** channel adapters, Polly timeout/circuit breaker, directed `stock.sync.requested` for initial sync and manual retry); Part A: expected 23505 conflicts not logged as errors by EF Core, stale list error in the stock-import form | 8 | Done |
 | 015 | BE | Realtime hints: `pg_notify` in the committing transaction (API and Workers) → per-instance `LISTEN` in the API → SignalR hub `/api/hubs/notifications` (JWT, AnyStaff, resync after a lost listener); `GET /api/dashboard/summary`; Part A (review 014): stale stock-sync task after deactivation (P2), `GET` of one mapping, README section 6, `.http` samples | 10 | Done |
 | 016 | FE | Realtime client (`@microsoft/signalr`, lazy; connect/stop with the session, reconnect → resync, event → tag map, coalesced refetch, connection indicator) + dashboard overview (`GET /api/dashboard/summary`, range in the address) + Sync & Processing page (task list with filters incl. channel, task detail route, retry for Manager/Admin, also on the order detail) + order-entry outcome by push (polling only while disconnected); BE: `productSku` on task summary/detail; Vite proxy with WebSocket; Part A (review 013): pickers hide only stale answers (`currentData`), panel title repetition, orders table width at 1280 px, load only the active language; Part A (review 014): committed bundle-measurement script; Part A (review 015): smoke scripts start hosts only for the local default | 3.2, 12 | Done |
-| 016b | FE | Channel detail route `/channels/:channelId` with its product mappings (list, search, sort, paging; create, edit, activate/deactivate for Manager/Admin; initial-sync task with live status); channels without stock sync shown as such (review 014); BE: `stockSyncEnabled` on channel responses; Part A (review 016): `127.0.0.1` for local connections, hint flush as a throttle, order outcome invalidates lists only when not live | 3.2 | Open |
-| 017 | BE | Alerts: low-stock (shared predicate) and processing failures, `GET /api/alerts`, `low_stock.created` event | 11 | Planned |
-| 018 | FE | Alerts page + Logs/Audit page | 3.2 | Planned |
+| 016b | FE | Channel detail route `/channels/:channelId` with its product mappings (list, search, sort, paging; create, edit, activate/deactivate for Manager/Admin; initial-sync task with live status); channels without stock sync shown as such (review 014); BE: `stockSyncEnabled` on channel responses; Part A (review 016): `127.0.0.1` for local connections, hint flush as a throttle, order outcome invalidates lists only when not live; fix of a pre-existing form-dialog defect (stale values after a full close) | 3.2 | Done |
+| 017 | BE | Alerts: low-stock (shared predicate) and processing failures, `GET /api/alerts`, `low_stock.created` event; Part A (review 016b): frontend suite stable under load (smoke runs npm after stopping its hosts, worker count, split slow tests), strict `Assert-Step` | 11 | Planned |
+| 018 | FE | Alerts page + Logs/Audit page; Part A (review 016b): `currentData` on detail pages bound to a route parameter, stale API errors on optional customer fields, products table at 1280 px | 3.2 | Planned |
 | 019 | BE+FE | S3 product images: presigned upload `POST /api/products/{id}/image/presign`, private bucket, UI upload | 12 | Planned |
 | 020 | BE | Excel export (ClosedXML) for orders and inventory; background export task + S3 for large files | 12 | Planned |
 | 021 | FE | Reports & Excel export page | 3.2 | Planned |
