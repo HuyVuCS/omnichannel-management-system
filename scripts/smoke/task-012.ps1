@@ -22,17 +22,6 @@ function Get-FirstMessage($Response, [string]$Key) {
 # True when the text contains a character outside ASCII (Vietnamese messages do, the English ones do not).
 function Test-NonAscii([string]$Text) { return ($Text -cmatch '[^\x00-\x7F]') }
 
-function Invoke-Npm([string]$Arguments) {
-    $frontend = Join-Path $script:RepoRoot 'frontend'
-    Push-Location $frontend
-    try {
-        cmd /c "npm $Arguments > NUL 2>&1"
-        return $LASTEXITCODE
-    } finally {
-        Pop-Location
-    }
-}
-
 try {
     Start-Smoke 'Task 012 - validation keys, field names, movement actor, stock import, frontend'
     $cred  = Get-AdminCredential
@@ -98,18 +87,10 @@ try {
 
     # The smoke account is locked again.
     Assert-Step '22 lock the smoke manager' 200 (Invoke-Api POST "/api/users/$($user.Body.userId)/lock" $admin).Status
-
-    # Frontend: production build and tests.
-    if (-not (Test-Path (Join-Path $script:RepoRoot 'frontend\node_modules'))) {
-        Write-Host 'Installing frontend packages (npm ci)...'
-        Assert-Step '23 npm ci' 0 (Invoke-Npm 'ci')
-    }
-    Write-Host 'Building the frontend...'
-    Assert-Step '24 npm run build' 0 (Invoke-Npm 'run build')
-    Write-Host 'Running the frontend tests...'
-    Assert-Step '25 npm test' 0 (Invoke-Npm 'test')
 }
 catch {
     Assert-Step "unexpected error: $($_.Exception.Message)" 'no error' 'error'
 }
+# Frontend: production build and tests (steps 23-25), after the API this script started is stopped.
+Invoke-FrontendChecks 23
 Complete-Smoke

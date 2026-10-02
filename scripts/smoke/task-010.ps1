@@ -20,18 +20,6 @@ function Get-ContentLanguage([string]$Token, [string]$AcceptLanguage) {
     }
 }
 
-# Runs an npm script in frontend/ quietly and returns its exit code.
-function Invoke-Npm([string]$Arguments) {
-    $frontend = Join-Path $script:RepoRoot 'frontend'
-    Push-Location $frontend
-    try {
-        cmd /c "npm $Arguments > NUL 2>&1"
-        return $LASTEXITCODE
-    } finally {
-        Pop-Location
-    }
-}
-
 try {
     Start-Smoke 'Task 010 - sessions survive a temporary lockout, localisation, frontend'
     $cred  = Get-AdminCredential
@@ -71,18 +59,10 @@ try {
     Assert-Step '13 Accept-Language vi' 'vi' (Get-ContentLanguage $admin 'vi')
     Assert-Step '14 Accept-Language en' 'en' (Get-ContentLanguage $admin 'en')
     Assert-Step '15 unsupported language falls back' 'en' (Get-ContentLanguage $admin 'fr-FR')
-
-    # Frontend: production build and tests.
-    if (-not (Test-Path (Join-Path $script:RepoRoot 'frontend\node_modules'))) {
-        Write-Host 'Installing frontend packages (npm ci)...'
-        Assert-Step '16 npm ci' 0 (Invoke-Npm 'ci')
-    }
-    Write-Host 'Building the frontend...'
-    Assert-Step '17 npm run build' 0 (Invoke-Npm 'run build')
-    Write-Host 'Running the frontend tests...'
-    Assert-Step '18 npm test' 0 (Invoke-Npm 'test')
 }
 catch {
     Assert-Step "unexpected error: $($_.Exception.Message)" 'no error' 'error'
 }
+# Frontend: production build and tests (steps 16-18), after the API this script started is stopped.
+Invoke-FrontendChecks 16
 Complete-Smoke

@@ -170,14 +170,58 @@ function Start-SmokeWorkers {
 function Stop-Smoke {
     if ($script:StartedWorkers -and -not $script:StartedWorkers.HasExited) {
         Stop-Process -Id $script:StartedWorkers.Id -Force
+        [void]$script:StartedWorkers.WaitForExit(10000)
         Write-Host 'Workers host stopped.'
     }
     $script:StartedWorkers = $null
     if ($script:StartedApi -and -not $script:StartedApi.HasExited) {
         Stop-Process -Id $script:StartedApi.Id -Force
+        [void]$script:StartedApi.WaitForExit(10000)
         Write-Host 'API stopped.'
     }
     $script:StartedApi = $null
+}
+
+# Runs npm in the frontend folder; returns the exit code. The output goes to a log file, which is named when npm fails
+# (which test failed is in there).
+function Invoke-Npm([string]$Arguments) {
+    $frontend = Join-Path $script:RepoRoot 'frontend'
+    $log = Join-Path ([System.IO.Path]::GetTempPath()) ('omnichannel-smoke-npm-' + ($Arguments -replace '[^a-z]', '') + '-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.log')
+    Push-Location $frontend
+    try {
+        cmd /c "npm $Arguments > `"$log`" 2>&1"
+        $code = $LASTEXITCODE
+        if ($code -ne 0) { Write-Host "npm $Arguments failed (exit code $code); output: $log" -ForegroundColor Yellow }
+        return $code
+    } finally {
+        Pop-Location
+    }
+}
+
+# Frontend production build and tests, recorded as the steps $FirstStep (npm ci, only when packages are missing),
+# $FirstStep + 1 (build) and $FirstStep + 2 (tests). Call it after the API checks and the clean-up, right before
+# Complete-Smoke: the hosts this script started are stopped first, because the test suite is memory-bound and times out
+# next to them. A host this script did not start is left alone.
+function Invoke-FrontendChecks([int]$FirstStep, [string[]]$RequiredPackages = @()) {
+    try {
+        Stop-Smoke
+        if ((([uri]$script:BaseUrl).IsLoopback -and (Test-ApiUp)) -or (Test-WorkersRunning)) {
+            Write-Host 'An API / Workers host that this script did not start is still running: the frontend checks run next to it and may be slow.' -ForegroundColor Yellow
+        }
+        $modules = Join-Path $script:RepoRoot 'frontend\node_modules'
+        $missing = @(@('.') + $RequiredPackages | Where-Object { -not (Test-Path (Join-Path $modules $_)) }).Count
+        if ($missing -gt 0) {
+            Write-Host 'Installing frontend packages (npm ci)...'
+            Assert-Step ('{0:00} npm ci' -f $FirstStep) 0 (Invoke-Npm 'ci')
+        }
+        Write-Host 'Building the frontend...'
+        Assert-Step ('{0:00} npm run build' -f ($FirstStep + 1)) 0 (Invoke-Npm 'run build')
+        Write-Host 'Running the frontend tests (several minutes)...'
+        Assert-Step ('{0:00} npm test' -f ($FirstStep + 2)) 0 (Invoke-Npm 'test')
+    }
+    catch {
+        Assert-Step "unexpected error in the frontend checks: $($_.Exception.Message)" 'no error' 'error'
+    }
 }
 
 function Complete-Smoke {
