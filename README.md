@@ -287,7 +287,8 @@ npm run dev     # http://localhost:5173 - needs the API on http://localhost:5080
   the form: amounts come from the order.
 - Stock, orders and tasks change in the background (Workers): besides the realtime hints, the inventory, movement,
   order and task lists and the detail pages are fetched again whenever the page is opened and on "Refresh", and the
-  order-entry page invalidates the lists once when a task is finished.
+  order-entry page invalidates the lists once when it sees a task finished while the realtime connection is not live
+  (while it is live, the hints of the same transaction have already done that).
 - The access token is kept in `sessionStorage` (cleared when the tab closes); the language choice in `localStorage`.
 
 ## API conventions

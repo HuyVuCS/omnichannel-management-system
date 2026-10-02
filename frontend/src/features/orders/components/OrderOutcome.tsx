@@ -126,8 +126,11 @@ function describeState(
  * how the task is followed, not what is shown. A finished task that produced an order loads that order once (status
  * and total amount).
  *
- * When the task is first seen finished, the lists it changed (orders, stock, movements, products) are invalidated
- * once - not on every poll.
+ * When the task is first seen finished while the connection is not live, the lists it changed (orders, stock,
+ * movements, products) are invalidated once - not on every poll. While it is live they are left alone: the Order
+ * Worker writes the order, its movements and the task status in one transaction, so the hint batch that finished the
+ * task here has already invalidated them (and a task that finished before the connection existed was covered by the
+ * invalidation every new connection causes).
  */
 export function OrderOutcome({ slug, channelLabel, accepted, onNewOrder }: OrderOutcomeProps) {
   const { t } = useTranslation();
@@ -173,11 +176,14 @@ export function OrderOutcome({ slug, channelLabel, accepted, onNewOrder }: Order
   const announced = useRef(false);
   useEffect(() => {
     if (finished && !announced.current) {
+      // Decided once, by the connection state at this moment; a later change of it invalidates nothing.
       announced.current = true;
-      // The order list, not single orders: the order of this task is loaded right now and would be loaded twice.
-      dispatch(baseApi.util.invalidateTags([ORDER_LIST_TAG, 'Inventory', 'InventoryMovement', 'Product']));
+      if (!live) {
+        // The order list, not single orders: the order of this task is loaded right now and would be loaded twice.
+        dispatch(baseApi.util.invalidateTags([ORDER_LIST_TAG, 'Inventory', 'InventoryMovement', 'Product']));
+      }
     }
-  }, [dispatch, finished]);
+  }, [dispatch, finished, live]);
 
   const checkAgain = () => {
     setWaitUntil(Date.now() + POLL_WINDOW_MS);
