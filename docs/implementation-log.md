@@ -322,3 +322,28 @@ analysis. Frontend 167/167, smoke 31/31, 38/38 mutations; backend unchanged. Rev
     "StockSync per channel" of steps 1–3.
 14. Endpoints `GET/POST /api/channels/{channelId}/products`, `PUT /api/channels/{channelId}/products/{channelProductId}`
     (doc §7.1 `ChannelService`: "Channel và ChannelProduct mapping"; not in the §11 table).
+
+## Task 014 result (reviewed 2026-10-02)
+
+Mapping API, Stock Sync Worker with simulated channels behind Polly (timeout + circuit breaker), directed
+`stock.sync.requested`, migration `StockSync`, expected 23505 no longer logged as errors; backend 669/669, frontend 168/168,
+smoke 38/38 (throwaway environment; the development run, migration and manual checks of 012–014 confirmed by the user on
+2026-10-02). Review: `docs/tasks/014-*.review.md`.
+
+| Topic | Decision | Reason | Revisit when |
+| --- | --- | --- | --- |
+| Expected-conflict logging | EF Core's `CommandError` / `SaveChangesFailed` at Debug; `DatabaseFailureLogInterceptor` writes them again at Error unless the cause is a 23505 on a constraint in `ExpectedUniqueViolations`; `IsUniqueViolation` only matches registered names | `CommandError` carries no exception, so no log filter can classify it; one registry for catch clauses and log level | — |
+| Attempt bookkeeping | `ProcessingAttemptStore` shared by the Order and Stock Sync workers | One mechanism for start / transient / final failure | — |
+| Shutdown during an external call | `HandlerResult.Abandon`: delivery left unsettled, requeued on channel close (counted in `x-delivery-count`); stock sync only | Consumers get no cancellation token (006/007); every other result settles | — |
+| Open circuit vs attempt budget | `channel_circuit_open` counts toward `MaxAttempts`; long outages end in `Failed` + DLQ; recovery by reconciliation (022) and retry from the processing page (016) | Not counting it would make retries unbounded; only the newest task per (channel, product) matters because every push sends the current stock | Real channels with long maintenance windows |
+
+## Task 015 plan — realtime hints and dashboard summary (2026-10-02)
+
+| Topic | Decision | Reason | Revisit when |
+| --- | --- | --- | --- |
+| Worker → API notification | **PostgreSQL `LISTEN/NOTIFY` (user, 2026-10-02).** Hints are derived from the change tracker by one `SaveChanges` interceptor in Infrastructure (added `Order` → `order.created`, added `InventoryMovement` → `inventory.changed` — every stock change writes one, also the raw-SQL ones —, added `ProcessingTask` or a changed task status → `processing.task.changed`), so no producer can forget one; they are sent with `pg_notify('omnichannel_ui', …)` *after* `SaveChanges` succeeded on the same connection — inside an explicit transaction (delivered at its commit, discarded by a rollback) or, without one, after EF Core's own commit | Doc §12 "PostgreSQL commit → application notification": a hint never precedes or outlives its data; no new infrastructure; the API stays independent of RabbitMQ (decision A). Alternative: RabbitMQ notification queue per API instance (API would depend on the broker, one more consumer) | Notification volume makes `NOTIFY` a bottleneck (thousands/s) |
+| Hint content | Event type + ids only (`order.created`, `inventory.changed`, `processing.task.changed` with task type/status/order/channel ids); one `NOTIFY` per unit of work, payload well under PostgreSQL's 8000-byte limit (id lists capped, overflow → "all") | SignalR is not the source of truth: clients refetch through the API with their own authorization; no business data on the wire | — |
+| Doc §12 event names | `processing.failed` and `sync.succeeded/failed` are `processing.task.changed` with `taskType` / `status`; `order.status.changed` is defined when an order can change state after creation; `low_stock.created` comes with 017 | One event per task transition, filtered by the client | — |
+| API side | One `LISTEN` connection per API instance (background service, reconnect with backoff); after a reconnect every client gets `resync` (hints may have been missed) ; hints batched per short window (≤ 250 ms) into one hub message | Each instance pushes to its own connections: scale-out without a SignalR backplane; batching avoids refetch storms | Many API instances with sticky sessions → consider a backplane |
+| Hub | `/api/hubs/notifications`, server → client only, AnyStaff, JWT from the `access_token` query parameter for this path only, `CloseOnAuthenticationExpiration`, security-stamp check at connect (existing `OnTokenValidated`); the token never appears in logs | WebSockets cannot send headers from the browser; revocation keeps working at (re)connect; hints carry no data, so a revoked user keeps at most hint traffic until the token expires | Hints ever carry data |
+| Dashboard summary | `GET /api/dashboard/summary?from&to` (AnyStaff): orders in range by status and channel + sales amount (Reserved + Completed), current inventory counts (shared low-stock predicate, out of stock), current non-terminal tasks per type and failures in range, stock-sync health per channel, outbox health | One request for the overview page; every number from SQL aggregates, none computed by the client | 017 adds open alerts |
