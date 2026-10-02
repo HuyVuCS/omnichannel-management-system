@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Omnichannel.Application.Auth;
 using Omnichannel.Application.Channels;
 using Omnichannel.Domain.Enums;
@@ -62,6 +63,74 @@ public sealed class ChannelEndpointsTests(ApiFactory factory)
         Assert.Contains(channels!, c => c.Slug == "website");
         Assert.Contains(channels!, c => c.Slug == "pos");
         Assert.Contains(channels!, c => c.Slug == "digital-platform");
+    }
+
+    [Theory]
+    [InlineData("website")]
+    [InlineData("pos")]
+    [InlineData("digital-platform")]
+    public async Task Seeded_channel_has_stock_sync_in_the_list_and_on_its_own(string slug)
+    {
+        var staff = factory.CreateClientAs(AppRoles.Staff);
+
+        var channels = await staff.GetFromJsonAsync<List<ChannelResponse>>("/api/channels", TestData.Json);
+        var listed = Assert.Single(channels!, c => c.Slug == slug);
+        var single = await staff.GetFromJsonAsync<ChannelResponse>($"/api/channels/{listed.ChannelId}", TestData.Json);
+
+        Assert.True(listed.StockSyncEnabled);
+        Assert.True(single!.StockSyncEnabled);
+    }
+
+    [Fact]
+    public async Task Stock_sync_flag_is_part_of_the_json_contract()
+    {
+        var channels = await _admin.GetFromJsonAsync<List<JsonElement>>("/api/channels");
+
+        var website = Assert.Single(channels!, c => c.GetProperty("slug").GetString() == "website");
+        Assert.Equal(JsonValueKind.True, website.GetProperty("stockSyncEnabled").ValueKind);
+    }
+
+    [Fact]
+    public async Task Channel_created_through_the_api_has_no_stock_sync_and_an_update_keeps_that()
+    {
+        var slug = $"nosync-{TestData.UniqueSuffix()}";
+
+        var created = await (await _admin.PostAsJsonAsync(
+            "/api/channels",
+            new CreateChannelRequest("No sync", slug, ChannelType.Website))).ReadAsync<ChannelResponse>();
+        var channels = await _admin.GetFromJsonAsync<List<ChannelResponse>>("/api/channels", TestData.Json);
+        var single = await _admin.GetFromJsonAsync<ChannelResponse>($"/api/channels/{created.ChannelId}", TestData.Json);
+        var updated = await (await _admin.PutAsJsonAsync(
+            $"/api/channels/{created.ChannelId}",
+            new UpdateChannelRequest("Still no sync", ChannelStatus.Active))).ReadAsync<ChannelResponse>();
+
+        // No queue for this slug: the type (Website) does not matter.
+        Assert.False(created.StockSyncEnabled);
+        Assert.False(Assert.Single(channels!, c => c.Slug == slug).StockSyncEnabled);
+        Assert.False(single!.StockSyncEnabled);
+        Assert.False(updated.StockSyncEnabled);
+    }
+
+    [Fact]
+    public async Task Stock_sync_flag_is_the_capability_of_the_channel_not_its_status()
+    {
+        // digital-platform is switched off for this test only (the API collection runs one test at a time).
+        var channels = await _admin.GetFromJsonAsync<List<ChannelResponse>>("/api/channels", TestData.Json);
+        var marketplace = Assert.Single(channels!, c => c.Slug == "digital-platform");
+        var address = $"/api/channels/{marketplace.ChannelId}";
+        try
+        {
+            var deactivated = await (await _admin.PutAsJsonAsync(
+                address, new UpdateChannelRequest(marketplace.Name, ChannelStatus.Inactive), TestData.Json)).ReadAsync<ChannelResponse>();
+            var read = await _admin.GetFromJsonAsync<ChannelResponse>(address, TestData.Json);
+
+            Assert.Equal((ChannelStatus.Inactive, true), (deactivated.Status, deactivated.StockSyncEnabled));
+            Assert.Equal((ChannelStatus.Inactive, true), (read!.Status, read.StockSyncEnabled));
+        }
+        finally
+        {
+            await _admin.PutAsJsonAsync(address, new UpdateChannelRequest(marketplace.Name, ChannelStatus.Active), TestData.Json);
+        }
     }
 
     [Fact]

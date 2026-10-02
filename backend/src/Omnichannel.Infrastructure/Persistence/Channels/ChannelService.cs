@@ -19,8 +19,10 @@ internal sealed class ChannelService(
     ICorrelationContext correlationContext,
     ILogger<ChannelService> logger) : IChannelService
 {
+    // Translated to SQL, which cannot know which channels are synced (that map is code): the flag is left false here and
+    // set by WithStockSync on every response.
     private static readonly Expression<Func<Channel, ChannelResponse>> ToResponse = c => new ChannelResponse(
-        c.ChannelId, c.Name, c.Slug, c.Type, c.Status, c.CreatedAt, c.UpdatedAt);
+        c.ChannelId, c.Name, c.Slug, c.Type, c.Status, c.CreatedAt, c.UpdatedAt, false);
 
     private static readonly Func<Channel, ChannelResponse> ToResponseCompiled = ToResponse.Compile();
 
@@ -36,21 +38,26 @@ internal sealed class ChannelService(
         m.CreatedAt,
         m.UpdatedAt);
 
-    public async Task<IReadOnlyList<ChannelResponse>> ListAsync(CancellationToken cancellationToken) =>
-        await dbContext.Channels
+    public async Task<IReadOnlyList<ChannelResponse>> ListAsync(CancellationToken cancellationToken)
+    {
+        var channels = await dbContext.Channels
             .AsNoTracking()
             .OrderBy(c => c.Name)
             .ThenBy(c => c.ChannelId)
             .Select(ToResponse)
             .ToListAsync(cancellationToken);
 
+        return channels.ConvertAll(WithStockSync);
+    }
+
     public async Task<ChannelResponse> GetAsync(Guid channelId, CancellationToken cancellationToken) =>
-        await dbContext.Channels
-            .AsNoTracking()
-            .Where(c => c.ChannelId == channelId)
-            .Select(ToResponse)
-            .SingleOrDefaultAsync(cancellationToken)
-        ?? throw new NotFoundException(nameof(Channel), channelId);
+        WithStockSync(
+            await dbContext.Channels
+                .AsNoTracking()
+                .Where(c => c.ChannelId == channelId)
+                .Select(ToResponse)
+                .SingleOrDefaultAsync(cancellationToken)
+            ?? throw new NotFoundException(nameof(Channel), channelId));
 
     public async Task<ChannelResponse> CreateAsync(CreateChannelRequest request, CancellationToken cancellationToken)
     {
@@ -66,7 +73,7 @@ internal sealed class ChannelService(
             throw new ConflictException(ChannelErrorCodes.SlugExists, $"A channel with slug '{channel.Slug}' already exists.");
         }
 
-        return ToResponseCompiled(channel);
+        return WithStockSync(ToResponseCompiled(channel));
     }
 
     public async Task<ChannelResponse> UpdateAsync(Guid channelId, UpdateChannelRequest request, CancellationToken cancellationToken)
@@ -77,8 +84,15 @@ internal sealed class ChannelService(
         channel.Update(request.Name, request.Status);
         await dbContext.SaveChangesAsync(cancellationToken);
 
-        return ToResponseCompiled(channel);
+        return WithStockSync(ToResponseCompiled(channel));
     }
+
+    /// <summary>
+    /// The one place a channel response learns whether the channel is synced: its slug has a stock-sync queue
+    /// (<see cref="RabbitMqTopology.StockSyncQueueOf"/>, the same map the sync itself uses). Independent of the status.
+    /// </summary>
+    private static ChannelResponse WithStockSync(ChannelResponse channel) =>
+        channel with { StockSyncEnabled = RabbitMqTopology.StockSyncQueueOf(channel.Slug) is not null };
 
     public async Task<PagedResult<ChannelProductResponse>> ListProductsAsync(
         Guid channelId,
