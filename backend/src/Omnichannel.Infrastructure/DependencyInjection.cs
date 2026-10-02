@@ -7,6 +7,7 @@ using Microsoft.Extensions.Options;
 using Omnichannel.Application.Auth;
 using Omnichannel.Application.Channels;
 using Omnichannel.Application.Customers;
+using Omnichannel.Application.Dashboard;
 using Omnichannel.Application.Inventory;
 using Omnichannel.Application.Orders;
 using Omnichannel.Application.Processing;
@@ -17,11 +18,13 @@ using Omnichannel.Infrastructure.Logging;
 using Omnichannel.Infrastructure.Persistence;
 using Omnichannel.Infrastructure.Persistence.Channels;
 using Omnichannel.Infrastructure.Persistence.Customers;
+using Omnichannel.Infrastructure.Persistence.Dashboard;
 using Omnichannel.Infrastructure.Persistence.Interceptors;
 using Omnichannel.Infrastructure.Persistence.Inventories;
 using Omnichannel.Infrastructure.Persistence.Orders;
 using Omnichannel.Infrastructure.Persistence.Processing;
 using Omnichannel.Infrastructure.Persistence.Products;
+using Omnichannel.Infrastructure.Realtime;
 
 namespace Omnichannel.Infrastructure;
 
@@ -46,12 +49,16 @@ public static class DependencyInjection
         services.TryAddSingleton(TimeProvider.System);
         services.AddScoped<AuditingInterceptor>();
         services.AddSingleton<DatabaseFailureLogInterceptor>();
+        services.AddScoped<RealtimeHintInterceptor>();
 
         services.AddDbContext<OmnichannelDbContext>((serviceProvider, options) =>
         {
             var database = serviceProvider.GetRequiredService<IOptions<DatabaseOptions>>().Value;
             options.UseNpgsql(database.ConnectionString);
-            options.AddInterceptors(serviceProvider.GetRequiredService<AuditingInterceptor>());
+            // Order matters: audit stamps first, then the hints of what is about to be saved.
+            options.AddInterceptors(
+                serviceProvider.GetRequiredService<AuditingInterceptor>(),
+                serviceProvider.GetRequiredService<RealtimeHintInterceptor>());
             DatabaseFailureLogInterceptor.Configure(options, serviceProvider.GetRequiredService<DatabaseFailureLogInterceptor>());
         });
 
@@ -66,6 +73,7 @@ public static class DependencyInjection
         services.AddScoped<IOrderReservationService, OrderReservationService>();
         services.AddScoped<IOrderQueryService, OrderQueryService>();
         services.AddScoped<IProcessingTaskService, ProcessingTaskService>();
+        services.AddScoped<IDashboardService, DashboardService>();
 
         return services;
     }
