@@ -9,7 +9,13 @@ import { adminUser, api, managerUser, problem, server, sessionOf, staffUser } fr
 import type { Channel } from './channelsApi';
 
 function channel(overrides: Partial<Channel> & Pick<Channel, 'channelId' | 'name' | 'slug' | 'type'>): Channel {
-  return { status: 'Active', createdAt: '2026-09-25T03:15:00+00:00', updatedAt: null, ...overrides };
+  return {
+    status: 'Active',
+    createdAt: '2026-09-25T03:15:00+00:00',
+    updatedAt: null,
+    stockSyncEnabled: true,
+    ...overrides,
+  };
 }
 
 const website = channel({ channelId: 'ch-web', name: 'Website', slug: 'website', type: 'Website' });
@@ -50,6 +56,66 @@ describe('channels page', () => {
     // Not paged.
     expect(document.querySelector('.ant-pagination')).toBeNull();
     expect(state.requests).toBe(1);
+  });
+
+  it('says for every channel whether stock is pushed to it, exactly as the API says, and explains "not synced"', async () => {
+    // The flags deliberately contradict what a client-side rule would compute from slug, type or status.
+    serveChannels([
+      { ...website, stockSyncEnabled: false },
+      { ...pos, stockSyncEnabled: true },
+      channel({ channelId: 'ch-shop', name: 'Cửa hàng mới', slug: 'my-new-shop', type: 'Website' }),
+    ]);
+    const { user: appUser } = renderChannels(staffUser);
+
+    await screen.findByText('my-new-shop');
+    expect(columnTexts('Đồng bộ tồn kho')).toEqual(['Không đồng bộ', 'Có đồng bộ', 'Có đồng bộ']);
+    // Icon and text, not colour alone.
+    for (const text of ['Không đồng bộ', 'Có đồng bộ']) {
+      expect(screen.getAllByText(text)[0]?.closest('.ant-tag')?.querySelector('[role="img"]')).toBeInTheDocument();
+    }
+
+    await appUser.hover(screen.getByText('Không đồng bộ'));
+    expect(
+      await screen.findByText(
+        'Kênh này không có hàng đợi đồng bộ tồn kho: có thể gắn sản phẩm, nhưng tồn kho không bao giờ được gửi tới kênh.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('links every channel name to the page of that channel', async () => {
+    serveChannels([website, pos]);
+    renderChannels(staffUser);
+
+    expect(await screen.findByRole('link', { name: 'Website' })).toHaveAttribute('href', '/channels/ch-web');
+    expect(screen.getByRole('link', { name: 'Cửa hàng' })).toHaveAttribute('href', '/channels/ch-pos');
+  });
+
+  it('fits the content area of a 1280 px window without horizontal scrolling, with and without the action column', async () => {
+    serveChannels([website, pos, platform]);
+    const widths = () =>
+      [...document.querySelectorAll<HTMLElement>('table colgroup col')].map((col) =>
+        Number.parseInt(col.style.width, 10),
+      );
+
+    // jsdom has no layout: the fixed column widths are what can be checked. 1280 px window - 240 px menu - 2 × 24 px
+    // padding = 992 px.
+    const admin = renderChannels(adminUser);
+    await screen.findByText('digital-platform');
+    expect([...document.querySelectorAll('thead th')].map((th) => th.textContent)).toEqual([
+      'Tên kênh',
+      'Slug',
+      'Loại kênh',
+      'Trạng thái',
+      'Đồng bộ tồn kho',
+      'Thao tác',
+    ]);
+    expect(widths()).toEqual([220, 168, 200, 150, 150, 88]);
+    expect(widths().reduce((sum, width) => sum + width, 0)).toBeLessThanOrEqual(992);
+    admin.unmount();
+
+    renderChannels(staffUser);
+    await screen.findByText('digital-platform');
+    expect(widths()).toEqual([220, 168, 200, 150, 150]);
   });
 
   it('creates a channel (Admin) and refreshes the list', async () => {
@@ -250,8 +316,8 @@ describe('channels page: language switch', () => {
     await appUser.type(within(dialog).getByLabelText('Slug'), 'dang-nhap');
 
     await expectLanguageSwitchChangesTextOnly(appUser, location, {
-      vietnamese: ['Tên kênh', 'Tại quầy (POS)', 'Ngừng hoạt động', 'Thêm kênh bán'],
-      english: ['Name', 'Point of sale', 'Inactive', 'New channel'],
+      vietnamese: ['Tên kênh', 'Tại quầy (POS)', 'Ngừng hoạt động', 'Thêm kênh bán', 'Đồng bộ tồn kho', 'Có đồng bộ'],
+      english: ['Name', 'Point of sale', 'Inactive', 'New channel', 'Stock sync', 'Synced'],
       requestCount: () => state.requests,
     });
     expect(location()).toBe('/channels');
@@ -280,6 +346,42 @@ describe('channels page: dialog reopened before its close animation has finished
     await appUser.click(screen.getByRole('button', { name: /Thêm kênh bán/ }));
     dialog = await findDialog('Thêm kênh bán');
     await waitFor(() => expect(within(dialog).getByLabelText('Slug')).toHaveValue(''));
+    expect(within(dialog).getByLabelText('Slug')).toBeEnabled();
+    expect(within(dialog).getByLabelText('Tên kênh')).toHaveValue('');
+    expect(within(dialog).getByRole('combobox', { name: 'Loại kênh' })).toBeEnabled();
+  });
+});
+
+/**
+ * Animations off: the closed dialog and its form are destroyed, as in the browser once the close animation has ended.
+ * The form instance outlives them. Without React's StrictMode (a production build; these tests) nothing else replaces
+ * what it holds: the next dialog would start with the values of the previous one.
+ */
+describe('channels page: dialog opened again after it was closed completely', () => {
+  it('shows the channel it was opened for, and a create dialog starts empty with slug and type editable', async () => {
+    serveChannels([website, pos]);
+    const { user: appUser } = renderChannels();
+    await screen.findByText('website');
+    const closed = () => waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+
+    await appUser.click(within(rowOf('website')).getByRole('button', { name: 'Sửa' }));
+    let dialog = await findDialog('Sửa kênh bán');
+    expect(within(dialog).getByLabelText('Slug')).toHaveValue('website');
+    await appUser.type(within(dialog).getByLabelText('Tên kênh'), ' (chưa lưu)');
+    await appUser.click(within(dialog).getByRole('button', { name: 'Huỷ' }));
+    await closed();
+
+    await appUser.click(within(rowOf('pos')).getByRole('button', { name: 'Sửa' }));
+    dialog = await findDialog('Sửa kênh bán');
+    expect(within(dialog).getByLabelText('Slug')).toHaveValue('pos');
+    expect(within(dialog).getByLabelText('Tên kênh')).toHaveValue('Cửa hàng');
+    expect(within(dialog).getByText('Ngừng hoạt động')).toBeInTheDocument(); // its status, not the previous one's
+    await appUser.click(within(dialog).getByRole('button', { name: 'Huỷ' }));
+    await closed();
+
+    await appUser.click(screen.getByRole('button', { name: /Thêm kênh bán/ }));
+    dialog = await findDialog('Thêm kênh bán');
+    expect(within(dialog).getByLabelText('Slug')).toHaveValue('');
     expect(within(dialog).getByLabelText('Slug')).toBeEnabled();
     expect(within(dialog).getByLabelText('Tên kênh')).toHaveValue('');
     expect(within(dialog).getByRole('combobox', { name: 'Loại kênh' })).toBeEnabled();

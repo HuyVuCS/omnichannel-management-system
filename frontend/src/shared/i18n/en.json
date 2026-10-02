@@ -93,7 +93,10 @@
     "order_not_found": "The order does not exist.",
     "task_not_found": "The processing task does not exist.",
     "task_not_failed": "The task is not failed any more, so it cannot be retried.",
-    "retry_source_missing": "The original message of the task no longer exists, so there is nothing to send again."
+    "retry_source_missing": "The original message of the task no longer exists, so there is nothing to send again.",
+    "channel_product_exists": "This product is already mapped on this channel.",
+    "external_product_id_taken": "This external product ID belongs to another product on this channel.",
+    "channel_product_not_found": "The mapping no longer exists."
   },
   "pages": {
     "notFound": {
@@ -245,7 +248,8 @@
       "name": "Name",
       "slug": "Slug",
       "type": "Type",
-      "status": "Status"
+      "status": "Status",
+      "stockSync": "Stock sync"
     },
     "types": {
       "Website": "Website",
@@ -255,6 +259,11 @@
     "status": {
       "Active": "Active",
       "Inactive": "Inactive"
+    },
+    "stockSync": {
+      "enabled": "Synced",
+      "disabled": "Not synced",
+      "disabledHint": "This channel has no stock-sync queue: products can be mapped, but stock is never sent to it."
     },
     "createModal": {
       "title": "New channel"
@@ -277,6 +286,67 @@
     "messages": {
       "created": "Channel created.",
       "updated": "Channel updated."
+    }
+  },
+  "channelDetail": {
+    "loadingTitle": "Channel",
+    "back": "Back",
+    "inactiveHint": "Inactive channel: no stock is sent to it until it is active again.",
+    "syncTasks": "Stock-sync tasks of this channel",
+    "notFound": {
+      "title": "Channel not found",
+      "description": "The channel does not exist or the address is wrong.",
+      "toList": "Back to the list"
+    },
+    "summary": {
+      "name": "Name",
+      "slug": "Slug",
+      "type": "Type",
+      "status": "Status",
+      "stockSync": "Stock sync"
+    },
+    "mappings": {
+      "title": "Mapped products",
+      "create": "Map product",
+      "searchPlaceholder": "Search by SKU, name, external ID",
+      "columns": {
+        "sku": "SKU",
+        "productName": "Product",
+        "externalProductId": "External ID",
+        "externalSku": "External SKU",
+        "status": "Status",
+        "createdAt": "Created",
+        "updatedAt": "Updated"
+      }
+    },
+    "mappingStatus": {
+      "Active": "Active",
+      "Inactive": "Inactive"
+    },
+    "createModal": {
+      "title": "Map a product"
+    },
+    "editModal": {
+      "title": "Edit mapping"
+    },
+    "form": {
+      "channel": "Channel",
+      "product": "Product",
+      "externalProductId": "External product ID",
+      "externalSku": "External SKU",
+      "status": "Status"
+    },
+    "messages": {
+      "created": "Product mapped.",
+      "updated": "Mapping updated."
+    },
+    "sync": {
+      "started": "Stock sync started for {{sku}}.",
+      "taskStatus": "Task status:",
+      "openTask": "Open task",
+      "none": "No stock sync was started for {{sku}}.",
+      "noneWhy": "Why?",
+      "noneReasons": "No sync is started when the channel or the mapping is inactive, when the channel has no stock sync, or when nothing changed that the channel has to learn."
     }
   },
   "productSelect": {

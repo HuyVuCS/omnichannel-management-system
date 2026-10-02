@@ -93,7 +93,10 @@
     "order_not_found": "Đơn hàng không tồn tại.",
     "task_not_found": "Tác vụ xử lý không tồn tại.",
     "task_not_failed": "Tác vụ không còn ở trạng thái thất bại nên không thể thử lại.",
-    "retry_source_missing": "Không còn thông điệp gốc của tác vụ để gửi lại."
+    "retry_source_missing": "Không còn thông điệp gốc của tác vụ để gửi lại.",
+    "channel_product_exists": "Sản phẩm này đã được gắn trên kênh này.",
+    "external_product_id_taken": "Mã sản phẩm trên kênh này đang thuộc về một sản phẩm khác của kênh.",
+    "channel_product_not_found": "Liên kết sản phẩm không còn tồn tại."
   },
   "pages": {
     "notFound": {
@@ -245,7 +248,8 @@
       "name": "Tên kênh",
       "slug": "Slug",
       "type": "Loại kênh",
-      "status": "Trạng thái"
+      "status": "Trạng thái",
+      "stockSync": "Đồng bộ tồn kho"
     },
     "types": {
       "Website": "Website",
@@ -255,6 +259,11 @@
     "status": {
       "Active": "Đang hoạt động",
       "Inactive": "Ngừng hoạt động"
+    },
+    "stockSync": {
+      "enabled": "Có đồng bộ",
+      "disabled": "Không đồng bộ",
+      "disabledHint": "Kênh này không có hàng đợi đồng bộ tồn kho: có thể gắn sản phẩm, nhưng tồn kho không bao giờ được gửi tới kênh."
     },
     "createModal": {
       "title": "Thêm kênh bán"
@@ -277,6 +286,67 @@
     "messages": {
       "created": "Đã thêm kênh bán.",
       "updated": "Đã cập nhật kênh bán."
+    }
+  },
+  "channelDetail": {
+    "loadingTitle": "Kênh bán",
+    "back": "Quay lại",
+    "inactiveHint": "Kênh đang ngừng hoạt động: tồn kho không được gửi tới kênh cho đến khi kênh hoạt động lại.",
+    "syncTasks": "Tác vụ đồng bộ tồn kho của kênh này",
+    "notFound": {
+      "title": "Không tìm thấy kênh bán",
+      "description": "Kênh bán không tồn tại hoặc địa chỉ không đúng.",
+      "toList": "Về danh sách"
+    },
+    "summary": {
+      "name": "Tên kênh",
+      "slug": "Slug",
+      "type": "Loại kênh",
+      "status": "Trạng thái",
+      "stockSync": "Đồng bộ tồn kho"
+    },
+    "mappings": {
+      "title": "Sản phẩm trên kênh",
+      "create": "Gắn sản phẩm",
+      "searchPlaceholder": "Tìm theo SKU, tên, mã trên kênh",
+      "columns": {
+        "sku": "SKU",
+        "productName": "Tên sản phẩm",
+        "externalProductId": "Mã trên kênh",
+        "externalSku": "SKU trên kênh",
+        "status": "Trạng thái",
+        "createdAt": "Ngày tạo",
+        "updatedAt": "Cập nhật lúc"
+      }
+    },
+    "mappingStatus": {
+      "Active": "Hoạt động",
+      "Inactive": "Ngừng"
+    },
+    "createModal": {
+      "title": "Gắn sản phẩm vào kênh"
+    },
+    "editModal": {
+      "title": "Sửa liên kết sản phẩm"
+    },
+    "form": {
+      "channel": "Kênh bán",
+      "product": "Sản phẩm",
+      "externalProductId": "Mã sản phẩm trên kênh",
+      "externalSku": "SKU trên kênh",
+      "status": "Trạng thái"
+    },
+    "messages": {
+      "created": "Đã gắn sản phẩm vào kênh.",
+      "updated": "Đã cập nhật liên kết sản phẩm."
+    },
+    "sync": {
+      "started": "Đã bắt đầu đồng bộ tồn kho cho {{sku}}.",
+      "taskStatus": "Trạng thái tác vụ:",
+      "openTask": "Mở tác vụ",
+      "none": "Không có đồng bộ tồn kho nào được bắt đầu cho {{sku}}.",
+      "noneWhy": "Vì sao?",
+      "noneReasons": "Không bắt đầu đồng bộ khi kênh hoặc liên kết đang ngừng hoạt động, khi kênh không có đồng bộ tồn kho, hoặc khi không có thay đổi nào mà kênh cần biết."
     }
   },
   "productSelect": {

@@ -3,6 +3,7 @@ import { createBrowserRouter, type RouteObject } from 'react-router';
 import { RequireAuth } from '@/features/auth/RequireAuth';
 import { RequireRole } from '@/features/auth/RequireRole';
 import { LOGIN_PATH } from '@/features/auth/returnUrl';
+import { CHANNEL_DETAIL_ROUTE, CHANNELS_PATH } from '@/features/channels/paths';
 import { INVENTORY_PATH, MOVEMENTS_PATH, STOCK_IMPORT_PATH, STOCK_IMPORT_ROLES } from '@/features/inventory/paths';
 import { ORDER_DETAIL_ROUTE, ORDER_ENTRY_PATH, ORDERS_PATH } from '@/features/orders/paths';
 import { PROCESSING_PATH, PROCESSING_TASK_ROUTE } from '@/features/processing/paths';
@@ -29,6 +30,9 @@ const CustomersPage = lazyPage(() =>
 );
 const ChannelsPage = lazyPage(() =>
   import('@/features/channels/ChannelsPage').then((m) => ({ default: m.ChannelsPage })),
+);
+const ChannelDetailPage = lazyPage(() =>
+  import('@/features/channels/ChannelDetailPage').then((m) => ({ default: m.ChannelDetailPage })),
 );
 const UsersPage = lazyPage(() => import('@/features/users/UsersPage').then((m) => ({ default: m.UsersPage })));
 const InventoryPage = lazyPage(() =>
@@ -62,7 +66,7 @@ const builtPages: Record<string, RouteObject['element']> = {
   [MOVEMENTS_PATH]: <MovementsPage />,
   '/products': <ProductsPage />,
   '/customers': <CustomersPage />,
-  '/channels': <ChannelsPage />,
+  [CHANNELS_PATH]: <ChannelsPage />,
   [PROCESSING_PATH]: <ProcessingPage />,
   '/users': <UsersPage />,
 };
@@ -87,6 +91,7 @@ const pageRoutes: RouteObject[] = navigationItems
  */
 const pagesOutsideMenu: RouteObject[] = [
   { path: ORDER_DETAIL_ROUTE, element: <OrderDetailPage /> },
+  { path: CHANNEL_DETAIL_ROUTE, element: <ChannelDetailPage /> },
   { path: PROCESSING_TASK_ROUTE, element: <ProcessingTaskPage /> },
   {
     path: STOCK_IMPORT_PATH,

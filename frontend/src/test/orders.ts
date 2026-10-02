@@ -15,6 +15,8 @@ export function channel(overrides: Partial<Channel> & Pick<Channel, 'slug' | 'na
     status: 'Active',
     createdAt: '2026-01-01T00:00:00+00:00',
     updatedAt: null,
+    // As for the seeded channels; a channel created through the API has `false`.
+    stockSyncEnabled: true,
     ...overrides,
   };
 }
