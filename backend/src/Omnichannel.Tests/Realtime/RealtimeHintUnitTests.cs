@@ -107,9 +107,23 @@ public sealed class RealtimeHintCaptureTests
         context.ProcessingAttempts.Add(task.StartAttempt("OrderWorker", "i-2", Now));
         Assert.Empty(RealtimeHintInterceptor.Capture(context));
 
-        // InProgress -> Succeeded with the order it created.
+        // InProgress -> RetryScheduled.
+        var second = task.Attempts.Last();
+        task.ScheduleRetry(second.AttemptId, "timeout", "slow", Now);
+        Assert.Equal("RetryScheduled", Assert.Single(RealtimeHintInterceptor.Capture(context)).Status);
+
+        // The failure of the abandoned first attempt arrives late: the row changes (RetryCount), its status does not.
+        context.ChangeTracker.AcceptAllChanges();
+        task.ScheduleRetry(first.AttemptId, "timeout", "slow", Now);
+        Assert.Equal(EntityState.Modified, context.Entry(task).State);
+        Assert.Empty(RealtimeHintInterceptor.Capture(context));
+
+        // RetryScheduled -> InProgress -> Succeeded with the order it created.
+        context.ChangeTracker.AcceptAllChanges();
+        var third = task.StartAttempt("OrderWorker", "i-3", Now);
+        context.ProcessingAttempts.Add(third);
         var orderId = Guid.NewGuid();
-        task.Succeed(orderId, task.Attempts.Last().AttemptId, Now);
+        task.Succeed(orderId, third.AttemptId, Now);
         var done = Assert.Single(RealtimeHintInterceptor.Capture(context));
         Assert.Equal(((Guid?)orderId, "Succeeded", "OrderProcessing"), (done.OrderId, done.Status, done.TaskType));
     }
