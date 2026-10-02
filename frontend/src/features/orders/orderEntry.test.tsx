@@ -301,6 +301,11 @@ describe('order entry', () => {
     expect(panelOf('website').queryByLabelText('Mã đơn hàng bên ngoài')).not.toBeInTheDocument();
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(outcome).toHaveTextContent(id);
+
+    // The outcome is followed to its end before the test is over: a request still in flight would be answered by the
+    // handlers of the next test and counted there.
+    expect(await within(outcome).findByText('Đã giữ hàng cho đơn hàng.')).toBeInTheDocument();
+    expect(backend.orderRequests).toEqual([ORDER_ID]);
   });
 
   it('says so when the channel had already accepted the order, and shows the existing task', async () => {
@@ -893,6 +898,11 @@ describe('order entry: outcome by push', () => {
     await waitFor(() => expect(backend.taskRequests.length).toBeGreaterThanOrEqual(3));
     expect(screen.getByTestId('order-outcome-website')).toBe(outcome);
     expect(outcome).toHaveTextContent(id!);
+
+    // The polling ends with the task: no request of this test is still on its way when the next one starts.
+    backend.taskAnswer = succeededTask;
+    jump(POLL_INTERVAL_MS + 100);
+    expect(await within(outcome).findByText('Đã giữ hàng cho đơn hàng.')).toBeInTheDocument();
   });
 
   it('stops polling when the connection is back - one refetch for what was missed - and the push finishes the order in the same view', async () => {
