@@ -3,9 +3,10 @@
 This file is an index and a snapshot of what is in flight. The repository documents are the memory; follow the links.
 
 ## 1. Snapshot
-- Written: 2026-10-03 (+07:00), by Cowork, after review 016b.
-- Branch `master` (nothing pushed). HEAD: the Cowork commit "docs: review 016b" (on top of `b5f533f`).
-- Working tree: clean after that commit.
+- Written: 2026-10-03 03:51 (+07:00), by Claude Code; content as Cowork left it after review 016b, checked against the
+  repository (nothing was implemented since).
+- Branch `master` (nothing pushed). HEAD: `a4e2ec9` "docs: review 016b" (this file is committed on top of it).
+- Working tree: clean. No API, Workers host or dev server is left running by Claude Code.
 - Newest migration: `20261002053501_StockSync` (task 014; applied to the development database by the user). Tasks
   015, 016, 016b added none.
 
