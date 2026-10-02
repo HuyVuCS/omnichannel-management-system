@@ -2,7 +2,7 @@ import { skipToken } from '@reduxjs/toolkit/query';
 import { Select, Spin, Typography } from 'antd';
 import { useMemo, type CSSProperties } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useServerSearchSelect } from '@/shared/hooks/useServerSearchSelect';
+import { optionsAreStale, useServerSearchSelect } from '@/shared/hooks/useServerSearchSelect';
 import { customerContact, useGetCustomerQuery, useListCustomersQuery, type Customer } from '../customersApi';
 
 const PAGE_SIZE = 20;
@@ -62,8 +62,9 @@ export function CustomerSelect({ value, onChange, placeholder, ...rest }: Custom
     [listed],
   );
 
-  // The typed text is not what the options answer yet: the request has not been sent, or is still running.
-  const searching = searchPending || list.isFetching;
+  // The typed text is not what the options answer yet: the request has not been sent, or is still running. A refetch
+  // of the same search keeps its options.
+  const searching = optionsAreStale(searchPending, list);
   const selectedCustomer = listed?.find((customer) => customer.customerId === value) ?? selected.data;
 
   return (

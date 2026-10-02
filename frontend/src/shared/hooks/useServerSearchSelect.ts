@@ -14,7 +14,7 @@ const SEARCH_DEBOUNCE_MS = 300;
  * While `searchPending` is true (text was typed that the request does not carry yet) - and while that request is
  * running - the options on screen answer an older search. The picker must not offer them: Enter would choose the
  * first of them, i.e. something the user did not search for (found in the browser: typing a SKU and pressing Enter
- * at once put a different product on the line).
+ * at once put a different product on the line). The picker asks `optionsAreStale` with its list query.
  */
 export function useServerSearchSelect() {
   const [activated, setActivated] = useState(false);
@@ -36,4 +36,14 @@ export function useServerSearchSelect() {
   );
 
   return { activated, search: search || undefined, searchPending: typed !== search, selectProps, clearSearch };
+}
+
+/**
+ * True while the options of a picker's list query do not answer what was typed: the typed text has not reached the
+ * request yet, or the request for it is still running. RTK Query's `currentData` is `undefined` exactly while a
+ * *different* argument is loading; a background refetch of the *same* search (an invalidation while the dropdown is
+ * open) keeps it, and with it the options.
+ */
+export function optionsAreStale(searchPending: boolean, list: { isFetching: boolean; currentData?: unknown }): boolean {
+  return searchPending || (list.isFetching && list.currentData === undefined);
 }

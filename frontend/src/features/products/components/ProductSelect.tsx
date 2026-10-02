@@ -2,7 +2,7 @@ import { skipToken } from '@reduxjs/toolkit/query';
 import { Select, Spin, Typography } from 'antd';
 import { useMemo, type CSSProperties } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useServerSearchSelect } from '@/shared/hooks/useServerSearchSelect';
+import { optionsAreStale, useServerSearchSelect } from '@/shared/hooks/useServerSearchSelect';
 import { formatNumber } from '@/shared/utils/format';
 import { productLabel, useGetProductQuery, useListProductsQuery, type Product } from '../productsApi';
 
@@ -63,8 +63,9 @@ export function ProductSelect({ value, onChange, disabledIds, placeholder, ...re
     [disabledIds, listed, value],
   );
 
-  // The typed text is not what the options answer yet: the request has not been sent, or is still running.
-  const searching = searchPending || list.isFetching;
+  // The typed text is not what the options answer yet: the request has not been sent, or is still running. A refetch
+  // of the same search keeps its options.
+  const searching = optionsAreStale(searchPending, list);
   const selectedProduct = listed?.find((product) => product.productId === value) ?? selected.data;
 
   return (
