@@ -84,6 +84,8 @@ export function ProductFormModal({ state, onClose }: ProductFormModalProps) {
         form={form}
         layout="vertical"
         preserve={false}
+        // With `useResetFormOnOpen`: a dialog opened again must not start with the values of the previous time.
+        clearOnDestroy
         initialValues={initialValues}
         onFinish={(values) => void submit(values)}
       >

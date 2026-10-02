@@ -46,7 +46,14 @@ export function ResetPasswordModal({ user, onClose }: ResetPasswordModalProps) {
       <Typography.Paragraph ellipsis={{ tooltip: user?.email }} strong>
         {user?.email}
       </Typography.Paragraph>
-      <Form form={form} layout="vertical" preserve={false} onFinish={(values) => void submit(values)}>
+      <Form
+        form={form}
+        layout="vertical"
+        preserve={false}
+        // With `useResetFormOnOpen`: a dialog opened again must not start with the values of the previous time.
+        clearOnDestroy
+        onFinish={(values) => void submit(values)}
+      >
         <Form.Item
           name="newPassword"
           label={t('users.resetModal.newPassword')}

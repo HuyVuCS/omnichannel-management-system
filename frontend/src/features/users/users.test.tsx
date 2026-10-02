@@ -444,3 +444,40 @@ describe('users page: dialog reopened before its close animation has finished', 
     await waitFor(() => expect(within(dialog).getByLabelText('E-mail')).toHaveValue(''));
   });
 });
+
+/**
+ * Animations off: the closed dialog and its form are destroyed, as in the browser once the close animation has ended.
+ * The form instance outlives them. Without React's StrictMode (a production build; these tests) nothing else replaces
+ * what it holds: the next dialog would start with the values of the previous one.
+ */
+describe('users page: dialog opened again after it was closed completely', () => {
+  it('shows the role of the user it was opened for, and a create dialog starts empty', async () => {
+    serveUsers([alice, bob]);
+    const { user: appUser } = renderApp({ route: '/users', session: sessionOf(adminUser) });
+    await screen.findByText('alice@example.com');
+    const closed = () => waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+
+    await appUser.click(within(rowOf('alice@example.com')).getByRole('button', { name: 'Đổi vai trò' }));
+    let dialog = await findDialog('Đổi vai trò');
+    expect(within(dialog).getByText('Quản lý')).toBeInTheDocument();
+    await appUser.click(within(dialog).getByRole('button', { name: 'Huỷ' }));
+    await closed();
+
+    await appUser.click(within(rowOf('bob@example.com')).getByRole('button', { name: 'Đổi vai trò' }));
+    dialog = await findDialog('Đổi vai trò');
+    expect(within(dialog).getByText('bob@example.com')).toBeInTheDocument();
+    expect(within(dialog).getByText('Nhân viên')).toBeInTheDocument();
+    expect(within(dialog).queryByText('Quản lý')).not.toBeInTheDocument();
+    await appUser.click(within(dialog).getByRole('button', { name: 'Huỷ' }));
+    await closed();
+
+    await appUser.click(screen.getByRole('button', { name: /Thêm người dùng/ }));
+    dialog = await findDialog('Thêm người dùng');
+    await appUser.type(within(dialog).getByLabelText('E-mail'), 'typed@example.com');
+    await appUser.click(within(dialog).getByRole('button', { name: 'Huỷ' }));
+    await closed();
+    await appUser.click(screen.getByRole('button', { name: /Thêm người dùng/ }));
+    dialog = await findDialog('Thêm người dùng');
+    expect(within(dialog).getByLabelText('E-mail')).toHaveValue('');
+  });
+});

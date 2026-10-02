@@ -49,7 +49,14 @@ export function CreateUserModal({ open, onClose }: CreateUserModalProps) {
       destroyOnHidden
     >
       <FormErrors errors={formErrors} />
-      <Form form={form} layout="vertical" preserve={false} onFinish={(values) => void submit(values)}>
+      <Form
+        form={form}
+        layout="vertical"
+        preserve={false}
+        // With `useResetFormOnOpen`: a dialog opened again must not start with the values of the previous time.
+        clearOnDestroy
+        onFinish={(values) => void submit(values)}
+      >
         <Form.Item name="email" label={t('users.createModal.email')} rules={[{ required: true }, { type: 'email' }]}>
           <Input autoComplete="off" />
         </Form.Item>
