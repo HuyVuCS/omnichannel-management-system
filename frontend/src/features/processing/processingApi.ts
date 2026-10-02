@@ -41,6 +41,7 @@ export interface ProcessingMessage {
   status: MessageStatus;
   createdAt: string;
   publishedAt: string | null;
+  /** Publish attempts that failed (0 for a message that went out at the first try). */
   publishAttempts: number;
   /** Not sanitised for the UI: never shown. */
   lastError: string | null;

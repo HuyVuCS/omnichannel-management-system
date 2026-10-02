@@ -550,7 +550,7 @@
         "status": "Trạng thái gửi",
         "createdAt": "Ngày tạo",
         "publishedAt": "Gửi lúc",
-        "publishAttempts": "Số lần gửi",
+        "publishAttempts": "Số lần gửi lỗi",
         "messageId": "Mã thông điệp"
       },
       "attempts": {
