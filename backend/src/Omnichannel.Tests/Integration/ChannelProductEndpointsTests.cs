@@ -179,6 +179,49 @@ public sealed class ChannelProductEndpointsTests(ApiFactory factory)
     }
 
     [Fact]
+    public async Task Location_of_a_created_mapping_resolves_to_that_mapping()
+    {
+        var website = await ChannelAsync("website");
+        var pos = await ChannelAsync("pos");
+        var product = await CreateProductAsync();
+
+        var created = await _manager.PostAsJsonAsync(
+            $"/api/channels/{website.ChannelId}/products", new CreateChannelProductRequest(product.ProductId, "EXT-GET", "WEB-GET"));
+        var mapping = await created.ReadAsync<ChannelProductSavedResponse>();
+
+        // The header as the API wrote it, followed by a Staff user.
+        Assert.Equal($"/api/channels/{website.ChannelId}/products/{mapping.ChannelProductId}", created.Headers.Location?.OriginalString);
+        var response = await _staff.GetAsync(created.Headers.Location);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var item = await response.ReadAsync<ChannelProductResponse>();
+        Assert.Equal(
+            new ChannelProductResponse(
+                mapping.ChannelProductId, website.ChannelId, product.ProductId, product.Sku, product.Name,
+                "EXT-GET", "WEB-GET", ChannelProductStatus.Active, item.CreatedAt, null),
+            item);
+        // The database keeps microseconds; the 201 body carries the value before it was stored.
+        Assert.True((item.CreatedAt - mapping.CreatedAt).Duration() < TimeSpan.FromMilliseconds(1));
+        // The same shape as an item of the list.
+        Assert.Equal(item, (await ListAsync(website.ChannelId, $"search={product.Sku}")).Items.Single());
+
+        // Unknown mapping, the mapping through another channel, an unknown channel: not found.
+        foreach (var path in new[]
+                 {
+                     $"/api/channels/{website.ChannelId}/products/{Guid.NewGuid()}",
+                     $"/api/channels/{pos.ChannelId}/products/{mapping.ChannelProductId}",
+                     $"/api/channels/{Guid.NewGuid()}/products/{mapping.ChannelProductId}"
+                 })
+        {
+            var missing = await _staff.GetAsync(path);
+            Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
+            Assert.Equal(ChannelProductErrorCodes.MappingNotFound, await missing.ReadErrorCodeAsync());
+        }
+
+        Assert.Equal(HttpStatusCode.Unauthorized, (await factory.CreateClient().GetAsync(created.Headers.Location)).StatusCode);
+    }
+
+    [Fact]
     public async Task Unknown_channel_is_not_found()
     {
         var product = await CreateProductAsync();
