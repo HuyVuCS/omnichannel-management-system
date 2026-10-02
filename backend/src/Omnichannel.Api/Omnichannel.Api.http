@@ -33,3 +33,67 @@ Content-Type: application/json
   "email": "not-an-email",
   "password": ""
 }
+
+### ---- Channel product mappings (task 014) and realtime / dashboard (task 015) ----
+# Run "Login" first: the requests below take the token from its response. Ids are placeholders: copy them from the
+# responses of "Channels" and "Products" (or set the variables here). No secrets in this file.
+@token = {{login.response.body.accessToken}}
+@channelId = 0199a1b0-0000-7000-8000-000000000002
+@productId = 00000000-0000-0000-0000-000000000000
+@channelProductId = 00000000-0000-0000-0000-000000000000
+
+### Channels (ids of website / pos / digital-platform)
+GET {{baseUrl}}/api/channels
+Authorization: Bearer {{token}}
+
+### Products (pick a productId)
+GET {{baseUrl}}/api/products?pageSize=5
+Authorization: Bearer {{token}}
+
+### Mappings of a channel (search: SKU, product name, external product id, external SKU)
+GET {{baseUrl}}/api/channels/{{channelId}}/products?page=1&pageSize=20&sortBy=sku
+Authorization: Bearer {{token}}
+
+### Map a product on the channel (Manager/Admin) - 201 with syncTaskId
+POST {{baseUrl}}/api/channels/{{channelId}}/products
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "productId": "{{productId}}",
+  "externalProductId": null,
+  "externalSku": "WEB-0001"
+}
+
+### One mapping (the Location of the 201)
+GET {{baseUrl}}/api/channels/{{channelId}}/products/{{channelProductId}}
+Authorization: Bearer {{token}}
+
+### Change external ids / deactivate a mapping (Manager/Admin)
+PUT {{baseUrl}}/api/channels/{{channelId}}/products/{{channelProductId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "externalProductId": null,
+  "externalSku": "WEB-0002",
+  "status": "Active"
+}
+
+### Stock-sync tasks of the channel
+GET {{baseUrl}}/api/processing/tasks?taskType=StockSync&channelId={{channelId}}
+Authorization: Bearer {{token}}
+
+### Dashboard summary (default range: the last 24 hours)
+GET {{baseUrl}}/api/dashboard/summary
+Authorization: Bearer {{token}}
+
+### Dashboard summary for a range (at most 92 days)
+GET {{baseUrl}}/api/dashboard/summary?from=2026-10-01T00:00:00%2B07:00&to=2026-10-02T23:59:59%2B07:00
+Authorization: Bearer {{token}}
+
+### Realtime hub: negotiate (what a SignalR client does first). 401 without a token.
+# A browser passes the token as ?access_token=... on the hub's requests; here the header is used so that no token ends up
+# in a URL of this file.
+POST {{baseUrl}}/api/hubs/notifications/negotiate?negotiateVersion=1
+Authorization: Bearer {{token}}

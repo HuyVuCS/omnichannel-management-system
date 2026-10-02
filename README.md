@@ -290,6 +290,55 @@ npm run dev     # http://localhost:5173 - needs the API on http://localhost:5080
   violation are written at Debug; every other database failure is logged at Error as before
   (`ExpectedUniqueViolations`, `DatabaseFailureLogInterceptor`).
 
+### Realtime hints and dashboard summary
+
+- **Hub:** `/api/hubs/notifications` (SignalR, any role). Server to client only: a client receives the message `hints`
+  and has nothing to call. Hints say *what kind of thing changed and which ids* - never data. The client refetches
+  through the API (with its own authorization); PostgreSQL stays the source of truth.
+
+  ```json
+  { "events": [
+      { "type": "order.created", "orderId": "...", "channelId": "...", "status": "Reserved" },
+      { "type": "inventory.changed", "productIds": ["..."] },
+      { "type": "processing.task.changed", "taskId": "...", "taskType": "StockSync", "status": "Failed",
+        "channelId": "...", "productId": "..." } ],
+    "resync": false }
+  ```
+
+  | `type` | When | Members |
+  | --- | --- | --- |
+  | `order.created` | an order was stored (Order Worker) | `orderId`, `channelId`, `status` |
+  | `inventory.changed` | stock changed (import, reservation) | `productIds`, or `all: true` when more than 100 products changed |
+  | `processing.task.changed` | a task was created or its status changed | `taskId`, `taskType`, `status`, `orderId`, `channelId`, `productId` (those that apply) |
+
+  A failed task or a finished stock sync is a `processing.task.changed` with that `taskType` / `status`. Members without
+  a value are left out. `all: true` on an event means "more changed than is listed: refetch everything of this type".
+- **`resync: true`** means hints may have been missed (the API lost and re-established its database listener, or a burst
+  was too large to list): refetch everything that is on screen. A client must do the same after its own reconnect.
+- **How a hint gets there:** every `SaveChanges` that stores an order, a stock movement or a task change (API and Workers
+  alike, `RealtimeHintInterceptor`) sends one `pg_notify('omnichannel_ui', ...)` on its connection: inside a transaction
+  PostgreSQL delivers it at the commit and drops it on a rollback, otherwise it is sent right after the save was
+  committed. Each API instance holds one `LISTEN` connection (`PostgresHintListener`; no extra database right needed) and
+  pushes to its own clients, so several instances need no backplane. Hints that arrive within `Realtime:BatchWindow`
+  (default `00:00:00.250`, 10 ms - 5 s) go out as one message.
+- **Authentication:** the same access token as for the API. Browsers cannot set headers on WebSocket requests, so the
+  hub - and only the hub - also accepts it as the query parameter `access_token`; every other path reads the
+  `Authorization` header only. The security stamp is checked at connect, and a connection is closed when its token
+  expires. The token value is replaced by `***` in every log event (`AccessTokenRedactionEnricher`), whatever log level
+  is configured for the framework categories.
+- To watch the hints in the API log, set `Serilog:MinimumLevel:Override:Omnichannel.Api.Hubs` to `Debug`
+  (`Hints received: ...`, `Hint batch sent to the clients: ...`).
+- **`GET /api/dashboard/summary?from&to`** (any role): the numbers of the overview page in one request. `from` / `to` are
+  ISO 8601 with offset, both optional (default: the last 24 hours up to now), `from` < `to`, at most 92 days.
+  - `orders` (created in the range): `total`, `byStatus` (every status), `byChannel` (every channel: `total`, `reserved`,
+    `insufficientStock`), `salesAmount` (Reserved + Completed);
+  - `inventory` (now): `products`, `lowStock` (the rule of the inventory list's low-stock filter), `outOfStock`;
+  - `processing` per task type: `pending`, `inProgress`, `retryScheduled` (now), `failed`, `succeeded` (status reached
+    in the range);
+  - `stockSync` per channel with a stock-sync queue: `retryScheduled` (now), `failed` (in the range), `lastSucceededAt`;
+  - `outbox` (now): `pending`, `failed`, `oldestPendingAt`.
+- Scripted check: `powershell -ExecutionPolicy Bypass -File scripts\smoke\task-015.ps1`.
+
 ### Users and token revocation
 
 - `/api/users` (Admin only): list/search, create (`{email, password, role}`), `PUT {id}/role`, `POST {id}/lock`, `POST {id}/unlock`,
