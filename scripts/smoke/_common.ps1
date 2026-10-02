@@ -90,8 +90,48 @@ function Get-Token([string]$Email, [string]$Password) {
     return $r.Body.accessToken
 }
 
+# The kind of a value as Assert-Step compares it: 'null', 'bool', 'number' or 'string'; $null for every other type.
+function Get-AssertKind($Value) {
+    if ($null -eq $Value) { return 'null' }
+    if ($Value -is [bool]) { return 'bool' }
+    if ($Value -is [string]) { return 'string' }
+    foreach ($type in [byte], [sbyte], [int16], [uint16], [int32], [uint32], [int64], [uint64], [decimal], [double], [single]) {
+        if ($Value -is $type) { return 'number' }
+    }
+    return $null
+}
+
+function Get-AssertTypeName($Value) { if ($null -eq $Value) { return 'null' } else { return $Value.GetType().Name } }
+
+# Strict equality: both values must be of the same kind. $null only equals $null, a boolean only a boolean, numbers are
+# compared by value whatever their numeric type (ConvertFrom-Json returns Int32, Int64, Decimal and Double), strings
+# case-sensitively. PowerShell's own -eq is too loose for a check: $true -eq 'any text', 1 -eq '1' and 'Open' -eq 'open'
+# are all true. Any other type (array, object, hashtable, date) throws: the caller compares explicitly and passes the
+# boolean result.
+function Test-AssertEqual($Expected, $Actual) {
+    $kind = Get-AssertKind $Expected
+    $actualKind = Get-AssertKind $Actual
+    if (($null -eq $kind) -or ($null -eq $actualKind)) {
+        throw "Assert-Step compares null, booleans, numbers and strings only (expected: $(Get-AssertTypeName $Expected), actual: $(Get-AssertTypeName $Actual)); compare explicitly and pass the boolean result."
+    }
+    if ($kind -ne $actualKind) { return $false }
+    if ($kind -eq 'null') { return $true }
+    if ($kind -eq 'string') { return ($Expected -ceq $Actual) }
+    if ($kind -eq 'bool') { return ([bool]$Expected -eq [bool]$Actual) }
+    foreach ($value in $Expected, $Actual) {
+        if (($value -is [double]) -or ($value -is [single])) { return ([double]$Expected -eq [double]$Actual) }
+    }
+    return ([decimal]$Expected -eq [decimal]$Actual)
+}
+
+# Records one check. A failed step shows both values with their type names.
 function Assert-Step([string]$Step, $Expected, $Actual) {
-    $script:Results.Add([pscustomobject]@{ Step = $Step; Expected = $Expected; Actual = $Actual; OK = ($Expected -eq $Actual) })
+    $ok = Test-AssertEqual $Expected $Actual
+    if (-not $ok) {
+        $Expected = "$Expected [$(Get-AssertTypeName $Expected)]"
+        $Actual = "$Actual [$(Get-AssertTypeName $Actual)]"
+    }
+    $script:Results.Add([pscustomobject]@{ Step = $Step; Expected = $Expected; Actual = $Actual; OK = $ok })
 }
 
 function New-TestPassword { return 'Sm' + [guid]::NewGuid().ToString('N').Substring(0, 14) + '9Q' }
