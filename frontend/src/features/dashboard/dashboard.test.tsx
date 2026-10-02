@@ -276,24 +276,33 @@ describe('dashboard', () => {
     await waitFor(() => expect(requests).toHaveLength(3));
   });
 
-  it('is refetched once by a burst of realtime hints', async () => {
+  it('is refetched at once by a realtime hint, and once more by everything else of the same second', async () => {
     const { state, requests } = serveSummary();
     const hub = fakeHub({ autoAccept: true });
     renderDashboard('/', staffUser, hub.create);
     await screen.findByText('Đơn hàng trong khoảng thời gian');
     await waitFor(() => expect(screen.getByTestId('connection-indicator')).toHaveTextContent('Trực tiếp'));
-    // The page's own request and the one every new connection causes.
+    // The page's own request and, when the page was there before the connection, the one every new connection causes.
     await pause(FLUSH_WINDOW_MS + 300);
-    expect(requests).toHaveLength(2);
+    const loaded = requests.length;
 
+    // Idle: the first hint is not held back.
     state.summary = summary({ orders: { ...summary().orders, total: 1235 } });
     await hub.latest().send([{ type: 'order.created', orderId: 'o1' }]);
+    await waitFor(() => expect(screen.getByTestId('dashboard-orders')).toHaveTextContent('Số đơn hàng1.235'));
+    expect(requests).toHaveLength(loaded + 1);
+
+    // A burst within the second of that refetch: one more request, when the second is over.
+    state.summary = summary({ orders: { ...summary().orders, total: 1236 } });
     await hub.latest().send([{ type: 'inventory.changed', productIds: ['p1'] }]);
     await hub.latest().send([{ type: 'processing.task.changed', taskId: 't1', taskType: 'StockSync' }]);
+    await hub.latest().send([{ type: 'order.created', orderId: 'o2' }]);
+    await pause(200);
+    expect(requests).toHaveLength(loaded + 1);
 
-    await waitFor(() => expect(screen.getByTestId('dashboard-orders')).toHaveTextContent('Số đơn hàng1.235'));
+    await waitFor(() => expect(screen.getByTestId('dashboard-orders')).toHaveTextContent('Số đơn hàng1.236'));
     await pause(FLUSH_WINDOW_MS + 300);
-    expect(requests).toHaveLength(3);
+    expect(requests).toHaveLength(loaded + 2);
     expect(requests.at(-1)).toEqual({});
   });
 });

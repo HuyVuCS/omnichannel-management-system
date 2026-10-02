@@ -292,27 +292,33 @@ describe('processing list', () => {
     expect(location()).toBe(`/orders/${ORDER_ID}`);
   });
 
-  it('is refetched once by a burst of realtime hints about tasks, and not by hints about other things', async () => {
+  it('is refetched at once by a realtime hint about a task, once more by a burst within that second, and not by hints about other things', async () => {
     const { state, requests } = serveList([failedSync]);
     const hub = fakeHub({ autoAccept: true });
     renderProcessing('/processing', staffUser, hub.create);
     await screen.findByText('channel_rejected');
     await waitFor(() => expect(screen.getByTestId('connection-indicator')).toHaveTextContent('Trực tiếp'));
-    // The page's own request and the one every new connection causes.
+    // The page's own request and, when the page was there before the connection, the one every new connection causes.
     await pause(FLUSH_WINDOW_MS + 300);
-    expect(requests).toHaveLength(2);
+    const loaded = requests.length;
 
-    // A new failed task appears without a reload.
+    // A new failed task appears without a reload - at once: nothing was refetched in the last second.
     state.items = [taskSummary({ taskId: TASK_ID, status: 'Failed', correlationId: 'corr-new' }), failedSync];
     await hub.latest().send([{ type: 'processing.task.changed', taskId: TASK_ID, taskType: 'OrderProcessing' }]);
-    await hub.latest().send([{ type: 'processing.task.changed', taskId: SYNC_TASK_ID, taskType: 'StockSync' }]);
     await waitFor(() => expect(document.querySelectorAll('tbody tr.ant-table-row')).toHaveLength(2));
+    expect(requests).toHaveLength(loaded + 1);
+
+    // More task hints within that second: one more request, when the second is over.
+    await hub.latest().send([{ type: 'processing.task.changed', taskId: SYNC_TASK_ID, taskType: 'StockSync' }]);
+    await hub.latest().send([{ type: 'processing.task.changed', taskId: TASK_ID, taskType: 'OrderProcessing' }]);
+    await pause(200);
+    expect(requests).toHaveLength(loaded + 1);
     await pause(FLUSH_WINDOW_MS + 300);
-    expect(requests).toHaveLength(3);
+    expect(requests).toHaveLength(loaded + 2);
 
     await hub.latest().send([{ type: 'inventory.changed', productIds: ['p1'] }]);
     await pause(FLUSH_WINDOW_MS + 300);
-    expect(requests).toHaveLength(3);
+    expect(requests).toHaveLength(loaded + 2);
   });
 
   it('is usable by every role', async () => {
