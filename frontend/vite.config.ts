@@ -13,7 +13,8 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     proxy: {
-      '/api': { target: 'http://localhost:5080', changeOrigin: false },
+      // `ws`: the notifications hub (`/api/hubs/notifications`) uses WebSockets.
+      '/api': { target: 'http://localhost:5080', changeOrigin: false, ws: true },
     },
   },
   test: {
