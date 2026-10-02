@@ -235,8 +235,11 @@ npm run dev     # http://localhost:5173 - needs the API on http://localhost:5080
     to the address (`useAddressText`) follows it when it changes from outside (menu link, back/forward);
   - date filters keep local dates in the address (`from=YYYY-MM-DD`) and send the local start/end of day with the UTC
     offset;
-  - form dialogs submit through `useFormSubmission` and reset through `useResetFormOnOpen` (a dialog reopened before its
-    close animation ends must not show the previous record);
+  - form dialogs submit through `useFormSubmission`, reset through `useResetFormOnOpen` and give their `Form`
+    `clearOnDestroy`: a dialog must never start with the values of the record it showed before - neither when it is
+    reopened before its close animation ends (the hook resets the mounted form) nor after it was closed completely
+    (the destroyed form is emptied; without that a production build shows the previous record - the development
+    server hides it, because React's StrictMode mounts every field twice);
   - no business rule is repeated in the client: flags such as `isLowStock` and normalisation such as the SKU come from
     the API; actions a role may not use are hidden, and the API stays the authority;
   - each page is its own chunk (`lazyPage` in `src/app/router.tsx`); the shell stays while a page loads. A chunk that
@@ -253,8 +256,9 @@ npm run dev     # http://localhost:5173 - needs the API on http://localhost:5080
 - Pages so far: Dashboard (`/`), Order entry (`/order-entry`), Orders (`/orders`), Order detail (`/orders/{id}`, reached
   from the list and from an order reference in the movement history, no menu item), Inventory (`/inventory`), Stock import
   (`/inventory/import`, Manager/Admin, reached from the inventory and product lists, no menu item), Inventory movements
-  (`/inventory/movements`), Products, Customers, Channels, Sync & Processing (`/processing`), Task detail
-  (`/processing/tasks/{id}`, no menu item), Users. The other menu items show a "coming in task NNN" placeholder.
+  (`/inventory/movements`), Products, Customers, Channels, Channel detail (`/channels/{id}`, reached from the channel
+  name in the list, no menu item), Sync & Processing (`/processing`), Task detail (`/processing/tasks/{id}`, no menu
+  item), Users. The other menu items show a "coming in task NNN" placeholder.
 - **Realtime** (`src/features/realtime`): after sign-in the application opens one SignalR connection to
   `/api/hubs/notifications` (section "Realtime hints and dashboard summary"). The client library
   (`@microsoft/signalr`) is behind a small interface (`hub.ts`) and loaded with a dynamic `import()`, so the login page
@@ -273,6 +277,13 @@ npm run dev     # http://localhost:5173 - needs the API on http://localhost:5080
 - Dashboard: the numbers of `GET /api/dashboard/summary` as the server computed them (no totals, thresholds or range
   limit in the client). The range is in the address: `?range=today|7d|30d` (local days; the default, the last 24 hours,
   writes and sends nothing) or `?from=...&to=...`. Non-zero numbers link to the list behind them.
+- Channels: the list says for every channel whether stock is pushed to it at all (`stockSyncEnabled`, "API
+  conventions"). The channel detail shows the channel, a link to its stock-sync tasks, and the products mapped on it
+  (search, sort by SKU / created, paging - all in the address). Manager and Admin map a product and change a mapping
+  (external ids, status) in a dialog; there is no delete, a mapping is deactivated. After a save the page shows what
+  the API answered: with a `syncTaskId` "stock sync started" and the live status of that task with a link to it,
+  without one "no stock sync was started" (the possible reasons are the API's and are listed, not guessed). Nothing
+  about stock sync is decided in the client. Scripted check: `scripts\smoke\task-016b.ps1`.
 - Sync & Processing: the task list (filters task type, status, channel, creation range, correlation id, error code;
   sort by created / updated) and the task detail with its message state and attempts. Manager and Admin can retry a
   `Failed` task there and on the order detail (after a confirmation). The publisher's `lastError` is never shown.

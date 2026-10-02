@@ -102,6 +102,7 @@ export const baseApi = createApi({
     'Product',
     'Customer',
     'Channel',
+    'ChannelProduct',
     'Inventory',
     'InventoryMovement',
     'Order',

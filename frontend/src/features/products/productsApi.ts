@@ -55,6 +55,12 @@ const LIST_TAG = { type: 'Product', id: 'LIST' } as const;
  */
 const listsOnSuccess = (_result: unknown, error: unknown) => (error ? [] : [LIST_TAG, 'Inventory' as const]);
 
+/**
+ * The mapping lists of the channels show a product's SKU and name (`channelsApi`; the tag is repeated here so that the
+ * product endpoints do not depend on the channel feature).
+ */
+const CHANNEL_PRODUCT_LIST_TAG = { type: 'ChannelProduct', id: 'LIST' } as const;
+
 function compact(params: Record<string, string | number | undefined>) {
   return Object.fromEntries(Object.entries(params).filter(([, value]) => value !== undefined && value !== ''));
 }
@@ -78,7 +84,7 @@ export const productsApi = baseApi.injectEndpoints({
       query: ({ productId, changes }) => ({ url: `products/${productId}`, method: 'PUT', body: changes }),
       invalidatesTags: (result, error, { productId }) => [
         ...listsOnSuccess(result, error),
-        ...(error ? [] : [{ type: 'Product' as const, id: productId }]),
+        ...(error ? [] : [{ type: 'Product' as const, id: productId }, CHANNEL_PRODUCT_LIST_TAG]),
       ],
     }),
   }),
