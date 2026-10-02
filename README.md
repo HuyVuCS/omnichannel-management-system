@@ -136,6 +136,7 @@ when the product is mapped on it (`/api/channels/{channelId}/products`, see "API
     a `stock.sync.requested` message directed at the queue of that channel (the response carries `syncTaskId`);
   - a manual retry of a failed stock-sync task (`POST /api/processing/tasks/{id}/retry`): again a directed message, for
     that channel only.
+
   A channel created through the API has no stock-sync queue: it can have mappings, but it is not synced.
 - **What is pushed**: the stock as it is when the worker runs, never the value in the message; after a push the stock is
   read again and pushed again while it differs (`StockSyncWorker:MaxPushesPerAttempt`, default 3). One consumer per
@@ -152,7 +153,9 @@ when the product is mapped on it (`/api/channels/{channelId}/products`, see "API
   attempt in the task's history.
 - **The channels are simulated** (`SimulatedChannelStockClient`; no real channel accounts exist). A push is logged and
   accepted unless the `ChannelSimulation` section says otherwise. The section is read on every push, so a change of
-  `src/Omnichannel.Workers/appsettings.Development.json` applies **without restarting** the Workers host:
+  `src/Omnichannel.Workers/appsettings.Development.json` applies **without restarting** the Workers host (started with
+  `dotnet run` or by the smoke script: the content root is the project folder; a host started from another folder reads
+  the copy next to its binaries):
 
   ```json
   "ChannelSimulation": {
