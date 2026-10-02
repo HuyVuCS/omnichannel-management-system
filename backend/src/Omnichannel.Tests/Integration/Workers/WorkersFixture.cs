@@ -50,6 +50,9 @@ public sealed class WorkersFixture : IAsyncLifetime
 
     public HttpClient Management { get; private set; } = null!;
 
+    /// <summary>The Workers test database (for a separate connection, e.g. a <c>LISTEN</c> probe).</summary>
+    public string DatabaseConnectionString => _postgres.GetConnectionString();
+
     public async Task InitializeAsync()
     {
         await Task.WhenAll(_postgres.StartAsync(), _rabbit.StartAsync());

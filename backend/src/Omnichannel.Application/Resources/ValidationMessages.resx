@@ -96,4 +96,12 @@
     <value>Enter '{PropertyName}' or '{ExternalSku}'.</value>
     <comment>Channel product mapping: at least one external identifier; {ExternalSku} is the field name of the external SKU.</comment>
   </data>
+  <data name="DateRangeEmpty" xml:space="preserve">
+    <value>'{PropertyName}' must be later than '{From}'.</value>
+    <comment>Dashboard range from/to; {From} is the field name of from.</comment>
+  </data>
+  <data name="DateRangeTooLong" xml:space="preserve">
+    <value>The range from '{From}' to '{PropertyName}' must not be longer than {MaxDays} days.</value>
+    <comment>Dashboard range from/to; {From} is the field name of from.</comment>
+  </data>
 </root>

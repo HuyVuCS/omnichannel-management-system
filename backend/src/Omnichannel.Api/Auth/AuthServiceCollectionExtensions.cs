@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
+using Omnichannel.Api.Hubs;
 using Omnichannel.Application.Auth;
 
 namespace Omnichannel.Api.Auth;
@@ -40,12 +41,37 @@ public static class AuthServiceCollectionExtensions
                     RoleClaimType = JwtClaimNames.Role
                 };
 
-                // Stateless tokens live for up to an hour: reject those of users whose rights changed meanwhile.
-                bearer.Events = new JwtBearerEvents { OnTokenValidated = TokenRevocation.ValidateAsync };
+                bearer.Events = new JwtBearerEvents
+                {
+                    OnMessageReceived = ReadHubTokenFromQuery,
+                    // Stateless tokens live for up to an hour: reject those of users whose rights changed meanwhile.
+                    OnTokenValidated = TokenRevocation.ValidateAsync
+                };
             });
 
         return services;
     }
+
+    /// <summary>
+    /// Browsers cannot set an <c>Authorization</c> header on WebSocket and server-sent-event requests, so the realtime hub -
+    /// and only the hub - also accepts the token as the <c>access_token</c> query parameter. Every other path reads the
+    /// header only. The value must never be logged (<see cref="Middleware.AccessTokenRedactionEnricher"/>).
+    /// </summary>
+    private static Task ReadHubTokenFromQuery(MessageReceivedContext context)
+    {
+        var request = context.HttpContext.Request;
+        if (request.Path.StartsWithSegments(NotificationsHub.Path)
+            && !request.Headers.ContainsKey("Authorization")
+            && request.Query.TryGetValue(HubAccessTokenParameter, out var token)
+            && !string.IsNullOrEmpty(token))
+        {
+            context.Token = token;
+        }
+
+        return Task.CompletedTask;
+    }
+
+    public const string HubAccessTokenParameter = "access_token";
 
     public static IServiceCollection AddRbacAuthorization(this IServiceCollection services)
     {

@@ -1,7 +1,9 @@
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Localization;
+using Microsoft.Extensions.Options;
 using Omnichannel.Api.Auth;
 using Omnichannel.Api.Filters;
+using Omnichannel.Api.Hubs;
 using Omnichannel.Api.Middleware;
 using Omnichannel.Application;
 using Omnichannel.Application.Common.Abstractions;
@@ -36,7 +38,9 @@ try
         logger
             .ReadFrom.Configuration(builder.Configuration)
             .ReadFrom.Services(services)
-            .Enrich.FromLogContext();
+            .Enrich.FromLogContext()
+            // The hub takes the access token from the query string: it must not appear in any log event.
+            .Enrich.With<AccessTokenRedactionEnricher>();
 
         if (builder.Environment.IsDevelopment())
         {
@@ -84,6 +88,17 @@ try
         context.ProblemDetails.Extensions["correlationId"] = context.HttpContext.GetCorrelationId();
     });
 
+    // Realtime hints: PostgreSQL NOTIFY -> listener of this instance -> SignalR hub (hints only, never data).
+    builder.Services.AddSignalR()
+        .AddJsonProtocol(options => options.PayloadSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull);
+    builder.Services.AddOptions<RealtimeOptions>()
+        .Bind(builder.Configuration.GetSection(RealtimeOptions.SectionName))
+        .ValidateOnStart();
+    builder.Services.AddSingleton<IValidateOptions<RealtimeOptions>, RealtimeOptionsValidator>();
+    builder.Services.AddSingleton<RealtimeHintBatcher>();
+    builder.Services.AddSingleton<PostgresHintListener>();
+    builder.Services.AddHostedService(services => services.GetRequiredService<PostgresHintListener>());
+
     builder.Services.AddOpenApi();
     builder.Services.AddHealthChecks().AddDbContextCheck<OmnichannelDbContext>("database");
 
@@ -124,6 +139,8 @@ try
     app.UseAuthorization();
 
     app.MapControllers();
+    // A connection is closed when its token expires; the client reconnects with a new one (and is checked again).
+    app.MapHub<NotificationsHub>(NotificationsHub.Path, options => options.CloseOnAuthenticationExpiration = true);
     app.MapHealthChecks("/health").AllowAnonymous();
 
     await using (var scope = app.Services.CreateAsyncScope())

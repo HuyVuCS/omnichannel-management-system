@@ -85,6 +85,12 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         builder.UseSetting("ConnectionStrings:Default", _postgres.GetConnectionString());
         builder.UseSetting("Jwt:SigningKey", TestSigningKey);
         builder.UseSetting("TokenRevocation:CacheDuration", RevocationCacheDuration.ToString("c"));
+        // Log sources that see request URLs or the realtime traffic are captured at their most talkative level, so the
+        // tests can show that the hub's access token (query string) is in none of them.
+        builder.UseSetting("Serilog:MinimumLevel:Override:Microsoft.AspNetCore.Hosting.Diagnostics", "Information");
+        builder.UseSetting("Serilog:MinimumLevel:Override:Microsoft.AspNetCore.SignalR", "Debug");
+        builder.UseSetting("Serilog:MinimumLevel:Override:Microsoft.AspNetCore.Http.Connections", "Debug");
+        builder.UseSetting("Serilog:MinimumLevel:Override:Omnichannel.Api.Hubs", "Debug");
         builder.ConfigureServices(services =>
         {
             services.AddSingleton<ILogEventSink>(Logs);
@@ -98,6 +104,13 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         var (userId, email, securityStamp) = _roleUsers[role];
         var token = Services.GetRequiredService<IAccessTokenIssuer>().Issue(userId, email, [role], securityStamp);
         return CreateClientWithToken(token.Token);
+    }
+
+    /// <summary>An access token of the shared test user in <paramref name="role"/> (for clients that are not an HttpClient).</summary>
+    public string IssueTokenFor(string role)
+    {
+        var (userId, email, securityStamp) = _roleUsers[role];
+        return Services.GetRequiredService<IAccessTokenIssuer>().Issue(userId, email, [role], securityStamp).Token;
     }
 
     /// <summary>Id of the shared test user behind <see cref="CreateClientAs"/> (the JWT <c>sub</c>).</summary>

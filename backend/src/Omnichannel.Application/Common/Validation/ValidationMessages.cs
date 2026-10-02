@@ -33,6 +33,8 @@ public static class ValidationMessages
         public const string ItemsContainNull = nameof(ItemsContainNull);
         public const string ItemsDuplicateProduct = nameof(ItemsDuplicateProduct);
         public const string DateRangeInverted = nameof(DateRangeInverted);
+        public const string DateRangeEmpty = nameof(DateRangeEmpty);
+        public const string DateRangeTooLong = nameof(DateRangeTooLong);
         public const string ExternalOrderIdTooLong = nameof(ExternalOrderIdTooLong);
         public const string SkuFormat = nameof(SkuFormat);
         public const string RoleUnknown = nameof(RoleUnknown);

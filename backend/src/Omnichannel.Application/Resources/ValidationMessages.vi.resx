@@ -96,4 +96,12 @@
     <value>Hãy nhập '{PropertyName}' hoặc '{ExternalSku}'.</value>
     <comment>Channel product mapping: at least one external identifier; {ExternalSku} is the field name of the external SKU.</comment>
   </data>
+  <data name="DateRangeEmpty" xml:space="preserve">
+    <value>'{PropertyName}' phải sau '{From}'.</value>
+    <comment>Dashboard range from/to; {From} is the field name of from.</comment>
+  </data>
+  <data name="DateRangeTooLong" xml:space="preserve">
+    <value>Khoảng thời gian từ '{From}' đến '{PropertyName}' không được dài quá {MaxDays} ngày.</value>
+    <comment>Dashboard range from/to; {From} is the field name of from.</comment>
+  </data>
 </root>
