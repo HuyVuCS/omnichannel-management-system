@@ -385,3 +385,26 @@ synced". Numbers 017+ are unchanged.
 | Dashboard | Tiles and tables from `GET /api/dashboard/summary`, no chart library; range presets (last 24 h default, today, 7 days, 30 days) and a custom range kept in the address; the 92-day rule is the server's (400 shown on the field) | No business rule in the client; a chart library is a decision for 021 | Reports (021) |
 | Sync & Processing page | `/processing`: task list (filters type, status, channel, created range, correlation id, error code; address-backed) and a detail route `/processing/tasks/:taskId` (attempts, message status — never `lastError`), retry for Manager/Admin on `Failed` with confirmation; the same retry on the order detail | Doc §3.2 and §16 "trace an order to task, worker, instance, attempt, error"; retry from the processing page is the recovery path for long channel outages (review 014) | — |
 | Product of a task | `productSku` added to the task summary and detail (left join in the same query); channel names from the channel list | A task list must not show product GUIDs or look products up per row | — |
+
+## Task 016 result (reviewed 2026-10-02)
+
+Realtime client (`@microsoft/signalr` 10.0.11, lazy chunk 55 kB raw; own reconnect loop; hints → coalesced tag
+invalidation; header indicator), dashboard (`GET /api/dashboard/summary`, range in the address), Sync & Processing list,
+task detail and retry (also on the order detail), order-entry outcome by push; `productSku` on task summary/detail;
+Part A: smoke scripts start hosts only for the local default, pickers hide only stale answers, panel title, orders table
+at 1280 px, only the active language loaded, `npm run measure`. Backend 746/746, frontend 243/243, smoke 23/23; first-load
+set 967 kB raw / 317 kB gzip. The open browser items and the test/lint run after the last fixes were confirmed by the
+user on 2026-10-02. Review: `docs/tasks/016-*.review.md`.
+
+| Topic | Decision | Reason | Revisit when |
+| --- | --- | --- | --- |
+| Hub reconnect | `realtimeConnection.ts` owns connect/retry; the library's `withAutomaticReconnect` is not used; a 401 on negotiate is detected from the HTTP status recorded by a `DefaultHttpClient` subclass | The library does not retry a failed first start and does not tell a refused token from an unreachable server | The library gains both |
+| Indicator states | *connecting* (first start), *live*, *reconnecting* (quick retries 0–30 s), *offline* (quick retries used up; still retried every 30 s) | The user must know when the screen is not live and not coming back by itself soon | — |
+| RTK Query and invalidation | An invalidated entry without subscribers is removed, not refetched; with `invalidationBehavior: 'delayed'` an invalidation waits while any request is pending | Verified in the library source and by a test; a page opened later fetches fresh data anyway (`refetchOnMountOrArgChange`) | RTK Query major version |
+| Language loading | One chunk per language; the active one awaited before the first render, the other loaded before `changeLanguage` (always `shared/i18n` `changeLanguage`, never `i18n.changeLanguage`) | First-load set −24 kB; no flash of keys, switch stays "text only" | — |
+| Bundle measurement | `npm run measure` (after `npm run build`) is the source of the first-load-set numbers in every frontend report | One reproducible method | — |
+| Dashboard links | Counts "in the range" link with type, status and newest-updated-first, not with the range | List filters on creation time, summary counts by update time | The task list gets an update-time filter |
+| Local connection host (review 016) | `127.0.0.1` instead of `localhost` in every local connection setting (PostgreSQL, RabbitMQ, migrator); ports stay bound to `127.0.0.1` only | On Windows `localhost` tries `::1` first; the refused IPv6 connect costs ~2 s per new pooled connection (measured 2075 ms) | Docker publishes on IPv6 too |
+| Hint flush (review 016) | Throttle instead of a trailing window: flush at once when the last flush is ≥ 1 s ago, otherwise at the end of that second with the union | Same bound (≤ 1 flush/s per tab) without adding 1 s to every idle-state update; end to end "typically ≤ 2 s" | Users need sub-second freshness |
+| Order outcome and lists (review 016) | The once-per-terminal-state invalidation of lists only while the connection is not live | Live: the same hint batch already invalidated them (order, movements, task status are one `SaveChanges` → one `NOTIFY`) | Orders change state after creation |
+| WebSockets behind a proxy | Every proxy in front of `/api` must pass the WebSocket upgrade for `/api/hubs/*` (dev: Vite `ws: true`) | The hub negotiates WebSockets; long polling would still work but costs a request per message | 025 |
