@@ -135,65 +135,85 @@ describe('processing list', () => {
     expect(location()).toBe(address);
   });
 
-  it('writes each filter to the address, starts on page 1 again, and "Clear filters" removes them', async () => {
-    const { requests } = serveList([failedSync, orderTask], 45);
-    const { user, location } = renderProcessing('/processing?page=3');
-    await screen.findByText('channel_rejected');
-    expect(requests).toEqual([{ page: '3', pageSize: '20' }]);
-    const secondPage = async () => {
-      await user.click(screen.getByRole('listitem', { name: '2' }));
-      await waitFor(() => expect(requests.at(-1)).toMatchObject({ page: '2' }));
-    };
+  describe('filters', () => {
+    /** Every select filter of the list, as the address carries them. */
+    const SELECTED = `taskType=StockSync&status=Failed&channelId=${POS_ID}`;
+    const TYPED = 'correlationId=corr-sync-7&errorCode=channel_rejected';
 
-    await chooseOption(user, filter('Loại tác vụ'), 'Đồng bộ tồn kho');
-    await waitFor(() => expect(requests.at(-1)).toEqual({ page: '1', pageSize: '20', taskType: 'StockSync' }));
-    expect(location()).toBe('/processing?taskType=StockSync');
+    /** The list (45 tasks: three pages) opened with `address`, once its first page is shown. */
+    async function renderFiltered(address: string) {
+      const { requests } = serveList([failedSync, orderTask], 45);
+      const app = renderProcessing(address);
+      await screen.findByText('channel_rejected');
+      const secondPage = async () => {
+        await app.user.click(screen.getByRole('listitem', { name: '2' }));
+        await waitFor(() => expect(requests.at(-1)).toMatchObject({ page: '2' }));
+      };
+      return { ...app, requests, secondPage };
+    }
 
-    await secondPage();
-    await chooseOption(user, filter('Trạng thái'), 'Thất bại');
-    await waitFor(() =>
-      expect(requests.at(-1)).toEqual({ page: '1', pageSize: '20', taskType: 'StockSync', status: 'Failed' }),
-    );
+    it('writes each select filter to the address and starts on page 1 again', async () => {
+      const { user, location, requests, secondPage } = await renderFiltered('/processing?page=3');
+      expect(requests).toEqual([{ page: '3', pageSize: '20' }]);
 
-    await secondPage();
-    await chooseOption(user, filter('Kênh bán'), 'POS');
-    await waitFor(() => expect(requests.at(-1)).toMatchObject({ page: '1', channelId: POS_ID }));
-    expect(location()).toBe(`/processing?taskType=StockSync&status=Failed&channelId=${POS_ID}`);
+      await chooseOption(user, filter('Loại tác vụ'), 'Đồng bộ tồn kho');
+      await waitFor(() => expect(requests.at(-1)).toEqual({ page: '1', pageSize: '20', taskType: 'StockSync' }));
+      expect(location()).toBe('/processing?taskType=StockSync');
 
-    // Text filters: one request per pause in typing, and the first page.
-    await secondPage();
-    let before = requests.length;
-    await user.type(screen.getByRole('textbox', { name: 'Mã tương quan' }), 'corr-sync-7');
-    await waitFor(() => expect(requests.at(-1)).toMatchObject({ correlationId: 'corr-sync-7', page: '1' }));
-    expect(requests.length).toBe(before + 1);
+      await secondPage();
+      await chooseOption(user, filter('Trạng thái'), 'Thất bại');
+      await waitFor(() =>
+        expect(requests.at(-1)).toEqual({ page: '1', pageSize: '20', taskType: 'StockSync', status: 'Failed' }),
+      );
 
-    await secondPage();
-    before = requests.length;
-    await user.type(screen.getByRole('textbox', { name: 'Mã lỗi' }), 'channel_rejected');
-    await waitFor(() => expect(requests.at(-1)).toMatchObject({ errorCode: 'channel_rejected', page: '1' }));
-    expect(requests.length).toBe(before + 1);
+      await secondPage();
+      await chooseOption(user, filter('Kênh bán'), 'POS');
+      await waitFor(() => expect(requests.at(-1)).toMatchObject({ page: '1', channelId: POS_ID }));
+      expect(location()).toBe(`/processing?${SELECTED}`);
+    });
 
-    // A range of local days on the creation time.
-    await secondPage();
-    await user.click(startInput());
-    await user.type(startInput(), '01/10/2026{Enter}');
-    await user.type(endInput(), '02/10/2026{Enter}');
-    await waitFor(() => expect(requests.at(-1)?.to).toBeDefined());
-    expect(requests.at(-1)).toMatchObject({ page: '1' });
-    expect(new Date(requests.at(-1)!.from!).getTime()).toBe(new Date(2026, 9, 1).getTime());
-    expect(new Date(requests.at(-1)!.to!).getTime()).toBe(new Date(2026, 9, 2, 23, 59, 59, 999).getTime());
-    expect(location()).toBe(
-      `/processing?taskType=StockSync&status=Failed&channelId=${POS_ID}&correlationId=corr-sync-7` +
-        `&errorCode=channel_rejected&from=2026-10-01&to=2026-10-02`,
-    );
+    it('sends a text filter once per pause in typing, and starts on page 1 again', async () => {
+      const { user, requests, secondPage } = await renderFiltered(`/processing?${SELECTED}&page=2`);
 
-    await user.click(screen.getByRole('button', { name: 'Xoá bộ lọc' }));
-    await waitFor(() => expect(requests.at(-1)).toEqual({ page: '1', pageSize: '20' }));
-    expect(location()).toBe('/processing');
-    expect(screen.getByRole('textbox', { name: 'Mã tương quan' })).toHaveValue('');
-    expect(screen.getByRole('textbox', { name: 'Mã lỗi' })).toHaveValue('');
-    expect(startInput()).toHaveValue('');
-    expect(filter('Kênh bán').closest('.ant-select')).not.toHaveTextContent('POS');
+      let before = requests.length;
+      await user.type(screen.getByRole('textbox', { name: 'Mã tương quan' }), 'corr-sync-7');
+      await waitFor(() => expect(requests.at(-1)).toMatchObject({ correlationId: 'corr-sync-7', page: '1' }));
+      expect(requests.length).toBe(before + 1);
+
+      await secondPage();
+      before = requests.length;
+      await user.type(screen.getByRole('textbox', { name: 'Mã lỗi' }), 'channel_rejected');
+      await waitFor(() => expect(requests.at(-1)).toMatchObject({ errorCode: 'channel_rejected', page: '1' }));
+      expect(requests.length).toBe(before + 1);
+    });
+
+    it('filters by a range of local days on the creation time, next to the other filters, and starts on page 1 again', async () => {
+      const { user, location, requests } = await renderFiltered(`/processing?${SELECTED}&${TYPED}&page=2`);
+
+      await user.click(startInput());
+      await user.type(startInput(), '01/10/2026{Enter}');
+      await user.type(endInput(), '02/10/2026{Enter}');
+      await waitFor(() => expect(requests.at(-1)?.to).toBeDefined());
+      expect(requests.at(-1)).toMatchObject({ page: '1' });
+      expect(new Date(requests.at(-1)!.from!).getTime()).toBe(new Date(2026, 9, 1).getTime());
+      expect(new Date(requests.at(-1)!.to!).getTime()).toBe(new Date(2026, 9, 2, 23, 59, 59, 999).getTime());
+      expect(location()).toBe(`/processing?${SELECTED}&${TYPED}&from=2026-10-01&to=2026-10-02`);
+    });
+
+    it('"Clear filters" removes every filter from the address and from the controls', async () => {
+      const { user, location, requests } = await renderFiltered(
+        `/processing?${SELECTED}&${TYPED}&from=2026-10-01&to=2026-10-02`,
+      );
+      await waitFor(() => expect(filter('Kênh bán').closest('.ant-select')).toHaveTextContent('POS'));
+
+      await user.click(screen.getByRole('button', { name: 'Xoá bộ lọc' }));
+      await waitFor(() => expect(requests.at(-1)).toEqual({ page: '1', pageSize: '20' }));
+      expect(location()).toBe('/processing');
+      expect(screen.getByRole('textbox', { name: 'Mã tương quan' })).toHaveValue('');
+      expect(screen.getByRole('textbox', { name: 'Mã lỗi' })).toHaveValue('');
+      expect(startInput()).toHaveValue('');
+      expect(filter('Kênh bán').closest('.ant-select')).not.toHaveTextContent('POS');
+    });
   });
 
   it('sorts through the address: created ascending and back to the default, updated newest first', async () => {
