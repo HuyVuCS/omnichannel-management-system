@@ -209,7 +209,9 @@ npm run dev     # http://localhost:5173 - needs the API on http://localhost:5080
 - `npm run dev` proxies `/api` to the API, so the browser only talks to its own origin (no CORS involved).
 - Sign in with a user of the API (the bootstrap admin, or one created on the Users page).
 - Other scripts: `npm run typecheck`, `npm run lint` (ESLint + Prettier check), `npm test` (Vitest, no API needed: requests
-  are answered by MSW), `npm run build` (output in `frontend/dist`), `npm run preview`, `npm run format`.
+  are answered by MSW), `npm run build` (output in `frontend/dist`), `npm run preview`, `npm run format`,
+  `npm run measure` (after a build: the first-load set - entry chunk and everything it imports statically - per file
+  and in total, raw and gzip; `scripts/measure-bundle.mjs`).
 - Structure: `src/app` (store, router, providers, layout), `src/shared` (API layer, components, i18n, helpers),
   `src/features/<feature>` (RTK Query endpoints, pages), `src/pages` (dashboard placeholder, 403, 404).
 - Conventions every page follows:
