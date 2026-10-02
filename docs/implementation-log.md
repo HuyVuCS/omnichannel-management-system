@@ -408,3 +408,20 @@ user on 2026-10-02. Review: `docs/tasks/016-*.review.md`.
 | Hint flush (review 016) | Throttle instead of a trailing window: flush at once when the last flush is ≥ 1 s ago, otherwise at the end of that second with the union | Same bound (≤ 1 flush/s per tab) without adding 1 s to every idle-state update; end to end "typically ≤ 2 s" | Users need sub-second freshness |
 | Order outcome and lists (review 016) | The once-per-terminal-state invalidation of lists only while the connection is not live | Live: the same hint batch already invalidated them (order, movements, task status are one `SaveChanges` → one `NOTIFY`) | Orders change state after creation |
 | WebSockets behind a proxy | Every proxy in front of `/api` must pass the WebSocket upgrade for `/api/hubs/*` (dev: Vite `ws: true`) | The hub negotiates WebSockets; long polling would still work but costs a request per message | 025 |
+
+## Task 016b result (reviewed 2026-10-03)
+
+Channel detail `/channels/:channelId` with product mappings (list, create, edit incl. status, sync-result alert with the
+task's live status), stock-sync column on the channels list, `stockSyncEnabled` on channel responses; Part A:
+`127.0.0.1` for local connections, hint flush as a throttle, order outcome invalidates lists only when not live; fix of a
+pre-existing form-dialog defect. Backend 752/752, frontend 281 tests (3 of 5 full runs green, see "Frontend test
+stability"), smoke 25/25 (second run). First-load set 968 kB raw / 317 kB gzip. Review: `docs/tasks/016b-*.review.md`.
+
+| Topic | Decision | Reason | Revisit when |
+| --- | --- | --- | --- |
+| Form dialogs | Every dialog `Form` has `clearOnDestroy`; `useResetFormOnOpen` resets only a mounted form (one with registered fields) | After a full close the destroyed form kept the previous record's values and saving wrote them onto another record (production only; StrictMode hid it in development) | AntD major upgrade (re-check the "mounted" test) |
+| Browser checks | The real-browser check of a frontend task runs on the production build (`npm run build` + `vite preview`, same `/api` proxy); the dev server is for iterating | StrictMode's double mounting in development hid a data-corrupting defect | — |
+| `stockSyncEnabled` | Derived from `RabbitMqTopology.StockSyncQueueOf(slug)` after the query, on every channel response; a capability, independent of the status | One map for sync, dashboard and UI; the client has no copy of it | Stock-sync queues per channel at runtime |
+| Mapping writes | Status is a field of the edit dialog, no separate action, no confirmation; no client rule for "one external id" (the server's 400 on `externalProductId`) | Reversible, nothing deleted; business rules stay on the server | — |
+| Frontend test stability (review 016b) | Smoke scripts run `npm run build` / `npm test` after stopping the hosts they started; `testTimeout` stays 20 s; worker count and slow-test split decided by measurement in 017 Part A | Whole-test timeouts under memory pressure made 2 of 6 known runs red | CI runner sizing (025) |
+

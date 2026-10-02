@@ -3,9 +3,9 @@
 This file is an index and a snapshot of what is in flight. The repository documents are the memory; follow the links.
 
 ## 1. Snapshot
-- Written: 2026-10-03 01:20 (+07:00), by Claude Code, after implementing task 016b.
-- Branch `master` (nothing pushed). HEAD: `62d5eea` "task 016b: report" (this file is committed on top of it).
-- Working tree: clean. No API, Workers host or dev server is left running; the PostgreSQL and RabbitMQ containers are up.
+- Written: 2026-10-03 (+07:00), by Cowork, after review 016b.
+- Branch `master` (nothing pushed). HEAD: the Cowork commit "docs: review 016b" (on top of `b5f533f`).
+- Working tree: clean after that commit.
 - Newest migration: `20261002053501_StockSync` (task 014; applied to the development database by the user). Tasks
   015, 016, 016b added none.
 
@@ -25,43 +25,35 @@ Source-of-truth order when documents disagree:
 - Details and the report template: [docs/tasks/README.md](tasks/README.md).
 
 ## 4. Progress
-- 001–016 — Done (titles in [docs/roadmap.md](roadmap.md)).
-- 016b — Frontend: channel detail with product mappings, `stockSyncEnabled` on channels; Part A from review 016 —
-  **Review** ([report](tasks/016b-channel-product-mappings-ui.report.md); the roadmap still says Open until Cowork
-  reviews it)
-- 017 — Alerts (low stock, processing failures), `GET /api/alerts` — Planned (decision needed first: where alerts are
-  stored)
-- 018 — Frontend: Alerts page, Logs/Audit page — Planned
+- 001–016b — Done (titles in [docs/roadmap.md](roadmap.md); 016b
+  [review](tasks/016b-channel-product-mappings-ui.review.md) accepted: no P0–P1 in the new code, a pre-existing P1
+  form-dialog defect fixed, one P2 — frontend suite unstable under load — goes to 017 Part A).
+- 017 — Alerts (low stock, processing failures), `GET /api/alerts`; Part A from review 016b — Planned, **blocked on the
+  user's decision: where alerts are stored** (new `Alert` table with open/acknowledged, or `SystemEventLog` only)
+- 018 — Frontend: Alerts page, Logs/Audit page; Part A from review 016b — Planned
 - 019 — S3 product images (presigned upload) — Planned (decision needed first: S3 in development)
 
 ## 5. In flight
-**Task 016b: report written, awaiting Cowork review.** Commits `6fb1896` (A1), `4d67b5f` (A2), `253edbf` (A3),
-`f279fac` (Part B), `e6f9eb7` (form dialogs), `af72fbf` (Parts C, D), `37c5f44` (browser finding), `6ebefe9` (smoke
-script), `62d5eea` (report). Nothing is half-finished. What the review has to look at (all in the report):
-- **Deviation 1, outside the literal scope:** a pre-existing defect of every form dialog was fixed. In a production
-  build a dialog opened for another record after a full close showed the previous record's values; the dev server hid
-  it (React StrictMode). `useResetFormOnOpen` now leaves an unmounted form alone and every dialog `Form` has
-  `clearOnDestroy`; regression tests for products, customers, channels, users.
-- **Question 1:** the frontend suite (281 tests) is flaky under its own load: 3 of 5 full runs passed, 2 had 20 s
-  timeouts in long existing tests (`processing.test.tsx`). `maxWorkers` was not changed (log: fixed at 4 until 025).
-- **Question 2:** should every frontend browser check include one pass on `vite preview` (no StrictMode)?
-- Questions 3, 4 and the follow-ups (stale `data` of RTK Query hooks elsewhere, API errors on rule-less fields of
-  `CustomerFormModal`, products table width at 1280 px, `Assert-Step … $true` in older smoke scripts).
-- Existing tests whose assertions changed because A2 / A3 changed the behaviour they pinned (deviations 2–4).
-- Not measured in the browser: the Admin view of the channels list (action column).
+**Nothing is being implemented.** Task 017 is not written yet: Cowork writes it once the user has decided where alerts
+are stored. Its Part A (review 016b) is fixed already:
+- A1 frontend suite stable under load: smoke scripts run `npm run build` / `npm test` after stopping the hosts they
+  started; measure `maxWorkers` 3 vs 4; split tests that take > 5 s alone; `testTimeout` stays 20 s; acceptance 5
+  consecutive green full runs with PostgreSQL and RabbitMQ running;
+- A2 `Assert-Step` compares type and value (older scripts compare `$true` with non-boolean values).
+The user's smoke run of 016b (2026-10-03): API checks green, `npm test` red in `stockImport.test.tsx` (output not
+pasted; assumed the same timeout class).
 
 ## 6. Pending for the user
-- **A1:** set `Host=127.0.0.1` instead of `Host=localhost` in `ConnectionStrings:Default` of both user-secrets and in
-  `OMNICHANNEL_MIGRATOR_CONNECTION` (commands with placeholders: report 016b, "Manual steps"). Until then every new
-  database connection still costs about 2 s.
-- Restart the API and the Workers host (new build: `stockSyncEnabled`).
+- **Decision before 017:** where alerts are stored (new `Alert` table with open/acknowledged · `SystemEventLog` only).
+- **A1 of 016b:** `Host=127.0.0.1` instead of `Host=localhost` in `ConnectionStrings:Default` of both user-secrets and in
+  `OMNICHANNEL_MIGRATOR_CONNECTION` (commands: report 016b "Manual steps", or the in-place PowerShell snippet from the
+  Cowork chat of 2026-10-02). Until then every new database connection costs about 2 s.
 - Manual check of 016b: Manager → Channels → "Website" → "Gắn sản phẩm" → smoke product, external SKU `WEB-…` → the
   alert goes from "Đang chờ" to "Thành công" without a reload; set the mapping to "Ngừng" afterwards.
 - Test data left in the development database by 016b: products `SMOKE-016B-UI-24463-A/B/C` and two `SMOKE-016B-<n>`,
   six locked `smoke-016b-*` users, four Inactive website mappings, one message in `stock.sync.website.dlq` — plus
   everything listed in earlier reports.
-- Open decisions (roadmap, "Decisions still needed"): before 017 — where alerts are stored; before 019 — S3 in
-  development; before 024 — where "payment succeeded" comes from.
+- Other open decisions (roadmap): before 019 — S3 in development; before 024 — where "payment succeeded" comes from.
 
 ## 7. Environment
 - Start infrastructure with docker compose, then three terminals: API, Workers, scripts/commands. Commands: README §1, §5,
@@ -113,9 +105,8 @@ script), `62d5eea` (report). Nothing is half-finished. What the review has to lo
   scripts with the Write tool and run the file.
 
 ## 9. Next action
-**Cowork:** review task 016b (report + commits above), decide the report's questions 1 and 2, update the roadmap and the
-implementation log, settle "where are alerts stored" with the user, write task 017. **The user** can do the A1
-user-secrets change and the manual check at any time. **Claude Code:** nothing until 017 exists.
+**User:** decide where alerts are stored. **Then Cowork:** write task 017 (alerts + Part A from review 016b).
+**Claude Code:** nothing until 017 exists. The user can do the `127.0.0.1` change and the manual check at any time.
 
 ## 10. Resume prompts
 New Claude Code chat:
@@ -127,5 +118,5 @@ docs/handoff.md.")
 
 New Cowork chat:
 ```
-Dự án Management System. Đọc docs/handoff.md, docs/roadmap.md và docs/implementation-log.md trong thư mục đã kết nối, rồi tiếp tục vai trò lập kế hoạch/review theo docs/tasks/README.md. Việc tiếp theo: review task 016b theo report docs/tasks/016b-channel-product-mappings-ui.report.md (chú ý deviation 1: sửa lỗi dialog form hiện dữ liệu bản ghi trước ở bản production, ngoài phạm vi task; câu hỏi 1: bộ test frontend chập chờn khi chạy đủ; câu hỏi 2: có kiểm tra thêm trên vite preview không), cập nhật roadmap và implementation log, chốt với tôi quyết định "lưu alert ở đâu" (bảng Alert mới hay chỉ SystemEventLog), rồi viết task 017.
+Dự án Management System. Đọc docs/handoff.md, docs/roadmap.md và docs/implementation-log.md trong thư mục đã kết nối, rồi tiếp tục vai trò lập kế hoạch/review theo docs/tasks/README.md. Review 016b đã xong. Việc tiếp theo: chốt với tôi quyết định "lưu alert ở đâu" (bảng Alert mới có open/acknowledged hay chỉ SystemEventLog), rồi viết task 017 (alerts backend; Part A từ review 016b: bộ test frontend ổn định khi chạy cùng smoke, Assert-Step so sánh chặt).
 ```
