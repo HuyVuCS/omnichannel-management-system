@@ -6,7 +6,6 @@ using Omnichannel.Application.Orders;
 using Omnichannel.Application.Processing;
 using Omnichannel.Domain.Entities;
 using Omnichannel.Domain.Enums;
-using Omnichannel.Infrastructure.Persistence.Configurations;
 
 namespace Omnichannel.Infrastructure.Persistence.Orders;
 
@@ -396,7 +395,7 @@ internal sealed class OrderReservationService(
             await dbContext.SaveChangesAsync(cancellationToken);
             return true;
         }
-        catch (DbUpdateException exception) when (exception.IsUniqueViolation(OrderConfiguration.IdempotencyIndexName))
+        catch (DbUpdateException exception) when (exception.IsUniqueViolation(ExpectedUniqueViolations.OrderIdempotency))
         {
             return false;
         }

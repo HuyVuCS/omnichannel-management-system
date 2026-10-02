@@ -3,7 +3,6 @@ using Microsoft.EntityFrameworkCore;
 using Omnichannel.Application.Channels;
 using Omnichannel.Application.Common.Exceptions;
 using Omnichannel.Domain.Entities;
-using Omnichannel.Infrastructure.Persistence.Configurations;
 
 namespace Omnichannel.Infrastructure.Persistence.Channels;
 
@@ -39,7 +38,7 @@ internal sealed class ChannelService(OmnichannelDbContext dbContext) : IChannelS
         {
             await dbContext.SaveChangesAsync(cancellationToken);
         }
-        catch (DbUpdateException exception) when (exception.IsUniqueViolation(ChannelConfiguration.SlugIndexName))
+        catch (DbUpdateException exception) when (exception.IsUniqueViolation(ExpectedUniqueViolations.ChannelSlug))
         {
             throw new ConflictException(ChannelErrorCodes.SlugExists, $"A channel with slug '{channel.Slug}' already exists.");
         }

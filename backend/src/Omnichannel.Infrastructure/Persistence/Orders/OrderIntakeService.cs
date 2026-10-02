@@ -9,7 +9,6 @@ using Omnichannel.Application.Common.Validation;
 using Omnichannel.Application.Orders;
 using Omnichannel.Domain.Entities;
 using Omnichannel.Domain.Enums;
-using Omnichannel.Infrastructure.Persistence.Configurations;
 
 namespace Omnichannel.Infrastructure.Persistence.Orders;
 
@@ -82,7 +81,7 @@ internal sealed class OrderIntakeService(
             await dbContext.SaveChangesAsync(cancellationToken);
         }
         catch (DbUpdateException exception)
-            when (exception.IsUniqueViolation(ProcessingTaskConfiguration.IdempotencyKeyIndexName))
+            when (exception.IsUniqueViolation(ExpectedUniqueViolations.ProcessingTaskIdempotencyKey))
         {
             return await ExistingSubmissionAsync(idempotencyKey, requestHash, externalOrderId, cancellationToken);
         }

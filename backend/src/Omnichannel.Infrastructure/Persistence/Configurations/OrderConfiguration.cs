@@ -6,8 +6,6 @@ namespace Omnichannel.Infrastructure.Persistence.Configurations;
 
 internal sealed class OrderConfiguration : IEntityTypeConfiguration<Order>
 {
-    public const string IdempotencyIndexName = "UX_Orders_ChannelId_ExternalOrderId";
-
     public void Configure(EntityTypeBuilder<Order> builder)
     {
         builder.ToTable("Orders", t =>
@@ -41,7 +39,7 @@ internal sealed class OrderConfiguration : IEntityTypeConfiguration<Order>
         // Idempotency: the same external order from the same channel is stored once.
         builder.HasIndex(x => new { x.ChannelId, x.ExternalOrderId })
             .IsUnique()
-            .HasDatabaseName(IdempotencyIndexName);
+            .HasDatabaseName(ExpectedUniqueViolations.OrderIdempotency);
         builder.HasIndex(x => x.CustomerId);
         builder.HasIndex(x => new { x.Status, x.CreatedAt });
         builder.HasIndex(x => x.CreatedAt);

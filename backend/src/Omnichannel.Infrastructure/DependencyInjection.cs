@@ -13,6 +13,7 @@ using Omnichannel.Application.Processing;
 using Omnichannel.Application.Products;
 using Omnichannel.Application.Users;
 using Omnichannel.Infrastructure.Identity;
+using Omnichannel.Infrastructure.Logging;
 using Omnichannel.Infrastructure.Persistence;
 using Omnichannel.Infrastructure.Persistence.Channels;
 using Omnichannel.Infrastructure.Persistence.Customers;
@@ -44,12 +45,14 @@ public static class DependencyInjection
 
         services.TryAddSingleton(TimeProvider.System);
         services.AddScoped<AuditingInterceptor>();
+        services.AddSingleton<DatabaseFailureLogInterceptor>();
 
         services.AddDbContext<OmnichannelDbContext>((serviceProvider, options) =>
         {
             var database = serviceProvider.GetRequiredService<IOptions<DatabaseOptions>>().Value;
             options.UseNpgsql(database.ConnectionString);
             options.AddInterceptors(serviceProvider.GetRequiredService<AuditingInterceptor>());
+            DatabaseFailureLogInterceptor.Configure(options, serviceProvider.GetRequiredService<DatabaseFailureLogInterceptor>());
         });
 
         services.AddScoped<IChannelService, ChannelService>();

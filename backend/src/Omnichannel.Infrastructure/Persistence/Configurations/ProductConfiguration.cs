@@ -6,8 +6,6 @@ namespace Omnichannel.Infrastructure.Persistence.Configurations;
 
 internal sealed class ProductConfiguration : IEntityTypeConfiguration<Product>
 {
-    public const string SkuIndexName = "IX_Products_Sku";
-
     public void Configure(EntityTypeBuilder<Product> builder)
     {
         builder.ToTable("Products", t =>
@@ -26,6 +24,6 @@ internal sealed class ProductConfiguration : IEntityTypeConfiguration<Product>
         builder.Property(x => x.ExpiryDate).HasColumnType("date");
         builder.ConfigureAuditColumns();
 
-        builder.HasIndex(x => x.Sku).IsUnique().HasDatabaseName(SkuIndexName);
+        builder.HasIndex(x => x.Sku).IsUnique().HasDatabaseName(ExpectedUniqueViolations.ProductSku);
     }
 }

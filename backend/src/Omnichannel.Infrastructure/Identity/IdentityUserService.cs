@@ -36,9 +36,6 @@ internal sealed class IdentityUserService(
     TimeProvider timeProvider,
     ILogger<IdentityUserService> logger) : IUserService
 {
-    /// <summary>Unique index on <c>AspNetUsers.NormalizedUserName</c> (the user name is the e-mail address).</summary>
-    private const string UserNameIndexName = "UserNameIndex";
-
     private const string SystemActor = "system";
 
     public async Task<PagedResult<UserResponse>> ListAsync(UserListQuery query, CancellationToken cancellationToken)
@@ -100,7 +97,7 @@ internal sealed class IdentityUserService(
         {
             created = await userManager.CreateAsync(user, request.Password);
         }
-        catch (DbUpdateException exception) when (exception.IsUniqueViolation(UserNameIndexName))
+        catch (DbUpdateException exception) when (exception.IsUniqueViolation(ExpectedUniqueViolations.UserName))
         {
             // Two requests passed Identity's own duplicate check at the same time: the unique index decides.
             throw EmailExists();

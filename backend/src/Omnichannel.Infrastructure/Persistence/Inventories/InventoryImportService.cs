@@ -10,7 +10,6 @@ using Omnichannel.Application.Common.Validation;
 using Omnichannel.Application.Inventory;
 using Omnichannel.Domain.Entities;
 using Omnichannel.Domain.Enums;
-using Omnichannel.Infrastructure.Persistence.Configurations;
 
 namespace Omnichannel.Infrastructure.Persistence.Inventories;
 
@@ -125,7 +124,7 @@ internal sealed class InventoryImportService(
         {
             await dbContext.SaveChangesAsync(cancellationToken);
         }
-        catch (DbUpdateException exception) when (exception.IsUniqueViolation(InventoryMovementConfiguration.ReferenceIndexName))
+        catch (DbUpdateException exception) when (exception.IsUniqueViolation(ExpectedUniqueViolations.InventoryMovementReference))
         {
             throw new ConflictException(
                 InventoryErrorCodes.ImportAlreadyApplied,

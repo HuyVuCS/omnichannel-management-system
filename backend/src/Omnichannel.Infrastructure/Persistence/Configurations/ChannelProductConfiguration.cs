@@ -28,10 +28,13 @@ internal sealed class ChannelProductConfiguration : IEntityTypeConfiguration<Cha
             .OnDelete(DeleteBehavior.Restrict);
 
         // A product is mapped at most once per channel, and an external id identifies one product.
-        builder.HasIndex(x => new { x.ChannelId, x.ProductId }).IsUnique();
+        builder.HasIndex(x => new { x.ChannelId, x.ProductId })
+            .IsUnique()
+            .HasDatabaseName(ExpectedUniqueViolations.ChannelProductMapping);
         builder.HasIndex(x => new { x.ChannelId, x.ExternalProductId })
             .IsUnique()
-            .HasFilter("\"ExternalProductId\" IS NOT NULL");
+            .HasFilter("\"ExternalProductId\" IS NOT NULL")
+            .HasDatabaseName(ExpectedUniqueViolations.ChannelProductExternalProductId);
         builder.HasIndex(x => x.ProductId);
     }
 }

@@ -6,8 +6,6 @@ namespace Omnichannel.Infrastructure.Persistence.Configurations;
 
 internal sealed class InventoryMovementConfiguration : IEntityTypeConfiguration<InventoryMovement>
 {
-    public const string ReferenceIndexName = "UX_InventoryMovements_Reference";
-
     public void Configure(EntityTypeBuilder<InventoryMovement> builder)
     {
         builder.ToTable("InventoryMovements", t =>
@@ -36,6 +34,6 @@ internal sealed class InventoryMovementConfiguration : IEntityTypeConfiguration<
         builder.HasIndex(x => new { x.ReferenceType, x.ReferenceId, x.ProductId, x.Type })
             .IsUnique()
             .HasFilter("\"ReferenceId\" IS NOT NULL AND \"Type\" IN ('Import', 'Reserve', 'Release')")
-            .HasDatabaseName(ReferenceIndexName);
+            .HasDatabaseName(ExpectedUniqueViolations.InventoryMovementReference);
     }
 }
