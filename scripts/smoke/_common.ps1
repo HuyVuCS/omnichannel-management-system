@@ -2,9 +2,13 @@
 # ASCII only on purpose: Windows PowerShell 5.1 misreads UTF-8 files without a BOM.
 # Secrets: the admin credentials are read from backend/src/Omnichannel.Api/.env (git-ignored) and never printed.
 # Another environment (not the local development one): set SMOKE_BASE_URL, SMOKE_ADMIN_EMAIL and SMOKE_ADMIN_PASSWORD.
+# Hosts are started only for the local default (SMOKE_BASE_URL not set): a host started here runs with the development
+# user-secrets, so it must never be started on behalf of another environment. With SMOKE_BASE_URL set, the API and the
+# Workers host of that environment must already be running.
 
 $ErrorActionPreference = 'Stop'
 $script:RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+$script:ForeignEnvironment = [bool]$env:SMOKE_BASE_URL
 $script:BaseUrl  = if ($env:SMOKE_BASE_URL) { $env:SMOKE_BASE_URL } else { 'http://localhost:5080' }
 $script:Results  = New-Object System.Collections.Generic.List[object]
 $script:StartedApi = $null
@@ -96,12 +100,17 @@ function Test-ApiUp {
     try { return ((Invoke-WebRequest -Uri "$script:BaseUrl/health" -UseBasicParsing -TimeoutSec 3).StatusCode -eq 200) } catch { return $false }
 }
 
-# Uses a running API if there is one; otherwise builds and starts it, and stops it again in Stop-Smoke.
+# Uses a running API if there is one; otherwise, for the local default only, builds and starts it and stops it again in
+# Stop-Smoke. An unreachable API of another environment (SMOKE_BASE_URL) is an error: nothing is started for it.
 function Start-Smoke([string]$Title) {
     Write-Host "== $Title =="
     if (Test-ApiUp) {
         Write-Host "Using the API already running at $script:BaseUrl (restart it first if it runs an older build)."
         return
+    }
+    if ($script:ForeignEnvironment) {
+        Write-Host 'Start the API of that environment first: this script starts an API only for the local default (SMOKE_BASE_URL not set).'
+        throw "API at $script:BaseUrl (SMOKE_BASE_URL) is not reachable"
     }
     Write-Host 'API not running - building and starting it for this check...'
     $proj = Join-Path $script:RepoRoot 'backend\src\Omnichannel.Api'
@@ -128,13 +137,18 @@ function Test-WorkersRunning {
     return (@($found).Count -gt 0)
 }
 
-# Uses a running Workers host if there is one; otherwise builds and starts it (Development: the channel simulator's SKU
-# rules are on), writes its output to a log file, and stops it again in Stop-Smoke. Needs the Workers user-secrets
-# (README section 6).
+# Uses a running Workers host if there is one; otherwise, for the local default only, builds and starts it (Development:
+# the channel simulator's SKU rules are on), writes its output to a log file, and stops it again in Stop-Smoke. Needs the
+# Workers user-secrets (README section 6). For another environment (SMOKE_BASE_URL) nothing is started: a Workers host
+# found on this machine is assumed to be that environment's, and none at all is an error.
 function Start-SmokeWorkers {
     if (Test-WorkersRunning) {
         Write-Host 'Using the Workers host already running (restart it first if it runs an older build).'
         return
+    }
+    if ($script:ForeignEnvironment) {
+        Write-Host 'Start the Workers host of that environment first: this script starts one only for the local default (SMOKE_BASE_URL not set).'
+        throw "No Workers host is running for $script:BaseUrl (SMOKE_BASE_URL)"
     }
     Write-Host 'Workers host not running - building and starting it for this check...'
     $proj = Join-Path $script:RepoRoot 'backend\src\Omnichannel.Workers'
