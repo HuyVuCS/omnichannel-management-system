@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import type { AuthUser } from '@/features/auth/session';
 import type { PagedResult } from '@/shared/api/types';
 import { chooseProduct, coffeeProduct, COFFEE_ID, serveProductCatalog, teaProduct, TEA_ID } from '@/test/catalog';
-import { chooseOption, columnTexts, expectLanguageSwitchChangesTextOnly, rowOf } from '@/test/interactions';
+import { chooseOption, columnTexts, expectLanguageSwitchChangesTextOnly, rowOf, settled } from '@/test/interactions';
 import { renderApp } from '@/test/renderApp';
 import { api, managerUser, problem, server, sessionOf, staffUser } from '@/test/server';
 import type { InventoryMovement } from './inventoryApi';
@@ -288,6 +288,8 @@ describe('movement history', () => {
     expect(screen.getByRole('combobox', { name: 'Loại tham chiếu' }).closest('.ant-select')).toHaveTextContent(
       'Phiếu nhập kho',
     );
+
+    await settled();
   });
 
   it('an order reference leads to the order; a reference that is not an order id stays text', async () => {
@@ -341,6 +343,8 @@ describe('movement history', () => {
     renderMovements('/inventory/movements', managerUser);
 
     expect(await screen.findByText('manager@example.com')).toBeInTheDocument();
+
+    await settled();
   });
 });
 

@@ -3,7 +3,7 @@ import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 import { LANGUAGE_STORAGE_KEY, readStoredLanguage } from '@/shared/i18n';
 import type { PagedResult } from '@/shared/api/types';
-import { findDialog } from '@/test/interactions';
+import { findDialog, settled } from '@/test/interactions';
 import { renderApp } from '@/test/renderApp';
 import { adminUser, api, problem, server, sessionOf } from '@/test/server';
 import type { User } from './usersApi';
@@ -139,6 +139,8 @@ describe('users page', () => {
       }),
     );
     expect(location()).toBe('/users?sortDir=asc&search=ali&role=Staff&locked=true');
+
+    await settled();
   });
 
   it('creates a user and refreshes the list', async () => {
@@ -288,6 +290,8 @@ describe('users page', () => {
 
     expect(await screen.findByText('Đã đặt lại mật khẩu.')).toBeInTheDocument();
     expect(bodies).toEqual([{ newPassword: 'weak' }, { newPassword: 'Passw0rd-temporary' }]);
+
+    await settled();
   });
 });
 
@@ -316,6 +320,8 @@ describe('unexpected errors', () => {
     expect(await screen.findByText('Không kết nối được máy chủ. Hãy kiểm tra mạng và thử lại.')).toBeInTheDocument();
     expect(sent[0]).toMatch(/^[0-9a-f-]{32,36}$/);
     expect(screen.getByTestId('correlation-id')).toHaveTextContent(sent.at(-1) ?? 'missing');
+
+    await settled();
   });
 });
 
@@ -345,6 +351,8 @@ describe('language switch', () => {
     // The choice is kept for the next visit (read again at start-up).
     expect(window.localStorage.getItem(LANGUAGE_STORAGE_KEY)).toBe('en');
     expect(readStoredLanguage()).toBe('en');
+
+    await settled();
   });
 
   it('changes text only: address, table state, open dialog, typed values and the layout stay as they are', async () => {

@@ -23,6 +23,7 @@ import {
   expectLanguageSwitchChangesTextOnly,
   findDialog,
   type AppUser,
+  settled,
 } from '@/test/interactions';
 import { ORDER_ID, serveChannels, TASK_ID } from '@/test/orders';
 import { SYNC_TASK_ID, taskChannels } from '@/test/processing';
@@ -294,6 +295,8 @@ describe('alerts list', () => {
       await chooseOption(user, filter('Trạng thái'), 'Đã ghi nhận');
       await waitFor(() => expect(requests.at(-1)?.status).toEqual(['Open', 'Acknowledged', 'Resolved']));
       expect(location()).toBe('/alerts?status=Open&status=Acknowledged&status=Resolved');
+
+      await settled();
     });
 
     it('type, product and channel go to the address next to each other and start on page 1 again', async () => {
@@ -314,6 +317,8 @@ describe('alerts list', () => {
       await waitFor(() => expect(requests.at(-1)?.params).toMatchObject({ page: '1', channelId: POS_ID }));
       expect(requests.at(-1)?.type).toEqual(['StockSyncFailed']);
       expect(location()).toBe(`/alerts?type=StockSyncFailed&productId=${COFFEE_ID}&channelId=${POS_ID}`);
+
+      await settled();
     });
 
     it('filters by a range of local days on the last occurrence and starts on page 1 again', async () => {
@@ -328,6 +333,8 @@ describe('alerts list', () => {
       expect(new Date(requests.at(-1)!.params.from!).getTime()).toBe(new Date(2026, 9, 1).getTime());
       expect(new Date(requests.at(-1)!.params.to!).getTime()).toBe(new Date(2026, 9, 2, 23, 59, 59, 999).getTime());
       expect(location()).toBe('/alerts?status=Resolved&from=2026-10-01&to=2026-10-02');
+
+      await settled();
     });
 
     it('"Clear filters" removes every filter from the address and from the controls; the sort stays', async () => {
@@ -352,6 +359,8 @@ describe('alerts list', () => {
       expect(filterText('Kênh bán')).not.toContain('POS');
       expect(startInput()).toHaveValue('');
       expect(endInput()).toHaveValue('');
+
+      await settled();
     });
   });
 
@@ -377,6 +386,8 @@ describe('alerts list', () => {
     await user.click(screen.getByRole('columnheader', { name: /Lần đầu tiên/ }));
     await waitFor(() => expect(requests.at(-1)?.params).toMatchObject({ sortBy: 'firstOccurredAt', sortDir: 'desc' }));
     expect(location()).toBe('/alerts?status=Resolved&sortDir=desc&sortBy=firstOccurredAt');
+
+    await settled();
   });
 
   it('ignores address values that are not valid and never sends them', async () => {
@@ -437,6 +448,8 @@ describe('alerts list', () => {
     await user.click(screen.getByRole('link', { name: 'Cảnh báo' }));
     await loaded();
     await waitFor(() => expect(requests).toHaveLength(3));
+
+    await settled();
   });
 });
 

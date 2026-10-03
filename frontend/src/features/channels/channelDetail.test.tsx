@@ -26,6 +26,7 @@ import {
   findDialog,
   rowOf,
   type AppUser,
+  settled,
 } from '@/test/interactions';
 import { serveChannels, task, TASK_ID } from '@/test/orders';
 import { serveTask, SYNC_TASK_ID } from '@/test/processing';
@@ -108,6 +109,8 @@ describe('channel detail', () => {
 
     // No menu item of its own: the page belongs to "Channels".
     expect(document.querySelector('.ant-menu-item-selected')).toHaveTextContent('Kênh bán');
+
+    await settled();
   });
 
   it('says that a channel without a stock-sync queue is never synced, and offers no task link', async () => {
@@ -120,6 +123,8 @@ describe('channel detail', () => {
     expect(screen.queryByRole('link', { name: TASKS_LINK })).not.toBeInTheDocument();
     // Active: nothing is said about an inactive channel.
     expect(screen.queryByText(INACTIVE_HINT)).not.toBeInTheDocument();
+
+    await settled();
   });
 
   it('says that an inactive channel gets no stock; whether it is synced at all is still what the API says', async () => {
@@ -133,6 +138,8 @@ describe('channel detail', () => {
     expect(within(summaryOf()).getByText('Có đồng bộ')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: TASKS_LINK })).toBeInTheDocument();
     expect(screen.queryByText(NO_QUEUE_HINT)).not.toBeInTheDocument();
+
+    await settled();
   });
 
   it('shows both hints for an inactive channel without a queue', async () => {
@@ -141,6 +148,8 @@ describe('channel detail', () => {
 
     expect(await screen.findByText(NO_QUEUE_HINT)).toBeInTheDocument();
     expect(screen.getByText(INACTIVE_HINT)).toBeInTheDocument();
+
+    await settled();
   });
 
   it('shows the not-found view for an id that is no GUID, without asking the API', async () => {
@@ -271,6 +280,8 @@ describe('channel detail: mapping list', () => {
     await waitFor(() => expect(listRequests.at(-1)).toMatchObject({ search: 'web-1', page: '1' }));
     expect(listRequests.length).toBe(before + 1);
     expect(location()).toBe(`${WEBSITE_PATH}?sortDir=asc&search=web-1&sortBy=createdAt`);
+
+    await settled();
   });
 
   it('ignores a sort field in the address that the API does not know', async () => {
@@ -723,6 +734,8 @@ describe('channel detail: another channel on the mounted page', () => {
     await waitFor(() => expect(document.querySelector('.ant-table-placeholder')).toBeInTheDocument());
     expect(screen.queryByText('TEA-01')).not.toBeInTheDocument();
     expect(screen.queryByTestId('sync-result')).not.toBeInTheDocument();
+
+    await settled();
   });
 });
 
@@ -766,6 +779,8 @@ describe('channel detail: cache', () => {
     await screen.findByText('TEA-01');
 
     await waitFor(() => expect(listRequests).toHaveLength(2));
+
+    await settled();
   });
 });
 

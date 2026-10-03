@@ -17,7 +17,13 @@ import {
   teaProduct,
   TEA_ID,
 } from '@/test/catalog';
-import { columnTexts, expectLanguageSwitchChangesTextOnly, findDialog, type AppUser } from '@/test/interactions';
+import {
+  columnTexts,
+  expectLanguageSwitchChangesTextOnly,
+  findDialog,
+  type AppUser,
+  settled,
+} from '@/test/interactions';
 import { renderApp } from '@/test/renderApp';
 import { adminUser, api, managerUser, problem, server, sessionOf, staffUser } from '@/test/server';
 import { inventoryApi, type ImportInventoryResponse } from './inventoryApi';
@@ -157,6 +163,8 @@ describe('stock import', () => {
     await appUser.click(screen.getByRole('button', { name: 'Xem biến động của chứng từ này' }));
     expect(await screen.findByRole('heading', { name: 'Biến động tồn kho' })).toBeInTheDocument();
     expect(location()).toBe('/inventory/movements?referenceType=StockImport&referenceId=S1%2FGRN-1');
+
+    await settled();
   });
 
   it('sends no series when the field is left empty, and "new import" starts with an empty form', async () => {
@@ -225,6 +233,8 @@ describe('stock import', () => {
 
     expect(await screen.findByLabelText('Số chứng từ')).toBeInTheDocument();
     expect(catalog.detailRequests).toEqual([]);
+
+    await settled();
   });
 
   it('sends nothing when the confirmation is cancelled, and keeps the form as it was', async () => {
@@ -328,12 +338,17 @@ describe('stock import: errors of the API', () => {
     state.answer = () => problem(409, { errorCode: 'stock_limit_exceeded' });
     await submitAndConfirm(appUser);
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('Số lượng nhập làm tồn kho vượt quá giới hạn cho phép.');
+    // (Until the answer is there, the only alert is the warning of the confirmation.)
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent('Số lượng nhập làm tồn kho vượt quá giới hạn cho phép.'),
+    );
     await waitFor(() => expect(document.querySelectorAll('.ant-form-item-explain-error')).toHaveLength(0));
     expect(
       screen.queryByText("'Các dòng hàng' không được chứa cùng một sản phẩm nhiều lần (máy chủ)."),
     ).not.toBeInTheDocument();
     expect(bodies).toHaveLength(2);
+
+    await settled();
   });
 
   it('shows a document that was already imported on the document number, and the stock limit above the form', async () => {
@@ -354,7 +369,10 @@ describe('stock import: errors of the API', () => {
     state.answer = () => problem(409, { errorCode: 'stock_limit_exceeded' });
     await submitAndConfirm(appUser);
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('Số lượng nhập làm tồn kho vượt quá giới hạn cho phép.');
+    // (Until the answer is there, the only alert is the warning of the confirmation.)
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent('Số lượng nhập làm tồn kho vượt quá giới hạn cho phép.'),
+    );
     // The error of the previous attempt is gone.
     expect(
       screen.queryByText('Chứng từ này đã được nhập kho. Hãy kiểm tra trong Biến động tồn kho.'),
@@ -363,10 +381,14 @@ describe('stock import: errors of the API', () => {
     // The API stays the authority: a 403 is shown translated.
     state.answer = () => problem(403);
     await submitAndConfirm(appUser);
-    expect(await screen.findByRole('alert')).toHaveTextContent('Bạn không có quyền thực hiện thao tác này.');
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent('Bạn không có quyền thực hiện thao tác này.'),
+    );
 
     expect(bodies).toHaveLength(3);
     expect(counts).toEqual({ inventory: 1, movements: 1 });
+
+    await settled();
   });
 });
 
@@ -378,6 +400,8 @@ describe('stock import: roles', () => {
     expect(await screen.findByText('Không có quyền truy cập')).toBeInTheDocument();
     expect(screen.queryByLabelText('Số chứng từ')).not.toBeInTheDocument();
     expect(catalog.detailRequests).toEqual([]);
+
+    await settled();
   });
 
   it.each([
@@ -388,6 +412,8 @@ describe('stock import: roles', () => {
     renderImport('/inventory/import', user);
 
     expect(await screen.findByLabelText('Số chứng từ')).toBeInTheDocument();
+
+    await settled();
   });
 });
 

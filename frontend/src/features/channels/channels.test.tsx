@@ -3,7 +3,14 @@ import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 import { loggedOut } from '@/features/auth/authSlice';
 import type { AuthUser } from '@/features/auth/session';
-import { chooseOption, columnTexts, expectLanguageSwitchChangesTextOnly, findDialog, rowOf } from '@/test/interactions';
+import {
+  chooseOption,
+  columnTexts,
+  expectLanguageSwitchChangesTextOnly,
+  findDialog,
+  rowOf,
+  settled,
+} from '@/test/interactions';
 import { renderApp } from '@/test/renderApp';
 import { adminUser, api, managerUser, problem, server, sessionOf, staffUser } from '@/test/server';
 import type { Channel } from './channelsApi';
@@ -244,6 +251,8 @@ describe('channels page', () => {
     expect(await screen.findByText('Đã cập nhật kênh bán.')).toBeInTheDocument();
     expect(updates).toEqual([{ name: 'Cửa hàng', status: 'Active' }]);
     expect(screen.queryByText('Ngừng kênh bán này?')).not.toBeInTheDocument();
+
+    await settled();
   });
 });
 

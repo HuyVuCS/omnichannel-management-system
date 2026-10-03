@@ -13,7 +13,7 @@ import {
   openOptions,
   serveCustomerCatalog,
 } from '@/test/catalog';
-import { chooseOption, columnTexts, expectLanguageSwitchChangesTextOnly, rowOf } from '@/test/interactions';
+import { chooseOption, columnTexts, expectLanguageSwitchChangesTextOnly, rowOf, settled } from '@/test/interactions';
 import { ORDER_ID, orderDetail, orderSummary, serveChannels } from '@/test/orders';
 import { renderApp } from '@/test/renderApp';
 import { api, managerUser, problem, server, sessionOf, staffUser } from '@/test/server';
@@ -227,6 +227,8 @@ describe('orders list', () => {
     expect(endInput()).toHaveValue('');
     expect(filter('Khách hàng').closest('.ant-select')).not.toHaveTextContent('Nguyễn Văn An');
     expect(filter('Kênh bán').closest('.ant-select')).not.toHaveTextContent('POS');
+
+    await settled();
   });
 
   it('sorts through the address: created ascending, then the other fields, and back to the default order', async () => {
@@ -259,6 +261,8 @@ describe('orders list', () => {
     await appUser.click(screen.getByRole('columnheader', { name: /Mã đơn hàng bên ngoài/ }));
     await waitFor(() => expect(requests.at(-1)).toMatchObject({ sortBy: 'externalOrderId', sortDir: 'asc' }));
     expect(sortOf(/Tổng tiền/)).toBeNull();
+
+    await settled();
   });
 
   it('ignores address values that are not valid and never sends them; the channel slug is sent as it is', async () => {
@@ -329,6 +333,8 @@ describe('orders list', () => {
     await appUser.click(within(rowOf('POS-20260930-ZZ9911')).getByRole('button', { name: 'Chi tiết' }));
     await waitFor(() => expect(location()).toBe(`/orders/${insufficient.orderId}`));
     expect(router.state.location.state).toEqual({ from: address });
+
+    await settled();
   });
 
   it('asks the API again on "Refresh" and whenever the page is opened', async () => {
@@ -347,6 +353,8 @@ describe('orders list', () => {
     await appUser.click(screen.getByRole('link', { name: 'Đơn hàng' }));
     await screen.findByRole('heading', { name: 'Đơn hàng' });
     await waitFor(() => expect(requests).toHaveLength(3));
+
+    await settled();
   });
 });
 

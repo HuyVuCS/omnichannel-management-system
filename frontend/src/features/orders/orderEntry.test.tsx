@@ -21,7 +21,7 @@ import {
   teaProduct,
   TEA_ID,
 } from '@/test/catalog';
-import { expectLanguageSwitchChangesTextOnly, switchLanguage, type AppUser } from '@/test/interactions';
+import { expectLanguageSwitchChangesTextOnly, switchLanguage, type AppUser, settled } from '@/test/interactions';
 import { fakeHub } from '@/test/hub';
 import { attempt, channel, ORDER_ID, orderDetail, serveChannels, task, TASK_ID } from '@/test/orders';
 import { renderApp } from '@/test/renderApp';
@@ -497,6 +497,8 @@ describe('order entry', () => {
     expect(panel.getAllByRole('spinbutton')).toHaveLength(1);
     expect(quantityOfLine('website', 1)).toHaveValue('');
     expect(panel.queryByRole('alert')).not.toBeInTheDocument();
+
+    await settled();
   });
 
   it('lets the user type the external order id or ask for a new number, and sends it as it is', async () => {
@@ -517,6 +519,10 @@ describe('order entry', () => {
     expect(backend.submissions).toHaveLength(1);
     expect(backend.submissions[0]).toMatchObject({ slug: 'pos', body: { externalOrderId: 'POS-TYPED-1' } });
     expect(outcome).toHaveTextContent('POS-TYPED-1');
+
+    // The outcome is followed to its end (task, then order) before the test is over.
+    expect(await within(outcome).findByText('Đã giữ hàng cho đơn hàng.')).toBeInTheDocument();
+    await settled();
   });
 
   it('asks for the required fields before anything is sent, and the last line cannot be removed', async () => {
@@ -729,6 +735,8 @@ describe('order entry: polling window', () => {
     setTabVisibility('visible');
     jump(POLL_INTERVAL_MS + 100);
     await waitFor(() => expect(backend.taskRequests.length).toBeGreaterThan(whileHidden));
+
+    await settled();
   });
 
   it('stops asking when the page is left', async () => {
@@ -844,6 +852,8 @@ describe('order entry: outcome by push', () => {
     jump(POLL_INTERVAL_MS + 700);
     await pause(200);
     expect(counts()).toEqual(LOADED_TWICE);
+
+    await settled();
   });
 
   it('leaves the lists alone when it sees the task finished while live: only hints refresh them', async () => {
@@ -862,6 +872,8 @@ describe('order entry: outcome by push', () => {
     jump(FLUSH_WINDOW_MS + 500);
     await pause(200);
     expect(counts()).toEqual(LOADED_ONCE);
+
+    await settled();
   });
 
   it('refreshes the lists once when the connection was lost while waiting and the task is finished by polling', async () => {
@@ -884,6 +896,8 @@ describe('order entry: outcome by push', () => {
     jump(POLL_INTERVAL_MS + 700);
     await pause(200);
     expect(counts()).toEqual(LOADED_TWICE);
+
+    await settled();
   });
 
   it('polls while the connection is lost, in the same outcome view', async () => {
@@ -1019,5 +1033,7 @@ describe('order entry: language switch', () => {
     await waitFor(() => expect(backend.taskRequests.length).toBeGreaterThan(pollsBefore + 1));
     const gaps = backend.taskRequests.slice(1).map((at, index) => at - backend.taskRequests[index]!);
     expect(Math.min(...gaps)).toBeGreaterThanOrEqual(POLL_INTERVAL_MS - 100);
+
+    await settled();
   });
 });
