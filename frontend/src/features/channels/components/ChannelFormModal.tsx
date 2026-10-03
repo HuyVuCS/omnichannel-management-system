@@ -3,8 +3,9 @@ import { useTranslation } from 'react-i18next';
 import { FieldHint } from '@/shared/components/FieldHint';
 import { FormErrors } from '@/shared/components/FormErrors';
 import { MODAL_WIDTH } from '@/shared/components/layout';
+import { ResetFormOnOpen } from '@/shared/components/ResetFormOnOpen';
 import { useFormSubmission } from '@/shared/hooks/useFormSubmission';
-import { useResetFormOnOpen } from '@/shared/hooks/useResetFormOnOpen';
+import { useOpenCount } from '@/shared/hooks/useOpenCount';
 import {
   CHANNEL_STATUSES,
   CHANNEL_TYPES,
@@ -40,7 +41,7 @@ export function ChannelFormModal({ state, onClose }: ChannelFormModalProps) {
   const { t } = useTranslation();
   const { modal } = AntApp.useApp();
   const [form] = Form.useForm<ChannelFormValues>();
-  useResetFormOnOpen(form, state);
+  const openCount = useOpenCount(state);
   const [createChannel, creating] = useCreateChannelMutation();
   const [updateChannel, updating] = useUpdateChannelMutation();
   const editing = state?.kind === 'edit' ? state.channel : null;
@@ -98,7 +99,7 @@ export function ChannelFormModal({ state, onClose }: ChannelFormModalProps) {
         form={form}
         layout="vertical"
         preserve={false}
-        // With `useResetFormOnOpen`: a dialog opened again must not start with the values of the previous time.
+        // With `ResetFormOnOpen`: a dialog opened again must not start with the values of the previous time.
         clearOnDestroy
         initialValues={initialValues}
         onFinish={onFinish}
@@ -131,6 +132,7 @@ export function ChannelFormModal({ state, onClose }: ChannelFormModalProps) {
             options={CHANNEL_STATUSES.map((status) => ({ value: status, label: t(`channels.status.${status}`) }))}
           />
         </Form.Item>
+        <ResetFormOnOpen openCount={openCount} />
       </Form>
     </Modal>
   );

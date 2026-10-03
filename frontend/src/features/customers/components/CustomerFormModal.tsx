@@ -2,8 +2,9 @@ import { Form, Input, Modal } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { FormErrors } from '@/shared/components/FormErrors';
 import { MODAL_WIDTH } from '@/shared/components/layout';
+import { ResetFormOnOpen } from '@/shared/components/ResetFormOnOpen';
 import { useFormSubmission } from '@/shared/hooks/useFormSubmission';
-import { useResetFormOnOpen } from '@/shared/hooks/useResetFormOnOpen';
+import { useOpenCount } from '@/shared/hooks/useOpenCount';
 import { useCreateCustomerMutation, useUpdateCustomerMutation, type Customer } from '../customersApi';
 
 /** What the dialog is open for; null = closed. */
@@ -34,7 +35,7 @@ function orNull(value: string | undefined): string | null {
 export function CustomerFormModal({ state, onClose }: CustomerFormModalProps) {
   const { t } = useTranslation();
   const [form] = Form.useForm<CustomerFormValues>();
-  useResetFormOnOpen(form, state);
+  const openCount = useOpenCount(state);
   const [createCustomer, creating] = useCreateCustomerMutation();
   const [updateCustomer, updating] = useUpdateCustomerMutation();
   const editing = state?.kind === 'edit' ? state.customer : null;
@@ -86,7 +87,7 @@ export function CustomerFormModal({ state, onClose }: CustomerFormModalProps) {
         form={form}
         layout="vertical"
         preserve={false}
-        // With `useResetFormOnOpen`: a dialog opened again must not start with the values of the previous time.
+        // With `ResetFormOnOpen`: a dialog opened again must not start with the values of the previous time.
         clearOnDestroy
         initialValues={initialValues}
         onFinish={(values) => void submit(values)}
@@ -103,6 +104,7 @@ export function CustomerFormModal({ state, onClose }: CustomerFormModalProps) {
         <Form.Item name="address" label={t('customers.form.address')}>
           <Input.TextArea autoComplete="off" rows={2} style={{ resize: 'none' }} />
         </Form.Item>
+        <ResetFormOnOpen openCount={openCount} />
       </Form>
     </Modal>
   );

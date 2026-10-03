@@ -3,8 +3,9 @@ import { useTranslation } from 'react-i18next';
 import { FieldHint } from '@/shared/components/FieldHint';
 import { FormErrors } from '@/shared/components/FormErrors';
 import { MODAL_WIDTH } from '@/shared/components/layout';
+import { ResetFormOnOpen } from '@/shared/components/ResetFormOnOpen';
 import { useFormSubmission } from '@/shared/hooks/useFormSubmission';
-import { useResetFormOnOpen } from '@/shared/hooks/useResetFormOnOpen';
+import { useOpenCount } from '@/shared/hooks/useOpenCount';
 import { useResetUserPasswordMutation, type User } from '../usersApi';
 
 interface ResetPasswordModalProps {
@@ -17,7 +18,7 @@ interface ResetPasswordModalProps {
 export function ResetPasswordModal({ user, onClose }: ResetPasswordModalProps) {
   const { t } = useTranslation();
   const [form] = Form.useForm<{ newPassword: string }>();
-  useResetFormOnOpen(form, user);
+  const openCount = useOpenCount(user);
   const [resetPassword, { isLoading }] = useResetUserPasswordMutation();
   const { submit, formErrors, clearErrors } = useFormSubmission(form, {
     action: ({ newPassword }) => resetPassword({ userId: user?.userId ?? '', newPassword }).unwrap(),
@@ -50,7 +51,7 @@ export function ResetPasswordModal({ user, onClose }: ResetPasswordModalProps) {
         form={form}
         layout="vertical"
         preserve={false}
-        // With `useResetFormOnOpen`: a dialog opened again must not start with the values of the previous time.
+        // With `ResetFormOnOpen`: a dialog opened again must not start with the values of the previous time.
         clearOnDestroy
         onFinish={(values) => void submit(values)}
       >
@@ -62,6 +63,7 @@ export function ResetPasswordModal({ user, onClose }: ResetPasswordModalProps) {
         >
           <Input.Password autoComplete="new-password" />
         </Form.Item>
+        <ResetFormOnOpen openCount={openCount} />
       </Form>
     </Modal>
   );

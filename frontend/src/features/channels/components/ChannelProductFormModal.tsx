@@ -4,8 +4,9 @@ import { ProductSelect } from '@/features/products/components/ProductSelect';
 import { productLabel } from '@/features/products/productsApi';
 import { FormErrors } from '@/shared/components/FormErrors';
 import { MODAL_WIDTH } from '@/shared/components/layout';
+import { ResetFormOnOpen } from '@/shared/components/ResetFormOnOpen';
 import { useFormSubmission } from '@/shared/hooks/useFormSubmission';
-import { useResetFormOnOpen } from '@/shared/hooks/useResetFormOnOpen';
+import { useOpenCount } from '@/shared/hooks/useOpenCount';
 import {
   CHANNEL_PRODUCT_STATUSES,
   useCreateChannelProductMutation,
@@ -56,7 +57,7 @@ function orNull(value: string | undefined): string | null {
 export function ChannelProductFormModal({ channel, state, onClose, onSaved }: ChannelProductFormModalProps) {
   const { t } = useTranslation();
   const [form] = Form.useForm<ChannelProductFormValues>();
-  useResetFormOnOpen(form, state);
+  const openCount = useOpenCount(state);
   const [createMapping, creating] = useCreateChannelProductMutation();
   const [updateMapping, updating] = useUpdateChannelProductMutation();
   const editing = state?.kind === 'edit' ? state.mapping : null;
@@ -109,7 +110,7 @@ export function ChannelProductFormModal({ channel, state, onClose, onSaved }: Ch
         form={form}
         layout="vertical"
         preserve={false}
-        // With `useResetFormOnOpen`: a dialog opened again must not start with the values of the previous time.
+        // With `ResetFormOnOpen`: a dialog opened again must not start with the values of the previous time.
         clearOnDestroy
         initialValues={initialValues}
         onFinish={(values) => {
@@ -154,6 +155,7 @@ export function ChannelProductFormModal({ channel, state, onClose, onSaved }: Ch
             }))}
           />
         </Form.Item>
+        <ResetFormOnOpen openCount={openCount} />
       </Form>
     </Modal>
   );
