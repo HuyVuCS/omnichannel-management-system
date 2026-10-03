@@ -443,3 +443,40 @@ stability"), smoke 25/25 (second run). First-load set 968 kB raw / 317 kB gzip. 
 15. `Alerts` table (the ERD has no alert entity).
 16. `GET /api/alerts/{alertId}`, `POST /api/alerts/{alertId}/acknowledge` (doc §11 lists only `GET /api/alerts`).
 17. Hint `alert.changed` in addition to the doc's `low_stock.created`.
+
+## Task 017 result (reviewed 2026-10-03)
+
+`Alerts` table (migration `Alerts` with backfill), `AlertStore` as the only writer, eight call sites, `GET /api/alerts`,
+`GET /api/alerts/{alertId}`, `POST /api/alerts/{alertId}/acknowledge`, `alerts` in the dashboard summary; Part A:
+smoke scripts run npm after stopping their hosts, 4 test workers kept (3 measured 13 % slower), tests > 5 s split,
+strict `Assert-Step` + self-test. Backend 820/820, 15/15 mutants killed; frontend 292 tests, 5 of 5 full runs green
+(second series); smoke 53/53 (throwaway environment as `omnichannel_app`); migration applied and manual steps done by the
+user on 2026-10-03. Review: `docs/tasks/017-*.review.md`.
+
+| Topic | Decision | Reason | Revisit when |
+| --- | --- | --- | --- |
+| Statements in the reserve transaction | 5 → 8 per order (two set-based low-stock statements, one resolve of the task's `processing_failed`), a 9th `pg_notify` only when an alert row changed; the reserve `UPDATE` is unchanged | Measured by a command-interceptor test | Load test of the reserve path (026) |
+| Alert row locks | Multi-row resolves lock in `DedupKey` order inside one statement; upserts of one call run in key order; low-stock rows rely on the inventory row locks (`ProductId` order) | An import resolving several insufficient-stock alerts and a rejected multi-line order could deadlock otherwise | — |
+| Backfill | "Newest stock-sync task" = most recently **finished** (`Failed`/`Succeeded` by `UpdatedAt`); ids UUIDv4 (`gen_random_uuid()`); idempotent | The order in which the live system would have opened and resolved; PostgreSQL 17 has no v7 generator | — |
+| Partial unique index | `UX_Alerts_DedupKey_Unresolved` not in `ExpectedUniqueViolations` | Every insert names it as `ON CONFLICT` arbiter; no update moves a row back into it | — |
+| Insufficient stock from a stale read | Accepted: an import committed between the rejection's unlocked availability read and its alert write leaves an alert that the next import resolves | The alert states a true fact (an order was rejected); closing it needs `FOR SHARE` locks in that path | Operators report stale insufficient-stock alerts |
+| Deactivated mapping | **(user, 2026-10-03)** `Active` → `Inactive` of a mapping resolves the pair's `StockSyncFailed` alert in the same transaction (018 Part A6); channel deactivation does not touch alerts. An attempt already running at deactivation can still fail finally and reopen it; a manual retry then completes without a push and resolves it | The pair is no longer synced, so the failure needs no attention; a channel re-activation does not re-sync its mappings, so its alerts keep their meaning | Channel re-activation starts a sync |
+| Smoke table | (018 Part A5) `OK` column first; long values never drop a column | The 017 run lost the `OK` column | — |
+| Form-dialog reset | (018 Part A1, P1 pre-existing) reset from a component inside the `<Form>` subtree, on every open (also the same record), replacing `useResetFormOnOpen` | The dialog renders its content one commit after its parent; a reset in the parent's effect used the previous record's `initialValues` (about 5 % of quick reopenings in jsdom) | AntD major upgrade |
+
+## Task 018 plan — Alerts page; Logs/Audit split into 018b (2026-10-03)
+
+Roadmap change (user, 2026-10-03): the planned 018 is split. **018** = Alerts page, dashboard alert card, Part A
+(review 016b questions 3–4 and findings, review 017 questions 1, 3, 5); **018b** = Logs/Audit: a new backend endpoint
+over `SystemEventLogs` + the page. Numbers 019+ are unchanged.
+
+| Topic | Decision | Reason | Revisit when |
+| --- | --- | --- | --- |
+| Alert detail | No detail route; the list row shows everything the API returns, with links to order, task, channel and stock import | Every field fits a row; `GET /api/alerts/{id}` stays available | Alerts get history or comments |
+| New-alert notification | No toast, sound or header badge; `low_stock.created` and `alert.changed` only refresh what is on screen (alerts list, dashboard card) | Bulk changes would flood toasts; a badge would fetch the summary on every page | Users ask for it (026 accessibility pass) |
+| Alert tags | `Alert` is a realtime tag type (resync included); `alert.changed` → id + LIST + summary; `low_stock.created` → LIST + summary; `inventory.changed` also → Alert LIST; product and channel updates invalidate Alert LIST | A low-stock row shows the **current** stock and threshold, which change without an alert row changing | — |
+| Acknowledge in the UI | Manager/Admin, `Open` rows only, with a confirmation (cannot be undone) | Same pattern as manual retry | — |
+| Default status filter | The client sends no `status` for the default view; the server's default (Open + Acknowledged) applies | One rule, on the server | — |
+| Logs/Audit access (018b) | **(user, 2026-10-03)** Manager and Admin; events `user.*` only for Admin, filtered on the server | Managers trace processing, imports and acknowledgements; user-management audit is the Admin's | — |
+| Logs/Audit payload (018b) | The endpoint returns a per-event-type **allowlist** of payload fields (one map in Application); unknown types and fields are not returned; never `lastError` of the outbox | Payloads are free-form jsonb written for operators; the outbox error may carry broker or exception text | A new event type is added (it must enter the map) |
+| Logs/Audit endpoint (018b) | New `GET /api/system-events` (paging contract, filters level / event type / correlation id / order / task / range ≤ 92 days) — doc deviation 18 | Doc §3.2 has the page, §11 no endpoint for it | — |

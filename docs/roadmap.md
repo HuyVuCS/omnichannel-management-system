@@ -3,7 +3,7 @@
 Plan from the current state to the complete system (backend + frontend), following the implementation order in
 the architecture document (section 15). Maintained by Cowork; updated after every task review.
 
-Last updated: 2026-10-03 (task 017 written)
+Last updated: 2026-10-03 (review 017, task 018 written)
 
 ## Conventions
 - One row = one task file `docs/tasks/NNN-*.md`, written by Cowork shortly before it is needed (not all up front),
@@ -37,8 +37,9 @@ Last updated: 2026-10-03 (task 017 written)
 | 015 | BE | Realtime hints: `pg_notify` in the committing transaction (API and Workers) → per-instance `LISTEN` in the API → SignalR hub `/api/hubs/notifications` (JWT, AnyStaff, resync after a lost listener); `GET /api/dashboard/summary`; Part A (review 014): stale stock-sync task after deactivation (P2), `GET` of one mapping, README section 6, `.http` samples | 10 | Done |
 | 016 | FE | Realtime client (`@microsoft/signalr`, lazy; connect/stop with the session, reconnect → resync, event → tag map, coalesced refetch, connection indicator) + dashboard overview (`GET /api/dashboard/summary`, range in the address) + Sync & Processing page (task list with filters incl. channel, task detail route, retry for Manager/Admin, also on the order detail) + order-entry outcome by push (polling only while disconnected); BE: `productSku` on task summary/detail; Vite proxy with WebSocket; Part A (review 013): pickers hide only stale answers (`currentData`), panel title repetition, orders table width at 1280 px, load only the active language; Part A (review 014): committed bundle-measurement script; Part A (review 015): smoke scripts start hosts only for the local default | 3.2, 12 | Done |
 | 016b | FE | Channel detail route `/channels/:channelId` with its product mappings (list, search, sort, paging; create, edit, activate/deactivate for Manager/Admin; initial-sync task with live status); channels without stock sync shown as such (review 014); BE: `stockSyncEnabled` on channel responses; Part A (review 016): `127.0.0.1` for local connections, hint flush as a throttle, order outcome invalidates lists only when not live; fix of a pre-existing form-dialog defect (stale values after a full close) | 3.2 | Done |
-| 017 | BE | Alerts: `Alerts` table (Open → Acknowledged → Resolved, dedup key, system resolution, backfill) for low stock (shared predicate), insufficient stock, stock-sync and processing failures; `GET /api/alerts`, `GET /api/alerts/{id}`, acknowledge (Manager/Admin); hints `alert.changed`, `low_stock.created`; `alerts` in the dashboard summary; Part A (review 016b): frontend suite stable under load (smoke runs npm after stopping its hosts, worker count, split slow tests), strict `Assert-Step` | 11 | Open |
-| 018 | FE | Alerts page (list, filters, acknowledge, `alert.changed` / `low_stock.created` → tags, alert tiles on the dashboard) + Logs/Audit page; Part A (review 016b): `currentData` on detail pages bound to a route parameter, stale API errors on optional customer fields, products table at 1280 px | 3.2 | Planned |
+| 017 | BE | Alerts: `Alerts` table (Open → Acknowledged → Resolved, dedup key, system resolution, backfill) for low stock (shared predicate), insufficient stock, stock-sync and processing failures; `GET /api/alerts`, `GET /api/alerts/{id}`, acknowledge (Manager/Admin); hints `alert.changed`, `low_stock.created`; `alerts` in the dashboard summary; Part A (review 016b): frontend suite stable under load (smoke runs npm after stopping its hosts, worker count, split slow tests), strict `Assert-Step` | 11 | Done |
+| 018 | FE | Alerts page (list with filters/sort/paging in the address, details per type, acknowledge for Manager/Admin, links to order/task/channel/stock import) + dashboard alert card; `Alert` realtime tag (`alert.changed`, `low_stock.created`, `inventory.changed`); Part A (review 017): form-dialog reset from inside the form (P1), smoke table `OK` column first, BE: deactivating a mapping resolves its stock-sync alert; Part A (review 016b): `currentData` on detail pages bound to a route parameter, stale API errors on optional customer fields, products table at 1280 px | 3.2 | Open |
+| 018b | BE+FE | Logs/Audit: `GET /api/system-events` (Manager/Admin; `user.*` events Admin only; payload by per-type allowlist; paging, filters level / event type / correlation id / order / task / range) + Logs/Audit page | 3.2 | Planned |
 | 019 | BE+FE | S3 product images: presigned upload `POST /api/products/{id}/image/presign`, private bucket, UI upload | 12 | Planned |
 | 020 | BE | Excel export (ClosedXML) for orders and inventory; background export task + S3 for large files | 12 | Planned |
 | 021 | FE | Reports & Excel export page | 3.2 | Planned |
@@ -75,7 +76,7 @@ Expect roughly 2–4 extra tasks for review follow-ups that are too large for a 
 | Near-real-time dashboard | 015, 016 |
 | Trace an order to task, worker, instance, attempt, error | 006, 008, 016 |
 | Low-stock alert by threshold | 017, 018 |
-| Inventory and processing history | 003, 008, 012, 016 |
+| Inventory and processing history | 003, 008, 012, 016, 018b |
 | Excel export | 020, 021 |
 | Product images in S3 | 019 |
 | API authentication/authorization | 001–004 (ongoing) |

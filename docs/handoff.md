@@ -6,8 +6,9 @@ This file is an index and a snapshot of what is in flight. The repository docume
 - Written: 2026-10-03 05:55 (+07:00), by Claude Code, right after finishing task 017.
 - Branch `master` (nothing pushed). HEAD: `e2bf1b8` "task 017: report" (this file is committed on top of it).
 - Working tree: clean. No API, Workers host, dev server or throwaway container is left running by Claude Code.
-- Newest migration: **`20261002215102_Alerts`** (task 017) — **not yet applied to the development database**.
-  Previous one, `20261002053501_StockSync`, is applied.
+- Newest migration: **`20261002215102_Alerts`** (task 017) — applied to the development database by the user
+  (2026-10-03).
+- Updated by Cowork 2026-10-03 after review 017 (review, roadmap, log, task 018 written).
 
 ## 2. Project in 5 lines
 Multi-channel order and inventory management: React dashboard → ASP.NET Core API → PostgreSQL (source of truth) →
@@ -25,36 +26,27 @@ Source-of-truth order when documents disagree:
 - Details and the report template: [docs/tasks/README.md](tasks/README.md).
 
 ## 4. Progress
-- 001–016b — Done (titles in [docs/roadmap.md](roadmap.md)).
-- 017 — Alerts backend + Part A of review 016b — **Review**: [report](tasks/017-alerts-backend.report.md) written,
-  awaiting Cowork (the roadmap still says "Open").
-- 018 — Frontend: Alerts page, Logs/Audit page; Part A from review 016b — Planned
+- 001–017 — Done (titles in [docs/roadmap.md](roadmap.md); 017 [review](tasks/017-alerts-backend.review.md) accepted:
+  no P0–P1 in the new code; a pre-existing P1 form-dialog defect goes to 018 Part A1).
+- 018 — Alerts page + dashboard alert card; Part A from reviews 016b and 017 — **Open**:
+  [task file](tasks/018-frontend-alerts-page.md).
+- 018b — Logs/Audit (`GET /api/system-events` + page) — Planned (split from 018 by the user, 2026-10-03; access and
+  payload decided: implementation log "Task 018 plan").
 - 019 — S3 product images (presigned upload) — Planned (decision needed first: S3 in development)
 - 020 — Excel export (ClosedXML) — Planned
 
 ## 5. In flight
-**Task 017: report written, awaiting Cowork review.** Commits `e13fe35`, `0f5a935`, `822e3ce`, `3fc799a`, `056e1a3`,
-`dd5efb1`, `e2bf1b8`. Results: backend 820/820, 15/15 mutants killed; `task-017.ps1` 53/53 on a throwaway environment
-(app role `omnichannel_app`); `task-016b.ps1` 25/25 on development; frontend 292 tests, second series of 5 consecutive
-full runs green.
-Points for the review (report "Blocked / questions"):
-1. **Finding in existing 016b code:** a form dialog reopened right after Cancel can show the previous record's values
-   (race in `useResetFormOnOpen`: the parent's effect can run before the dialog's form subtree re-rendered); the 016b
-   test `products.test.tsx` "dialog reopened before its close animation has finished" fails about 1 run in 12–15.
-   Not fixed; proposed fix in the report (reset from inside the `<Form>` subtree) — candidate for 018 Part A.
-2. Insufficient-stock alert can open from a stale availability read (no lock in that path).
-3. Stock-sync alert of a mapping deactivated afterwards stays open.
-4. Backfill opens a low-stock alert for every product low now (many `SMOKE-*` products on development).
-5. `Complete-Smoke` table cuts the `OK` column when values are long.
-6. Every new product opens a low-stock alert (as decided).
+**Task 018 is open for Claude Code** (`/next-task`). Decisions: implementation log "Task 017 result", "Task 018 plan".
+Part A, A1 first:
+- A1 (P1) form dialogs reset from a component inside `<Form>` on every open (also the same record); remove
+  `useResetFormOnOpen`; repetition numbers before/after; production-build check;
+- A2 `currentData` on the three detail pages; A3 stale errors on optional customer fields; A4 products table at 1280 px;
+- A5 smoke table: `OK` column first, no dropped columns;
+- A6 (backend) deactivating a mapping resolves its `StockSyncFailed` alert (user's decision).
 
 ## 6. Pending for the user
-- **Apply migration `Alerts`** to the development database with the migrator role (README §4:
-  `dotnet ef database update -p src/Omnichannel.Infrastructure -s src/Omnichannel.Api` in `backend/`, with
-  `OMNICHANNEL_MIGRATOR_CONNECTION` set), restart API and Workers, then run
-  `powershell -ExecutionPolicy Bypass -File scripts\smoke\task-017.ps1` (Workers in Development).
-- Optional: `scripts\smoke\_assert-selftest.ps1`; `task-010` … `013`, `016` after the migration (strict `Assert-Step`,
-  npm checks now after the hosts stop — only checked statically by Claude Code).
+- Optional: paste the `task-017.ps1` table (the run was reported done, the table was not pasted).
+- Optional: `scripts\smoke\_assert-selftest.ps1`; `task-010` … `013`, `016` after the migration.
 - Still unconfirmed from 016b: `Host=127.0.0.1` in both user-secrets and in `OMNICHANNEL_MIGRATOR_CONNECTION`; the manual
   browser check of the channel mapping page (report 016b "Manual steps").
 - Open decisions (roadmap): before 019 — S3 in development; before 024 — where "payment succeeded" comes from.
@@ -82,7 +74,7 @@ Points for the review (report "Blocked / questions"):
   a test. → report 017.
 - **A frontend test must end with its requests settled**: an in-flight request is answered by the next test's MSW
   handlers. → report 017, "Verification".
-- **Known flake until fixed:** the 016b dialog test above — a real product race, not a test problem. → report 017, question 1.
+- **Known flake until 018 A1:** the 016b dialog test above — a real product race, not a test problem. → review 017, question 1.
 - **Waits in frontend tests:** use the fake clock (`useJumpableClock` / `jump` in `orderEntry.test.tsx`), not real pauses.
 - **`Assert-Step` is strict** (type and value; strings case-sensitive; arrays/objects throw). → `scripts/smoke/_common.ps1`.
 - **Smoke scripts run npm after stopping the hosts they started** (`Invoke-FrontendChecks`). → report 017.
@@ -102,9 +94,8 @@ Points for the review (report "Blocked / questions"):
   environment (generated credentials, roles from `docker/postgres/init`). → report 017, "Smoke table".
 
 ## 9. Next action
-**Cowork:** review task 017 ([report](tasks/017-alerts-backend.report.md)), decide on question 1 (dialog reset fix,
-e.g. 018 Part A), update roadmap/log, write task 018. **User (any time):** apply migration `Alerts` and run
-`task-017.ps1`.
+**Claude Code:** `/next-task` → task 018 (Part A first, A1 before everything else). **User:** run `task-018.ps1` and the
+manual check when the report lists them. **Then Cowork:** review 018, write 018b.
 
 ## 10. Resume prompts
 New Claude Code chat:
@@ -116,5 +107,5 @@ docs/handoff.md.")
 
 New Cowork chat:
 ```
-Dự án Management System. Đọc docs/handoff.md, docs/roadmap.md và docs/implementation-log.md trong thư mục đã kết nối, rồi tiếp tục vai trò lập kế hoạch/review theo docs/tasks/README.md. Việc tiếp theo: review task 017 (docs/tasks/017-alerts-backend.report.md), quyết định câu hỏi 1 (lỗi reset form của dialog), rồi viết task 018.
+Dự án Management System. Đọc docs/handoff.md, docs/roadmap.md và docs/implementation-log.md trong thư mục đã kết nối, rồi tiếp tục vai trò lập kế hoạch/review theo docs/tasks/README.md. Review 017 xong, task 018 đã được viết. Việc tiếp theo: review task 018 khi docs/tasks/018-frontend-alerts-page.report.md đã có, rồi viết task 018b (Logs/Audit).
 ```
