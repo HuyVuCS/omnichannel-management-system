@@ -4,8 +4,9 @@ import type { Role } from '@/features/auth/session';
 import { FieldHint } from '@/shared/components/FieldHint';
 import { FormErrors } from '@/shared/components/FormErrors';
 import { MODAL_WIDTH } from '@/shared/components/layout';
+import { ResetFormOnOpen } from '@/shared/components/ResetFormOnOpen';
 import { useFormSubmission } from '@/shared/hooks/useFormSubmission';
-import { useResetFormOnOpen } from '@/shared/hooks/useResetFormOnOpen';
+import { useOpenCount } from '@/shared/hooks/useOpenCount';
 import { useChangeUserRoleMutation, type User } from '../usersApi';
 import { RoleSelect } from './RoleSelect';
 
@@ -19,7 +20,7 @@ interface ChangeRoleModalProps {
 export function ChangeRoleModal({ user, onClose }: ChangeRoleModalProps) {
   const { t } = useTranslation();
   const [form] = Form.useForm<{ role: Role }>();
-  useResetFormOnOpen(form, user);
+  const openCount = useOpenCount(user);
   const [changeRole, { isLoading }] = useChangeUserRoleMutation();
   const { submit, formErrors, clearErrors } = useFormSubmission(form, {
     action: ({ role }) => changeRole({ userId: user?.userId ?? '', role }).unwrap(),
@@ -52,7 +53,7 @@ export function ChangeRoleModal({ user, onClose }: ChangeRoleModalProps) {
         form={form}
         layout="vertical"
         preserve={false}
-        // With `useResetFormOnOpen`: a dialog opened again must not start with the values of the previous time.
+        // With `ResetFormOnOpen`: a dialog opened again must not start with the values of the previous time.
         clearOnDestroy
         initialValues={{ role: user?.role ?? undefined }}
         onFinish={(values) => void submit(values)}
@@ -65,6 +66,7 @@ export function ChangeRoleModal({ user, onClose }: ChangeRoleModalProps) {
         >
           <RoleSelect />
         </Form.Item>
+        <ResetFormOnOpen openCount={openCount} />
       </Form>
     </Modal>
   );

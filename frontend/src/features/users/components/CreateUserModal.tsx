@@ -3,8 +3,9 @@ import { useTranslation } from 'react-i18next';
 import { FieldHint } from '@/shared/components/FieldHint';
 import { FormErrors } from '@/shared/components/FormErrors';
 import { MODAL_WIDTH } from '@/shared/components/layout';
+import { ResetFormOnOpen } from '@/shared/components/ResetFormOnOpen';
 import { useFormSubmission } from '@/shared/hooks/useFormSubmission';
-import { useResetFormOnOpen } from '@/shared/hooks/useResetFormOnOpen';
+import { useOpenCount } from '@/shared/hooks/useOpenCount';
 import { useCreateUserMutation, type CreateUserRequest } from '../usersApi';
 import { RoleSelect } from './RoleSelect';
 
@@ -22,7 +23,7 @@ const CODE_FIELDS = { user_email_exists: 'email' };
 export function CreateUserModal({ open, onClose }: CreateUserModalProps) {
   const { t } = useTranslation();
   const [form] = Form.useForm<CreateUserRequest>();
-  useResetFormOnOpen(form, open);
+  const openCount = useOpenCount(open);
   const [createUser, { isLoading }] = useCreateUserMutation();
   const { submit, formErrors, clearErrors } = useFormSubmission(form, {
     action: (values) => createUser(values).unwrap(),
@@ -53,7 +54,7 @@ export function CreateUserModal({ open, onClose }: CreateUserModalProps) {
         form={form}
         layout="vertical"
         preserve={false}
-        // With `useResetFormOnOpen`: a dialog opened again must not start with the values of the previous time.
+        // With `ResetFormOnOpen`: a dialog opened again must not start with the values of the previous time.
         clearOnDestroy
         onFinish={(values) => void submit(values)}
       >
@@ -71,6 +72,7 @@ export function CreateUserModal({ open, onClose }: CreateUserModalProps) {
         <Form.Item name="role" label={t('users.createModal.role')} rules={[{ required: true }]}>
           <RoleSelect />
         </Form.Item>
+        <ResetFormOnOpen openCount={openCount} />
       </Form>
     </Modal>
   );

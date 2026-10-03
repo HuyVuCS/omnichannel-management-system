@@ -657,6 +657,26 @@ describe('channel detail: changing a mapping', () => {
   });
 });
 
+describe('channel detail: mapping dialog reopened before its close animation has finished', () => {
+  it('shows the mapping it was opened for, never the values of the previous one', async () => {
+    serveChannelDetail(websiteChannel, [teaMapping, coffeeMapping]);
+    // Animations on: in jsdom they never finish, so the closed dialog and its form stay mounted.
+    const { user } = renderApp({ route: WEBSITE_PATH, session: sessionOf(managerUser), animations: true });
+
+    let dialog = await openEditDialog(user, 'TEA-01');
+    await waitFor(() => expect(within(dialog).getByLabelText('Mã sản phẩm trên kênh')).toHaveValue('WEB-1001'));
+    await user.type(within(dialog).getByLabelText('SKU trên kênh'), '-EDITED');
+    await user.click(within(dialog).getByRole('button', { name: 'Huỷ' }));
+
+    dialog = await openEditDialog(user, 'COF-01');
+    await waitFor(() => expect(within(dialog).getByLabelText('Mã sản phẩm trên kênh')).toHaveValue('WEB-1002'));
+    // Coffee has no external SKU and is inactive: nothing of the tea mapping is left, typed or stored.
+    expect(within(dialog).getByLabelText('SKU trên kênh')).toHaveValue('');
+    expect(within(dialog).getByDisplayValue('COF-01 — Cà phê')).toBeDisabled();
+    expect(dialog.querySelector('.ant-select')).toHaveTextContent('Ngừng');
+  });
+});
+
 describe('channel detail: cache', () => {
   it('fetches the mapping list again after a product was changed (its SKU and name are shown), not after a rejected change', async () => {
     const { state, listRequests } = serveChannelDetail(websiteChannel, [teaMapping]);

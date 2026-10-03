@@ -390,6 +390,30 @@ describe('products page: dialog reopened before its close animation has finished
     expect(within(dialog).getByLabelText('SKU')).toBeEnabled();
     expect(within(dialog).getByLabelText('Giá (VND)')).toHaveValue('');
   });
+
+  it('reopened for the same record: shows its stored values, not what was typed and cancelled', async () => {
+    serveProducts([tea, coffee]);
+    // Animations on: the form stays mounted with the cancelled edit, and nothing about the record changes in between.
+    const { user: appUser } = renderApp({ route: '/products', session: sessionOf(managerUser), animations: true });
+    await screen.findByText('TEA-01');
+
+    await appUser.click(within(rowOf('TEA-01')).getByRole('button', { name: 'Sửa' }));
+    let dialog = await findDialog('Sửa sản phẩm');
+    await waitFor(() => expect(within(dialog).getByLabelText('Tên sản phẩm')).toHaveValue('Trà xanh'));
+    await appUser.type(within(dialog).getByLabelText('Tên sản phẩm'), ' (chưa lưu)');
+    const threshold = within(dialog).getByLabelText('Ngưỡng cảnh báo tồn kho');
+    await appUser.clear(threshold);
+    await appUser.type(threshold, '99');
+    expect(within(dialog).getByLabelText('Tên sản phẩm')).toHaveValue('Trà xanh (chưa lưu)');
+    await appUser.click(within(dialog).getByRole('button', { name: 'Huỷ' }));
+
+    await appUser.click(within(rowOf('TEA-01')).getByRole('button', { name: 'Sửa' }));
+    dialog = await findDialog('Sửa sản phẩm');
+    await waitFor(() => expect(within(dialog).getByLabelText('Tên sản phẩm')).toHaveValue('Trà xanh'));
+    expect(within(dialog).getByLabelText('Ngưỡng cảnh báo tồn kho')).toHaveValue('5');
+    expect(within(dialog).getByLabelText('Giá (VND)')).toHaveValue('1.234.567');
+    expect(within(dialog).getByLabelText('Hạn dùng (không bắt buộc)')).toHaveValue('31/01/2027');
+  });
 });
 
 /**

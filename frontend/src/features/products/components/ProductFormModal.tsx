@@ -5,8 +5,9 @@ import { FieldHint } from '@/shared/components/FieldHint';
 import { FormErrors } from '@/shared/components/FormErrors';
 import { MODAL_WIDTH } from '@/shared/components/layout';
 import { MoneyInput } from '@/shared/components/MoneyInput';
+import { ResetFormOnOpen } from '@/shared/components/ResetFormOnOpen';
 import { useFormSubmission } from '@/shared/hooks/useFormSubmission';
-import { useResetFormOnOpen } from '@/shared/hooks/useResetFormOnOpen';
+import { useOpenCount } from '@/shared/hooks/useOpenCount';
 import { API_DATE_FORMAT, DATE_FORMAT } from '@/shared/utils/format';
 import { useCreateProductMutation, useUpdateProductMutation, type Product } from '../productsApi';
 
@@ -35,7 +36,7 @@ const CODE_FIELDS = { product_sku_exists: 'sku' };
 export function ProductFormModal({ state, onClose }: ProductFormModalProps) {
   const { t } = useTranslation();
   const [form] = Form.useForm<ProductFormValues>();
-  useResetFormOnOpen(form, state);
+  const openCount = useOpenCount(state);
   const [createProduct, creating] = useCreateProductMutation();
   const [updateProduct, updating] = useUpdateProductMutation();
   const editing = state?.kind === 'edit' ? state.product : null;
@@ -84,7 +85,7 @@ export function ProductFormModal({ state, onClose }: ProductFormModalProps) {
         form={form}
         layout="vertical"
         preserve={false}
-        // With `useResetFormOnOpen`: a dialog opened again must not start with the values of the previous time.
+        // With `ResetFormOnOpen`: a dialog opened again must not start with the values of the previous time.
         clearOnDestroy
         initialValues={initialValues}
         onFinish={(values) => void submit(values)}
@@ -114,6 +115,7 @@ export function ProductFormModal({ state, onClose }: ProductFormModalProps) {
         <Form.Item name="expiryDate" label={t('products.form.expiryDate')}>
           <DatePicker format={DATE_FORMAT} style={{ width: '100%' }} />
         </Form.Item>
+        <ResetFormOnOpen openCount={openCount} />
       </Form>
     </Modal>
   );
