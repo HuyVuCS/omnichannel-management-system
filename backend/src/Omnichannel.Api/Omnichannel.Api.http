@@ -115,6 +115,30 @@ Authorization: Bearer {{token}}
 POST {{baseUrl}}/api/alerts/{{alertId}}/acknowledge
 Authorization: Bearer {{token}}
 
+### ---- System events / Logs-Audit (task 018b; Manager/Admin, user.* events for an Admin only) ----
+
+### The newest events of the last hours (from only: no upper end)
+GET {{baseUrl}}/api/system-events?from=2026-10-03T00:00:00%2B07:00
+Authorization: Bearer {{token}}
+
+### Errors and warnings of two event types (level and eventType are repeatable), oldest first
+GET {{baseUrl}}/api/system-events?level=Error&level=Warning&eventType=processing.failed&eventType=order.insufficient_stock&sortDir=asc
+Authorization: Bearer {{token}}
+
+### Trace: every event of one flow (pick a correlationId from a list answer or from a task)
+@eventCorrelationId = 00000000000000000000000000000000
+GET {{baseUrl}}/api/system-events?correlationId={{eventCorrelationId}}&sortDir=asc
+Authorization: Bearer {{token}}
+
+### Events of a task in a range (at most 92 days when both ends are given)
+@eventTaskId = 00000000-0000-0000-0000-000000000000
+GET {{baseUrl}}/api/system-events?taskId={{eventTaskId}}&from=2026-10-01T00:00:00%2B07:00&to=2026-10-03T23:59:59%2B07:00
+Authorization: Bearer {{token}}
+
+### User management audit - an Admin gets the events, a Manager an empty page (200)
+GET {{baseUrl}}/api/system-events?eventType=user.created&eventType=user.role_changed&eventType=user.locked
+Authorization: Bearer {{token}}
+
 ### Realtime hub: negotiate (what a SignalR client does first). 401 without a token.
 # A browser passes the token as ?access_token=... on the hub's requests; here the header is used so that no token ends up
 # in a URL of this file.

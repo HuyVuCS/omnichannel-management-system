@@ -164,4 +164,12 @@
     <value>SKU trên kênh</value>
     <comment>Channel product mapping.</comment>
   </data>
+  <data name="level" xml:space="preserve">
+    <value>Mức độ</value>
+    <comment>System event filter.</comment>
+  </data>
+  <data name="eventType" xml:space="preserve">
+    <value>Loại sự kiện</value>
+    <comment>System event filter.</comment>
+  </data>
 </root>

@@ -38,7 +38,7 @@ public sealed class OutboxPublisherService(
     ILogger<OutboxPublisherService> logger) : BackgroundService
 {
     public const string WorkerName = "OutboxPublisher";
-    public const string PublishFailedEventType = "outbox.publish_failed";
+    public const string PublishFailedEventType = OutboxEvents.PublishFailed;
     private const string JsonContentType = "application/json";
 
     private readonly OutboxPublisherOptions _options = publisherOptions.Value;

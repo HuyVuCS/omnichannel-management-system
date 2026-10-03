@@ -164,4 +164,12 @@
     <value>External SKU</value>
     <comment>Channel product mapping.</comment>
   </data>
+  <data name="level" xml:space="preserve">
+    <value>Level</value>
+    <comment>System event filter.</comment>
+  </data>
+  <data name="eventType" xml:space="preserve">
+    <value>Event type</value>
+    <comment>System event filter.</comment>
+  </data>
 </root>
