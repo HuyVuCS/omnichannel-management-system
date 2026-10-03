@@ -38,6 +38,13 @@ export const DOUBLE_ACTION_COLUMN_WIDTH = 124;
 export const PAGE_SIZE_SELECT_WIDTH = 120;
 
 export const FILTER_WIDTH = 180;
+
+/**
+ * A filter that takes several values: wide enough for two chosen values and "+ n" on one line in both languages, so
+ * choosing more never makes the control taller.
+ */
+export const MULTI_FILTER_WIDTH = 360;
+
 export const SEARCH_WIDTH = 280;
 
 /** A product picker (`SKU — name`) used as a filter or in a form line. */

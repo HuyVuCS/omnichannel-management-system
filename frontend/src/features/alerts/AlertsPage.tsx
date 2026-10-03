@@ -16,8 +16,8 @@ import { isApiError } from '@/shared/api/types';
 import {
   DATE_RANGE_WIDTH,
   FILTER_WIDTH,
+  MULTI_FILTER_WIDTH,
   PRODUCT_SELECT_WIDTH,
-  SEARCH_WIDTH,
   SECONDARY_ACTION_WIDTH,
   SINGLE_ACTION_COLUMN_WIDTH,
 } from '@/shared/components/layout';
@@ -328,7 +328,7 @@ export function AlertsPage() {
           options={ALERT_STATUSES.map((value) => ({ value, label: t(`alerts.statuses.${value}`) }))}
           // Written in the order of the API's enum, whatever the order of choosing: the same choice, the same address.
           onChange={(values) => setFilter({ [STATUS_PARAM]: someOf(ALERT_STATUSES, values) })}
-          style={{ width: SEARCH_WIDTH }}
+          style={{ width: MULTI_FILTER_WIDTH }}
         />
         <Select<AlertType[]>
           mode="multiple"
@@ -340,7 +340,7 @@ export function AlertsPage() {
           aria-label={t('alerts.filters.type')}
           options={ALERT_TYPES.map((value) => ({ value, label: t(`alerts.types.${value}`) }))}
           onChange={(values) => setFilter({ [TYPE_PARAM]: someOf(ALERT_TYPES, values) })}
-          style={{ width: SEARCH_WIDTH }}
+          style={{ width: MULTI_FILTER_WIDTH }}
         />
         <ProductSelect
           allowClear
