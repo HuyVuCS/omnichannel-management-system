@@ -10,6 +10,7 @@ import {
 
 const TASK = '0199a1b2-0000-7000-8000-0000000000aa';
 const ORDER = '0199a1b2-0000-7000-8000-000000000001';
+const ALERT = '0199a1b2-0000-7000-8000-0000000000e1';
 
 describe('hints → cache tags', () => {
   it('order.created makes the order lists and the summary stale', () => {
@@ -19,11 +20,44 @@ describe('hints → cache tags', () => {
     ]);
   });
 
-  it('inventory.changed makes stock, movements, the product lists and the summary stale', () => {
+  it('inventory.changed makes stock, movements, the product lists, the alert lists and the summary stale', () => {
     expect(tagsForEvent({ type: 'inventory.changed', productIds: ['p1', 'p2'] })).toEqual([
       'Inventory',
       'InventoryMovement',
       { type: 'Product', id: 'LIST' },
+      // A low-stock alert shows the stock of now, which changes without the alert changing.
+      { type: 'Alert', id: 'LIST' },
+      'DashboardSummary',
+    ]);
+  });
+
+  it('alert.changed makes that alert, the alert lists and the summary stale', () => {
+    expect(
+      tagsForEvent({ type: 'alert.changed', alertId: ALERT, alertType: 'LowStock', status: 'Open', productId: 'p1' }),
+    ).toEqual([{ type: 'Alert', id: ALERT }, { type: 'Alert', id: 'LIST' }, 'DashboardSummary']);
+    // An alert event that names no alert cannot be narrowed down.
+    expect(tagsForEvent({ type: 'alert.changed' })).toEqual(['Alert', 'DashboardSummary']);
+  });
+
+  it('low_stock.created makes the alert lists and the summary stale, also without the alert.changed it comes with', () => {
+    expect(tagsForEvent({ type: 'low_stock.created', alertId: ALERT, productId: 'p1' })).toEqual([
+      { type: 'Alert', id: 'LIST' },
+      'DashboardSummary',
+    ]);
+    // The batch the server sends for a new low-stock alert: both events, each tag once after coalescing.
+    expect(
+      tagsForBatch({
+        events: [
+          { type: 'alert.changed', alertId: ALERT, alertType: 'LowStock', status: 'Open', productId: 'p1' },
+          { type: 'low_stock.created', alertId: ALERT, productId: 'p1' },
+        ],
+        resync: false,
+      }),
+    ).toEqual([
+      { type: 'Alert', id: ALERT },
+      { type: 'Alert', id: 'LIST' },
+      'DashboardSummary',
+      { type: 'Alert', id: 'LIST' },
       'DashboardSummary',
     ]);
   });
@@ -48,8 +82,11 @@ describe('hints → cache tags', () => {
       'Inventory',
       'InventoryMovement',
       'Product',
+      'Alert',
       'DashboardSummary',
     ]);
+    expect(tagsForEvent({ type: 'alert.changed', all: true })).toEqual(['Alert', 'DashboardSummary']);
+    expect(tagsForEvent({ type: 'low_stock.created', all: true })).toEqual(['Alert', 'DashboardSummary']);
     expect(tagsForEvent({ type: 'processing.task.changed', all: true })).toEqual([
       'ProcessingTask',
       'Order',
@@ -60,7 +97,7 @@ describe('hints → cache tags', () => {
   });
 
   it('ignores event types it does not know', () => {
-    expect(tagsForEvent({ type: 'low_stock.created', productId: 'p1' })).toEqual([]);
+    expect(tagsForEvent({ type: 'order.status.changed', orderId: ORDER })).toEqual([]);
     expect(tagsForBatch({ events: [{ type: 'something.new', all: true }], resync: false })).toEqual([]);
   });
 
@@ -71,6 +108,7 @@ describe('hints → cache tags', () => {
       'InventoryMovement',
       'Product',
       'ProcessingTask',
+      'Alert',
       'DashboardSummary',
     ]);
     expect(tagsForBatch({ events: [], resync: true })).toEqual(RESYNC_TAGS);
@@ -115,7 +153,13 @@ describe('coalescing (a throttle: at most one flush per window)', () => {
     expect(flushed).toHaveLength(1);
     coalescer.add(stockChanged);
     expect(flushed).toHaveLength(2);
-    expect(flushed[1]).toEqual(['Inventory', 'InventoryMovement', { type: 'Product', id: 'LIST' }, 'DashboardSummary']);
+    expect(flushed[1]).toEqual([
+      'Inventory',
+      'InventoryMovement',
+      { type: 'Product', id: 'LIST' },
+      { type: 'Alert', id: 'LIST' },
+      'DashboardSummary',
+    ]);
 
     // Nothing collected: nothing flushed, however long it takes.
     vi.advanceTimersByTime(10 * FLUSH_WINDOW_MS);

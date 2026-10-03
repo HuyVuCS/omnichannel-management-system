@@ -14,7 +14,8 @@
     "actions": "Actions",
     "createdAt": "Created",
     "refresh": "Refresh",
-    "optional": "Optional"
+    "optional": "Optional",
+    "info": "Information"
   },
   "roles": {
     "Admin": "Admin",
@@ -96,7 +97,9 @@
     "retry_source_missing": "The original message of the task no longer exists, so there is nothing to send again.",
     "channel_product_exists": "This product is already mapped on this channel.",
     "external_product_id_taken": "This external product ID belongs to another product on this channel.",
-    "channel_product_not_found": "The mapping no longer exists."
+    "channel_product_not_found": "The mapping no longer exists.",
+    "alert_not_found": "The alert no longer exists.",
+    "alert_resolved": "The system has already resolved this alert, so it cannot be acknowledged."
   },
   "pages": {
     "notFound": {
@@ -662,6 +665,57 @@
       "finishedAt": "Finished"
     }
   },
+  "alerts": {
+    "title": "Alerts",
+    "filters": {
+      "status": "Status",
+      "statusDefault": "Unresolved (open + acknowledged)",
+      "type": "Alert type",
+      "product": "Product",
+      "channel": "Channel",
+      "from": "Occurred from",
+      "to": "To",
+      "clear": "Clear filters"
+    },
+    "columns": {
+      "type": "Type",
+      "status": "Status",
+      "product": "Product",
+      "channel": "Channel",
+      "details": "Details",
+      "lastOccurredAt": "Last occurred",
+      "occurrenceCount": "Count",
+      "firstOccurredAt": "First occurred",
+      "acknowledged": "Acknowledged by",
+      "resolvedAt": "Resolved at"
+    },
+    "types": {
+      "LowStock": "Low stock",
+      "InsufficientStock": "Stock shortage",
+      "StockSyncFailed": "Sync failed",
+      "ProcessingFailed": "Task failed"
+    },
+    "statuses": {
+      "Open": "Open",
+      "Acknowledged": "Acknowledged",
+      "Resolved": "Resolved"
+    },
+    "details": {
+      "lowStock": "Available {{available}} / threshold {{threshold}}",
+      "lowStockNow": "The product's values now, not at the time of the alert.",
+      "order": "Order",
+      "task": "Task"
+    },
+    "actions": {
+      "importStock": "Import stock"
+    },
+    "acknowledge": {
+      "action": "Acknowledge",
+      "confirmTitle": "Acknowledge this alert?",
+      "confirmContent": "The alert is marked as seen; this cannot be undone. It stays until the system finds its cause gone.",
+      "done": "Alert acknowledged."
+    }
+  },
   "dashboard": {
     "title": "Dashboard",
     "updatedAt": "Updated at {{time}}",
@@ -714,6 +768,13 @@
       "failed": "Failed to send",
       "oldestPending": "Oldest waiting",
       "none": "None"
+    },
+    "alerts": {
+      "title": "Unresolved alerts",
+      "hint": "Current numbers, independent of the selected time range.",
+      "open": "Open",
+      "acknowledged": "Acknowledged",
+      "type": "Alert type"
     }
   }
 }

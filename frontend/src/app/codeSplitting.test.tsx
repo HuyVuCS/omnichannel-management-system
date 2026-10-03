@@ -28,8 +28,8 @@ describe('route-level code splitting', () => {
 
   it('loads the chunk of a page when the user navigates to it through the menu', async () => {
     server.use(http.get(api('/channels'), () => HttpResponse.json([])));
-    const { user, location } = renderApp({ route: '/alerts', session: sessionOf(staffUser) });
-    expect(await screen.findByText('Trang này sẽ có ở task 018.')).toBeInTheDocument();
+    const { user, location } = renderApp({ route: '/reports', session: sessionOf(staffUser) });
+    expect(await screen.findByText('Trang này sẽ có ở task 021.')).toBeInTheDocument();
     const sider = screen.getByTestId('app-sider');
 
     await user.click(screen.getByRole('link', { name: 'Kênh bán' }));

@@ -7,6 +7,7 @@ export const REALTIME_TAG_TYPES = [
   'InventoryMovement',
   'Product',
   'ProcessingTask',
+  'Alert',
   'DashboardSummary',
 ] as const;
 export type RealtimeTagType = (typeof REALTIME_TAG_TYPES)[number];
@@ -14,7 +15,7 @@ export type RealtimeTagType = (typeof REALTIME_TAG_TYPES)[number];
 /** A bare type = every cache entry of that type; with an id = the entries that provide exactly this tag. */
 export type RealtimeTag = RealtimeTagType | { type: RealtimeTagType; id: string };
 
-/** The id every list of a type provides (`ordersApi`, `productsApi`, `processingApi`). */
+/** The id every list of a type provides (`ordersApi`, `productsApi`, `processingApi`, `alertsApi`). */
 const LIST = 'LIST';
 
 /**
@@ -38,6 +39,8 @@ export function tagsForEvent(event: HintEvent): RealtimeTag[] {
         'Inventory',
         'InventoryMovement',
         event.all ? 'Product' : { type: 'Product', id: LIST },
+        // A low-stock alert shows the product's stock as it is now, which changes without the alert changing.
+        event.all ? 'Alert' : { type: 'Alert', id: LIST },
         'DashboardSummary',
       ];
 
@@ -54,6 +57,19 @@ export function tagsForEvent(event: HintEvent): RealtimeTag[] {
         ...(typeof event.orderId === 'string' ? [{ type: 'Order' as const, id: event.orderId }] : []),
         'DashboardSummary',
       ];
+
+    case 'alert.changed':
+      if (event.all || typeof event.alertId !== 'string') {
+        return ['Alert', 'DashboardSummary'];
+      }
+
+      // The summary counts the unresolved alerts.
+      return [{ type: 'Alert', id: event.alertId }, { type: 'Alert', id: LIST }, 'DashboardSummary'];
+
+    // Sent with an `alert.changed` for the same alert in the same batch; mapped anyway, so the client stays correct
+    // if that ever changes. It only refreshes what is on screen: no toast, sound or badge.
+    case 'low_stock.created':
+      return [event.all ? 'Alert' : { type: 'Alert', id: LIST }, 'DashboardSummary'];
 
     default:
       return [];

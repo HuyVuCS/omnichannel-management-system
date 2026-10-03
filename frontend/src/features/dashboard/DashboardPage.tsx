@@ -1,4 +1,4 @@
-import { ReloadOutlined } from '@ant-design/icons';
+import { InfoCircleOutlined, ReloadOutlined } from '@ant-design/icons';
 import {
   Button,
   Card,
@@ -20,6 +20,8 @@ import relativeTime from 'dayjs/plugin/relativeTime';
 import { useMemo, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useSearchParams } from 'react-router';
+import { AlertTypeTag } from '@/features/alerts/components/AlertTypeTag';
+import { alertsListPath } from '@/features/alerts/paths';
 import { lowStockPath } from '@/features/inventory/paths';
 import { OrderStatusTag } from '@/features/orders/components/OrderStatusTag';
 import { processingListPath } from '@/features/processing/paths';
@@ -36,6 +38,7 @@ import { TruncatedText } from '@/shared/components/TruncatedText';
 import { API_DATE_FORMAT, DATE_FORMAT, formatDateTime, formatMoney, formatNumber } from '@/shared/utils/format';
 import {
   useGetDashboardSummaryQuery,
+  type DashboardAlertTypeCount,
   type DashboardChannelOrders,
   type DashboardOrderStatusCount,
   type DashboardProcessing,
@@ -88,7 +91,8 @@ function Figure({ title, children }: { title: string; children: ReactNode }) {
 /**
  * Overview (every role): the numbers of `GET /api/dashboard/summary` as the server computed them. Nothing is added,
  * compared or judged here - no totals, no thresholds, no limit on the range (a range the server rejects is shown on
- * the range control). Non-zero numbers that have a list behind them link to it with the matching filters.
+ * the range control). Non-zero numbers that have a list behind them link to it with the matching filters. The alert
+ * card shows the unresolved alerts as they are now, whatever the range (its tooltip says so).
  *
  * The range lives in the address: a preset (`?range=today|7d|30d`; the default, the last 24 hours, writes nothing and
  * sends nothing) or a custom range of local days (`?from=…&to=…`).
@@ -233,6 +237,32 @@ export function DashboardPage() {
       statusColumn('retryScheduled', 'RetryScheduled'),
       statusColumn('failed', 'Failed', true),
       statusColumn('succeeded', 'Succeeded', true),
+    ];
+  }, [t]);
+
+  const alertColumns = useMemo<TableProps<DashboardAlertTypeCount>['columns']>(() => {
+    const statusColumn = (key: 'open' | 'acknowledged', status: 'Open' | 'Acknowledged') => ({
+      key,
+      dataIndex: key,
+      title: t(`dashboard.alerts.${key}`),
+      width: NUMBER_COLUMN_WIDTH,
+      align: 'right' as const,
+      ellipsis: true,
+      render: (count: number, row: DashboardAlertTypeCount) => (
+        <CountLink count={count} to={alertsListPath({ status: [status], type: [row.type] })} />
+      ),
+    });
+
+    return [
+      {
+        key: 'type',
+        dataIndex: 'type',
+        title: t('dashboard.alerts.type'),
+        ellipsis: true,
+        render: (type: DashboardAlertTypeCount['type']) => <AlertTypeTag type={type} />,
+      },
+      statusColumn('open', 'Open'),
+      statusColumn('acknowledged', 'Acknowledged'),
     ];
   }, [t]);
 
@@ -395,6 +425,44 @@ export function DashboardPage() {
                 <Figure title={t('dashboard.inventory.outOfStock')}>
                   {formatNumber(summary.inventory.outOfStock)}
                 </Figure>
+              </Col>
+            </Row>
+          </Card>
+
+          <Card
+            size="small"
+            title={
+              <Space size={8}>
+                {t('dashboard.alerts.title')}
+                <Tooltip title={t('dashboard.alerts.hint')}>
+                  <Typography.Text type="secondary">
+                    <InfoCircleOutlined aria-label={t('common.info')} />
+                  </Typography.Text>
+                </Tooltip>
+              </Space>
+            }
+            data-testid="dashboard-alerts"
+          >
+            <Row gutter={[24, 16]}>
+              <Col span={4}>
+                <Figure title={t('dashboard.alerts.open')}>
+                  <CountLink count={summary.alerts.open} to={alertsListPath({ status: ['Open'] })} />
+                </Figure>
+              </Col>
+              <Col span={4}>
+                <Figure title={t('dashboard.alerts.acknowledged')}>
+                  <CountLink count={summary.alerts.acknowledged} to={alertsListPath({ status: ['Acknowledged'] })} />
+                </Figure>
+              </Col>
+              <Col span={16}>
+                <Table<DashboardAlertTypeCount>
+                  rowKey="type"
+                  size="small"
+                  columns={alertColumns}
+                  dataSource={summary.alerts.byType}
+                  tableLayout="fixed"
+                  pagination={false}
+                />
               </Col>
             </Row>
           </Card>

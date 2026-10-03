@@ -6,12 +6,17 @@
 
 /** One hint of the hub's `hints` message: what kind of thing changed and which ids - never data. */
 export interface HintEvent {
-  /** `order.created`, `inventory.changed`, `processing.task.changed`; types this client does not know are ignored. */
+  /**
+   * `order.created`, `inventory.changed`, `processing.task.changed`, `alert.changed`, `low_stock.created`; types this
+   * client does not know are ignored.
+   */
   type: string;
   /** More changed than is listed: everything of this type is stale. */
   all?: boolean;
   orderId?: string;
   taskId?: string;
+  alertId?: string;
+  alertType?: string;
   channelId?: string;
   productId?: string;
   productIds?: string[];

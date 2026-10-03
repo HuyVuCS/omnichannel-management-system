@@ -72,6 +72,16 @@ export function summary(overrides: Partial<DashboardSummary> = {}): DashboardSum
       },
     ],
     outbox: { pending: 3, failed: 1, oldestPendingAt: new Date(2026, 9, 2, 8, 0, 9).toISOString() },
+    alerts: {
+      open: 7,
+      acknowledged: 2,
+      byType: [
+        { type: 'LowStock', open: 4, acknowledged: 1 },
+        { type: 'InsufficientStock', open: 0, acknowledged: 1 },
+        { type: 'StockSyncFailed', open: 3, acknowledged: 0 },
+        { type: 'ProcessingFailed', open: 0, acknowledged: 0 },
+      ],
+    },
     ...overrides,
   };
 }

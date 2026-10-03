@@ -61,6 +61,12 @@ const listsOnSuccess = (_result: unknown, error: unknown) => (error ? [] : [LIST
  */
 const CHANNEL_PRODUCT_LIST_TAG = { type: 'ChannelProduct', id: 'LIST' } as const;
 
+/**
+ * The alert lists show a product's SKU and name, and for a low-stock alert its threshold (`alertsApi`; repeated here
+ * for the same reason).
+ */
+const ALERT_LIST_TAG = { type: 'Alert', id: 'LIST' } as const;
+
 function compact(params: Record<string, string | number | undefined>) {
   return Object.fromEntries(Object.entries(params).filter(([, value]) => value !== undefined && value !== ''));
 }
@@ -84,7 +90,7 @@ export const productsApi = baseApi.injectEndpoints({
       query: ({ productId, changes }) => ({ url: `products/${productId}`, method: 'PUT', body: changes }),
       invalidatesTags: (result, error, { productId }) => [
         ...listsOnSuccess(result, error),
-        ...(error ? [] : [{ type: 'Product' as const, id: productId }, CHANNEL_PRODUCT_LIST_TAG]),
+        ...(error ? [] : [{ type: 'Product' as const, id: productId }, CHANNEL_PRODUCT_LIST_TAG, ALERT_LIST_TAG]),
       ],
     }),
   }),

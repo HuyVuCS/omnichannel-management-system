@@ -39,6 +39,7 @@ const EMPTY_SUMMARY = {
   processing: [],
   stockSync: [],
   outbox: { pending: 0, failed: 0, oldestPendingAt: null },
+  alerts: { open: 0, acknowledged: 0, byType: [] },
 };
 
 const users: Record<string, AuthUser> = {

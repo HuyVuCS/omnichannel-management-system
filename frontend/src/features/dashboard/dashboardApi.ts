@@ -1,3 +1,4 @@
+import type { AlertType } from '@/features/alerts/alertsApi';
 import type { OrderStatus } from '@/features/orders/ordersApi';
 import type { TaskType } from '@/features/processing/processingApi';
 import { baseApi } from '@/shared/api/baseApi';
@@ -36,6 +37,13 @@ export interface DashboardStockSync {
   lastSucceededAt: string | null;
 }
 
+/** One entry per alert type, zeros included: the unresolved alerts of that type, now. */
+export interface DashboardAlertTypeCount {
+  type: AlertType;
+  open: number;
+  acknowledged: number;
+}
+
 /**
  * `GET /api/dashboard/summary`: the numbers of the overview page in one request. Every number is the server's (SQL
  * aggregates at `generatedAt`); this client adds, compares and judges nothing.
@@ -57,6 +65,8 @@ export interface DashboardSummary {
   stockSync: DashboardStockSync[];
   /** Now. */
   outbox: { pending: number; failed: number; oldestPendingAt: string | null };
+  /** The unresolved alerts now (the range does not apply). */
+  alerts: { open: number; acknowledged: number; byType: DashboardAlertTypeCount[] };
 }
 
 /** ISO 8601 instants with offset; both optional (the server's default: the last 24 hours up to now). */

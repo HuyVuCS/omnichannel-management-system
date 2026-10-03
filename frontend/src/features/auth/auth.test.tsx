@@ -133,9 +133,9 @@ describe('route guards', () => {
   });
 
   it('renders a localised placeholder for pages of later tasks and a 404 page for unknown addresses', async () => {
-    const { router } = renderApp({ route: '/alerts', session: sessionOf(staffUser) });
+    const { router } = renderApp({ route: '/reports', session: sessionOf(staffUser) });
 
-    expect(await screen.findByText('Trang này sẽ có ở task 018.')).toBeInTheDocument();
+    expect(await screen.findByText('Trang này sẽ có ở task 021.')).toBeInTheDocument();
 
     await router.navigate('/no-such-page');
     expect(await screen.findByText('Không tìm thấy trang')).toBeInTheDocument();
@@ -185,15 +185,15 @@ describe('session end', () => {
     vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ['setTimeout', 'clearTimeout', 'Date'] });
     try {
       const session = sessionOf(staffUser, 30 * 60 * 1000);
-      const { location } = renderApp({ route: '/alerts', session });
-      expect(await screen.findByText('Trang này sẽ có ở task 018.')).toBeInTheDocument();
+      const { location } = renderApp({ route: '/reports', session });
+      expect(await screen.findByText('Trang này sẽ có ở task 021.')).toBeInTheDocument();
 
       // One minute before the token expires the user is still signed in ...
       const remaining = Date.parse(session.expiresAt) - Date.now();
       act(() => {
         vi.advanceTimersByTime(remaining - 60 * 1000);
       });
-      expect(location()).toBe('/alerts');
+      expect(location()).toBe('/reports');
       expect(storedSession()).not.toBeNull();
 
       // ... and at the moment it expires the session ends.
@@ -201,14 +201,14 @@ describe('session end', () => {
         vi.advanceTimersByTime(60 * 1000);
       });
       expect(storedSession()).toBeNull();
-      await waitFor(() => expect(location()).toBe('/login?returnUrl=%2Falerts'));
+      await waitFor(() => expect(location()).toBe('/login?returnUrl=%2Freports'));
     } finally {
       vi.useRealTimers();
     }
   });
 
   it('goes to the plain login page on logout', async () => {
-    const { user, location } = renderApp({ route: '/alerts', session: sessionOf(staffUser) });
+    const { user, location } = renderApp({ route: '/reports', session: sessionOf(staffUser) });
 
     await user.click(await screen.findByRole('button', { name: 'Đăng xuất' }));
 

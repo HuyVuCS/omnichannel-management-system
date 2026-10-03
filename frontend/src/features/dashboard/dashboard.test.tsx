@@ -1,5 +1,6 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import dayjs from 'dayjs';
+import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 import type { AuthUser } from '@/features/auth/session';
 import { FLUSH_WINDOW_MS } from '@/features/realtime/hintTags';
@@ -9,7 +10,7 @@ import { GENERATED_AT, POS_ID, serveSummary, summary, WEBSITE_ID } from '@/test/
 import { fakeHub } from '@/test/hub';
 import { expectLanguageSwitchChangesTextOnly, rowOf } from '@/test/interactions';
 import { renderApp } from '@/test/renderApp';
-import { managerUser, problem, sessionOf, staffUser } from '@/test/server';
+import { api, managerUser, problem, server, sessionOf, staffUser } from '@/test/server';
 
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -24,6 +25,9 @@ const endInput = () => screen.getByPlaceholderText('Đến ngày');
 /** The href of the link a number is, or null when the number is plain text. */
 const hrefIn = (cell: HTMLElement | null | undefined) => cell?.querySelector('a')?.getAttribute('href') ?? null;
 const cellOf = (rowText: string, column: number) => rowOf(rowText).querySelectorAll('td')[column];
+/** The row of an alert type on the alert card ("Sắp hết hàng" is also a figure of the inventory card). */
+const alertRow = (typeText: string) => card('alerts').getByText(typeText).closest('tr')!;
+const alertCell = (typeText: string, column: number) => alertRow(typeText).querySelectorAll('td')[column];
 
 describe('dashboard', () => {
   it('shows every number of the summary as the API sends it, zero rows included', async () => {
@@ -138,6 +142,85 @@ describe('dashboard', () => {
     );
     const website = [...screen.getByTestId('dashboard-stock-sync').querySelectorAll('tbody tr.ant-table-row')][2]!;
     expect(website.querySelectorAll('a')).toHaveLength(0);
+  });
+
+  it('shows the unresolved alerts per status and type, zeros included, and says that they do not depend on the range', async () => {
+    serveSummary();
+    const { user } = renderDashboard('/?range=30d');
+    await screen.findByText('Đơn hàng trong khoảng thời gian');
+
+    const alerts = screen.getByTestId('dashboard-alerts');
+    expect(alerts).toHaveTextContent('Cảnh báo chưa giải quyết');
+    expect(alerts).toHaveTextContent('Đang mở7');
+    expect(alerts).toHaveTextContent('Đã ghi nhận2');
+    // Every type as the API sends it, also the ones without an alert.
+    expect([...alerts.querySelectorAll('tbody tr.ant-table-row')].map((row) => row.textContent)).toEqual([
+      'Sắp hết hàng41',
+      'Thiếu hàng01',
+      'Lỗi đồng bộ kho30',
+      'Lỗi xử lý00',
+    ]);
+
+    await user.hover(card('alerts').getByRole('img', { name: 'Thông tin' }));
+    expect(await screen.findByText('Số liệu hiện tại, không phụ thuộc khoảng thời gian đã chọn.')).toBeInTheDocument();
+  });
+
+  it('links every non-zero alert number to the alert list with that status and type', async () => {
+    serveSummary();
+    renderDashboard();
+    await screen.findByText('Đơn hàng trong khoảng thời gian');
+
+    // The totals: the status only.
+    expect(card('alerts').getByRole('link', { name: '7' })).toHaveAttribute('href', '/alerts?status=Open');
+    expect(card('alerts').getByRole('link', { name: '2' })).toHaveAttribute('href', '/alerts?status=Acknowledged');
+    // Per type: status and type; a zero is plain text.
+    expect(hrefIn(alertCell('Sắp hết hàng', 1))).toBe('/alerts?status=Open&type=LowStock');
+    expect(hrefIn(alertCell('Sắp hết hàng', 2))).toBe('/alerts?status=Acknowledged&type=LowStock');
+    expect(hrefIn(alertCell('Thiếu hàng', 1))).toBeNull();
+    expect(hrefIn(alertCell('Thiếu hàng', 2))).toBe('/alerts?status=Acknowledged&type=InsufficientStock');
+    expect(hrefIn(alertCell('Lỗi đồng bộ kho', 1))).toBe('/alerts?status=Open&type=StockSyncFailed');
+    expect(alertRow('Lỗi xử lý').querySelectorAll('a')).toHaveLength(0);
+  });
+
+  it('shows zeros as text when nothing is unresolved', async () => {
+    serveSummary(
+      summary({
+        alerts: {
+          open: 0,
+          acknowledged: 0,
+          byType: summary().alerts.byType.map((entry) => ({ ...entry, open: 0, acknowledged: 0 })),
+        },
+      }),
+    );
+    renderDashboard();
+    await screen.findByText('Đơn hàng trong khoảng thời gian');
+
+    const alerts = screen.getByTestId('dashboard-alerts');
+    expect(alerts).toHaveTextContent('Đang mở0');
+    expect(alerts).toHaveTextContent('Đã ghi nhận0');
+    expect(alerts.querySelectorAll('tbody tr.ant-table-row')).toHaveLength(4);
+    expect(alerts.querySelectorAll('a')).toHaveLength(0);
+  });
+
+  it('opens the alert list from a number of the alert card, filtered as the number is', async () => {
+    serveSummary();
+    const listRequests: { status: string[]; type: string[] }[] = [];
+    server.use(
+      http.get(api('/alerts'), ({ request }) => {
+        const params = new URL(request.url).searchParams;
+        listRequests.push({ status: params.getAll('status'), type: params.getAll('type') });
+        return HttpResponse.json({ items: [], page: 1, pageSize: 20, totalCount: 0 });
+      }),
+      http.get(api('/channels'), () => HttpResponse.json([])),
+    );
+    const { user, location } = renderDashboard();
+    await screen.findByText('Đơn hàng trong khoảng thời gian');
+
+    await user.click(within(alertCell('Lỗi đồng bộ kho', 1)!).getByRole('link', { name: '3' }));
+
+    expect(await screen.findByRole('heading', { name: 'Cảnh báo' })).toBeInTheDocument();
+    expect(location()).toBe('/alerts?status=Open&type=StockSyncFailed');
+    await waitFor(() => expect(listRequests).toEqual([{ status: ['Open'], type: ['StockSyncFailed'] }]));
   });
 
   it('opens the low-stock list from its number', async () => {
@@ -269,8 +352,8 @@ describe('dashboard', () => {
     await pause(2500);
     expect(requests).toHaveLength(2);
 
-    await user.click(screen.getByRole('link', { name: 'Cảnh báo' }));
-    await screen.findByText('Trang này sẽ có ở task 018.');
+    await user.click(screen.getByRole('link', { name: 'Báo cáo' }));
+    await screen.findByText('Trang này sẽ có ở task 021.');
     await user.click(screen.getByRole('link', { name: 'Tổng quan' }));
     await screen.findByText('Đơn hàng trong khoảng thời gian');
     await waitFor(() => expect(requests).toHaveLength(3));
@@ -304,6 +387,30 @@ describe('dashboard', () => {
     await pause(FLUSH_WINDOW_MS + 300);
     expect(requests).toHaveLength(loaded + 2);
     expect(requests.at(-1)).toEqual({});
+  });
+
+  it('shows a new alert on its card without a reload: an alert hint fetches the summary again', async () => {
+    const { state, requests } = serveSummary();
+    const hub = fakeHub({ autoAccept: true });
+    renderDashboard('/', staffUser, hub.create);
+    await screen.findByText('Đơn hàng trong khoảng thời gian');
+    await waitFor(() => expect(screen.getByTestId('connection-indicator')).toHaveTextContent('Trực tiếp'));
+    await pause(FLUSH_WINDOW_MS + 300);
+    const loaded = requests.length;
+    expect(screen.getByTestId('dashboard-alerts')).toHaveTextContent('Đang mở7');
+
+    // As the server sends them for a new low-stock alert: both events in one batch - one refetch.
+    state.summary = summary({ alerts: { ...summary().alerts, open: 8 } });
+    await hub.latest().send([
+      { type: 'alert.changed', alertId: 'a1', alertType: 'LowStock', status: 'Open', productId: 'p1' },
+      { type: 'low_stock.created', alertId: 'a1', productId: 'p1' },
+    ]);
+
+    await waitFor(() => expect(screen.getByTestId('dashboard-alerts')).toHaveTextContent('Đang mở8'));
+    await pause(FLUSH_WINDOW_MS + 300);
+    expect(requests).toHaveLength(loaded + 1);
+    // No toast, no notification: the card is the only thing that changed.
+    expect(document.querySelector('.ant-message-notice, .ant-notification-notice')).toBeNull();
   });
 });
 
