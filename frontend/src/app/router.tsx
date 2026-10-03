@@ -5,6 +5,7 @@ import { RequireAuth } from '@/features/auth/RequireAuth';
 import { RequireRole } from '@/features/auth/RequireRole';
 import { LOGIN_PATH } from '@/features/auth/returnUrl';
 import { CHANNEL_DETAIL_ROUTE, CHANNELS_PATH } from '@/features/channels/paths';
+import { LOGS_PATH } from '@/features/logs/paths';
 import { INVENTORY_PATH, MOVEMENTS_PATH, STOCK_IMPORT_PATH, STOCK_IMPORT_ROLES } from '@/features/inventory/paths';
 import { ORDER_DETAIL_ROUTE, ORDER_ENTRY_PATH, ORDERS_PATH } from '@/features/orders/paths';
 import { PROCESSING_PATH, PROCESSING_TASK_ROUTE } from '@/features/processing/paths';
@@ -23,6 +24,7 @@ const LoginPage = lazyPage(() => import('@/features/auth/LoginPage').then((m) =>
 const DashboardPage = lazyPage(() =>
   import('@/features/dashboard/DashboardPage').then((m) => ({ default: m.DashboardPage })),
 );
+const LogsPage = lazyPage(() => import('@/features/logs/LogsPage').then((m) => ({ default: m.LogsPage })));
 const NotFoundPage = lazyPage(() => import('@/pages/NotFoundPage').then((m) => ({ default: m.NotFoundPage })));
 const ProductsPage = lazyPage(() =>
   import('@/features/products/ProductsPage').then((m) => ({ default: m.ProductsPage })),
@@ -71,6 +73,7 @@ const builtPages: Record<string, RouteObject['element']> = {
   [CHANNELS_PATH]: <ChannelsPage />,
   [PROCESSING_PATH]: <ProcessingPage />,
   [ALERTS_PATH]: <AlertsPage />,
+  [LOGS_PATH]: <LogsPage />,
   '/users': <UsersPage />,
 };
 

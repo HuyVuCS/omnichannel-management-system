@@ -15,6 +15,7 @@ import {
 } from '@ant-design/icons';
 import type { ReactNode } from 'react';
 import type { Role } from '@/features/auth/session';
+import { LOGS_PATH, LOGS_ROLES } from '@/features/logs/paths';
 
 export interface NavigationItem {
   /** Route path; also the menu key. */
@@ -40,7 +41,7 @@ export const navigationItems: readonly NavigationItem[] = [
   { path: '/channels', labelKey: 'nav.channels', icon: <ShopOutlined /> },
   { path: '/processing', labelKey: 'nav.processing', icon: <SyncOutlined /> },
   { path: '/alerts', labelKey: 'nav.alerts', icon: <BellOutlined /> },
-  { path: '/logs', labelKey: 'nav.logs', icon: <FileSearchOutlined />, plannedTask: '018b' },
+  { path: LOGS_PATH, labelKey: 'nav.logs', icon: <FileSearchOutlined />, roles: LOGS_ROLES },
   { path: '/reports', labelKey: 'nav.reports', icon: <BarChartOutlined />, plannedTask: '021' },
   { path: '/users', labelKey: 'nav.users', icon: <UserOutlined />, roles: ['Admin'] },
 ];

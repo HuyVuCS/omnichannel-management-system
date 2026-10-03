@@ -214,7 +214,7 @@ npm run dev     # http://localhost:5173 - needs the API on http://localhost:5080
   its own origin (no CORS involved).
 - Sign in with a user of the API (the bootstrap admin, or one created on the Users page).
 - Other scripts: `npm run typecheck`, `npm run lint` (ESLint + Prettier check), `npm test` (Vitest, no API needed: requests
-  are answered by MSW), `npm run build` (output in `frontend/dist`), `npm run preview`, `npm run format`,
+  are answered by MSW; **a test that ends with a request still unanswered fails**, see "Tests" below), `npm run build` (output in `frontend/dist`), `npm run preview`, `npm run format`,
   `npm run measure` (after a build: the first-load set - entry chunk and everything it imports statically - per file
   and in total, raw and gzip; `scripts/measure-bundle.mjs`).
 - Structure: `src/app` (store, router, providers, layout), `src/shared` (API layer, components, i18n, helpers),
@@ -268,8 +268,8 @@ npm run dev     # http://localhost:5173 - needs the API on http://localhost:5080
   (`/inventory/import`, Manager/Admin, reached from the inventory and product lists, no menu item), Inventory movements
   (`/inventory/movements`), Products, Customers, Channels, Channel detail (`/channels/{id}`, reached from the channel
   name in the list, no menu item), Sync & Processing (`/processing`), Task detail (`/processing/tasks/{id}`, no menu
-  item), Alerts (`/alerts`), Users. The other menu items (Logs / audit: task 018b, Reports: task 021) show a "coming in
-  task NNN" placeholder.
+  item), Alerts (`/alerts`), Logs / audit (`/logs`, Manager/Admin), Users. The remaining menu item (Reports: task 021)
+  shows a "coming in task NNN" placeholder.
 - **Realtime** (`src/features/realtime`): after sign-in the application opens one SignalR connection to
   `/api/hubs/notifications` (section "Realtime hints and dashboard summary"). The client library
   (`@microsoft/signalr`) is behind a small interface (`hub.ts`) and loaded with a dynamic `import()`, so the login page
@@ -309,6 +309,30 @@ npm run dev     # http://localhost:5173 - needs the API on http://localhost:5080
   channel change (their names and the threshold are shown). At 1280 px type, status, product, channel, details, last
   occurrence and the action column (fixed to the right edge) are visible without horizontal scrolling. Scripted check:
   `scripts\smoke\task-018.ps1`.
+- Logs / audit (`/logs`, Manager and Admin; Staff has no menu item and gets the no-access page): the list of
+  `GET /api/system-events` ("System events"), newest first. A row says when, how severe (a tag with icon and text),
+  what (the event type with a translated label; a type this client does not know under its raw name) and, in one line
+  built from the returned `details` with a translated template, what happened - e.g. the document, lines and units of
+  an import, or task type, attempt and error code of a failure (its sanitised message is in the tooltip). "Who" is the
+  actor's e-mail, for user management "actor → target". Links lead to the order, to the task and to the **trace**:
+  the same list with the event's correlation id as its only filter (window, sort direction and page size kept) - one
+  click shows every event of a flow, from the request to its processing. Filters - level and event type (several values
+  each), correlation id, order id, task id (exact texts) - the sort direction and the page live in the address. An id
+  that is no GUID is said under its field and nothing is asked with it. The server decides who reads what: an Admin is
+  offered the `user.*` types as a filter, a Manager is not, and a `user.*` type a Manager puts into the address is
+  never sent (the API would answer an empty page).
+  - Time window: the presets of the dashboard (last 24 hours - the default -, today, 7 days, 30 days) or a range of
+    local days. This list has no default range on the server, so "the last 24 hours" is a fixed start instant kept in
+    the address (`?since=2026-10-02T01:05:09Z`, written by the page when the address names no window, and again when
+    the preset is chosen or the filters are cleared): a reload and a shared link ask for the same window. The window has
+    no end, so events that arrive later belong to it. The other presets are `?range=today|7d|30d`, a custom range
+    `?from=…&to=…`; the 92-day limit is the server's (said on the range control).
+  - No realtime: there is no hint for events. The list is fetched again whenever the page is opened and on "Refresh".
+- Tests (`src/test/setup.ts`, `pendingRequests.ts`): **a test must end with its requests answered.** Every `fetch` is
+  counted from the call until it settles, and a test that ends with one still open fails, naming method and URL. End
+  a test on what the last answer puts on screen (`findBy…`, `waitFor`), not right after the click that sends a
+  request - a request in flight is answered while the next test runs. A test whose subject is a request that is never
+  answered calls `allowUnansweredRequests('<reason>')`; that is the only opt-out.
 - Channels: the list says for every channel whether stock is pushed to it at all (`stockSyncEnabled`, "API
   conventions"). The channel detail shows the channel, a link to its stock-sync tasks, and the products mapped on it
   (search, sort by SKU / created, paging - all in the address). Manager and Admin map a product and change a mapping
@@ -475,6 +499,70 @@ lifecycle `Open` → `Acknowledged` → `Resolved`; `SystemEventLog` stays the e
 - Scripted checks (need the Workers host in Development): `powershell -ExecutionPolicy Bypass -File scripts\smoke\task-017.ps1`
   (lifecycle, acknowledge, summary) and `scripts\smoke\task-018.ps1` (the default list, a deactivated mapping, then the
   frontend build and tests).
+
+### System events (Logs/Audit)
+
+`SystemEventLog` is the business and audit history (architecture doc §5.2): one row per event, written in the
+transaction of what it records, with a free-form JSON payload. `GET /api/system-events` reads it for the Logs/Audit
+page; nothing in the API writes, changes or deletes an event.
+
+- **Roles:** `Manager` and `Admin`; Staff gets 403. Events whose type starts with `user.` (user management) are the
+  Admin's: for a Manager they do not exist - not in the list, not in `totalCount`, and asking for one by `eventType`
+  answers an empty page (200), not an error. The rule is applied by the server from the caller's role.
+- `GET /api/system-events`: paged (`page`, `pageSize`). The only sort field is `createdAt`, newest first unless
+  `sortDir=asc`; events of the same instant are ordered by `logId` in the same direction. Filters, all optional:
+  `level` and `eventType` (both repeatable; an event type is matched exactly), `correlationId` (exact), `orderId`,
+  `taskId`, `from` / `to` on `createdAt` (inclusive, ISO 8601 with offset, at most 92 days when both are given - the
+  messages of the other lists). No text search, no filter on the payload, no detail endpoint.
+  Item: `logId`, `level`, `eventType`, `createdAt`, `correlationId`, `taskId`, `orderId`, `workerName`, `details`,
+  `actorEmail`, `targetEmail`.
+- **`details` is an allowlist, never the stored payload** (`SystemEventDetails` in `Omnichannel.Application`): only
+  the top-level fields listed for the event type are returned, with their values as stored; every other field is
+  dropped, and an event type without an entry has `details: null`.
+
+  | Event type | Level | Returned fields |
+  | --- | --- | --- |
+  | `inventory.imported` | Information | `referenceId`, `itemCount`, `totalQuantity` |
+  | `order.insufficient_stock` | Warning | `orderId`, `taskId`, `items` (`productId`, `requested`, `available` per line) |
+  | `order.already_exists` | Warning | `taskId`, `orderId`, `externalOrderId` |
+  | `order.message_rejected` | Error | `messageId` |
+  | `stock_sync.message_rejected` | Error | `messageId`, `queue` |
+  | `processing.failed` | Error | `taskId`, `taskType`, `attemptNo`, `errorCode`, `errorMessage` (the attempt's sanitised message), `queue` |
+  | `processing.retry_requested` | Information | `taskId`, `taskType`, `requestedBy`, `previousMessageId`, `newMessageId`, `attemptBudgetStart` |
+  | `outbox.publish_failed` | Error | `outboxEventId`, `eventType`, `publishAttempts` |
+  | `alert.acknowledged` | Information | `alertId`, `type`, `acknowledgedBy` |
+  | `user.created` | Information | `targetUserId`, `actorUserId`, `role` |
+  | `user.role_changed` | Information | `targetUserId`, `actorUserId`, `from`, `to` |
+  | `user.locked`, `user.unlocked`, `user.password_reset` | Information | `targetUserId`, `actorUserId` |
+
+  Never returned: `lastError` of `outbox.publish_failed` (broker or exception text) and `reason` of the two
+  `…message_rejected` events (it can quote the JSON parser's exception and values of the rejected message). Both stay
+  in the database and in the Workers log for whoever operates the system.
+- **`actorEmail` / `targetEmail`:** the e-mail address of the user named by `actorUserId`, `requestedBy` or
+  `acknowledgedBy`, and by `targetUserId`. A value that is no user id (`system`, `system:order-worker`) or names a
+  user that does not exist is null. Read from the returned `details` only.
+- **Cost:** one `COUNT`, one page query and - only when the page names users - one user lookup for all of them
+  (`WHERE Id IN (…)`), whatever the page size. The list uses the existing indexes (`CreatedAt`, `CorrelationId`,
+  `OrderId`, `TaskId`, `(EventType, CreatedAt)`); the `COUNT` of a wide range reads that range (accepted, task 026).
+- **Trace** (architecture doc §5.3): everything a request caused carries its correlation id - the import or the order
+  intake, the task, each failure, a manual retry. `GET /api/system-events?correlationId=…&sortDir=asc` is the flow in
+  order; `GET /api/processing/tasks?correlationId=…` its tasks.
+- **Adding an event type:**
+  1. a constant in the `…Events` class of its feature in `Omnichannel.Application` (`InventoryEvents`,
+     `OrderProcessingEvents`, `ProcessingEvents`, `StockSyncEvents`, `OutboxEvents`, `AlertEvents`, `UserEvents`; a new
+     class must be public, static and named `…Events`), used by the code that writes the event;
+  2. an entry in `SystemEventDetails.AllowedFields` with the fields that are safe to show: the application's own ids,
+     codes, counts and names - never exception or broker text, never a fragment of a message the application did not
+     write. A unit test fails for a constant without an entry;
+  3. an actor or a target is resolved only from the fields `actorUserId` / `requestedBy` / `acknowledgedBy` and
+     `targetUserId`: name them that way;
+  4. a type that only an Admin may read starts with `user.`;
+  5. in the frontend: the type in `EVENT_TYPES` (`features/logs/systemEventsApi.ts`), its label and its summary line
+     in `vi.json` / `en.json` (`logs.eventTypes`, `logs.summary`) and its case in `eventSummary.ts`. Until then the
+     page lists the event under its raw name without a summary.
+- Scripted check (needs the Workers host in Development): `powershell -ExecutionPolicy Bypass -File scripts\smoke\task-018b.ps1`
+  (roles, an import, a failed stock sync found again by its correlation id, an acknowledged alert, a locked user, then
+  the frontend build and tests).
 
 ### Users and token revocation
 

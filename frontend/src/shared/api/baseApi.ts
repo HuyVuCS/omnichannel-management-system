@@ -108,6 +108,7 @@ export const baseApi = createApi({
     'Order',
     'ProcessingTask',
     'Alert',
+    'SystemEvent',
     'DashboardSummary',
   ],
   endpoints: () => ({}),
