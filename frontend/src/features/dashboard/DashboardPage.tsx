@@ -353,6 +353,8 @@ export function DashboardPage() {
       <Space wrap style={{ marginBottom: rangeErrors.length > 0 ? 8 : 16 }}>
         <Segmented<RangePreset>
           block
+          // Its own radio group (see LanguageSwitch).
+          name="dashboard-range"
           aria-label={t('dashboard.range.label')}
           // No preset is marked while a custom range is in use.
           value={range.preset ?? ('' as RangePreset)}

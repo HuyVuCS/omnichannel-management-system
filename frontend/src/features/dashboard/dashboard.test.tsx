@@ -292,6 +292,10 @@ describe('dashboard', () => {
     await waitFor(() => expect(location()).toBe('/?range=today'));
     expect(startInput()).toHaveValue('');
     expect(endInput()).toHaveValue('');
+    // The request of that preset is answered before the test ends (a request in flight would be answered - and
+    // counted - by the handlers of the next test).
+    await waitFor(() => expect(new Date(requests.at(-1)!.from!).getTime()).toBe(dayjs().startOf('day').valueOf()));
+    expect(await screen.findByTestId('dashboard-orders')).toBeInTheDocument();
   });
 
   it('restores a custom range from the address (reload) and ignores values that are not valid', async () => {

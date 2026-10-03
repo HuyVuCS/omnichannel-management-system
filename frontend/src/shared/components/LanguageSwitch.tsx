@@ -22,6 +22,10 @@ export function LanguageSwitch() {
 
   return (
     <Segmented<Language>
+      // Its own radio group. Without a name the control generates one, and under test every generated name is the
+      // same: this switch and a segmented control of a page would then be one native radio group, in which only one
+      // input is checked at a time.
+      name="language"
       aria-label={t('layout.language')}
       options={OPTIONS}
       value={currentLanguage()}
