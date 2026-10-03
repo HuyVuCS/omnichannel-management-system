@@ -7,6 +7,7 @@ using Microsoft.Extensions.Hosting;
 using Npgsql;
 using Omnichannel.Application.Alerts;
 using Omnichannel.Application.Channels;
+using Omnichannel.Application.Common.Exceptions;
 using Omnichannel.Application.Common.Messaging;
 using Omnichannel.Application.Inventory;
 using Omnichannel.Application.Orders;
@@ -15,6 +16,7 @@ using Omnichannel.Application.Products;
 using Omnichannel.Application.Realtime;
 using Omnichannel.Domain.Entities;
 using Omnichannel.Domain.Enums;
+using Omnichannel.Infrastructure.ExternalChannels;
 using Omnichannel.Infrastructure.Persistence;
 using Omnichannel.Infrastructure.Persistence.Alerts;
 using Omnichannel.Infrastructure.Persistence.Inventories;
@@ -335,6 +337,137 @@ public sealed class AlertLifecycleTests(WorkersFixture fixture) : IAsyncLifetime
         var resolved = Assert.Single(await AlertsAsync(key));
         Assert.Equal((AlertStatus.Resolved, (Guid?)secondTask.TaskId, 2), (resolved.Status, resolved.TaskId, resolved.OccurrenceCount));
         Assert.Equal((true, acknowledged.AcknowledgedAt), (resolved.ResolvedAt is not null, resolved.AcknowledgedAt));
+    }
+
+    // ---- deactivated mapping (task 018 Part A6) ------------------------------------------------------------------
+
+    [Fact]
+    public async Task Deactivating_a_mapping_resolves_the_stock_sync_alert_of_its_pair_with_a_hint_and_a_failing_reactivation_opens_a_new_alert()
+    {
+        var (product, mapping, key) = await FailedPairAsync();
+        var failed = Assert.Single(await AlertsAsync(key));
+        await using var probe = await HintProbe.StartAsync(fixture.DatabaseConnectionString);
+
+        // Active -> Inactive: the pair is not synced any more, its failure needs no attention.
+        var deactivated = await UpdateMappingAsync(mapping, mapping.ExternalSku, ChannelProductStatus.Inactive);
+        Assert.Equal((ChannelProductStatus.Inactive, (Guid?)null), (deactivated.Status, deactivated.SyncTaskId));
+        var resolved = Assert.Single(await AlertsAsync(key));
+        Assert.Equal(
+            (failed.AlertId, AlertStatus.Resolved, failed.TaskId, failed.OccurrenceCount),
+            (resolved.AlertId, resolved.Status, resolved.TaskId, resolved.OccurrenceCount));
+        Assert.NotNull(resolved.ResolvedAt);
+        await probe.WaitForAsync(_ => AlertHintsOf(probe, product.ProductId, AlertType.StockSyncFailed).Count >= 1, "hint of the resolved alert");
+        var hint = Assert.Single(AlertHintsOf(probe, product.ProductId, AlertType.StockSyncFailed));
+        Assert.Equal(
+            (RealtimeEventTypes.AlertChanged, (Guid?)failed.AlertId, AlertStatus.Resolved.ToString(), (Guid?)mapping.ChannelId),
+            (hint.Type, hint.AlertId, hint.Status, hint.ChannelId));
+
+        // Inactive -> Active starts the initial sync again; the channel still rejects the SKU: a new alert, the old row stays resolved.
+        var reactivated = await UpdateMappingAsync(mapping, mapping.ExternalSku, ChannelProductStatus.Active);
+        Assert.NotNull(reactivated.SyncTaskId);
+        await RunSimulatedStockSyncAsync(() => WaitForSyncTasksAsync(product.ProductId, tasks => tasks.Count == 2 && tasks.All(t => t.IsTerminal)));
+        var alerts = await AlertsAsync(key);
+        Assert.Equal(2, alerts.Count);
+        Assert.Equal((failed.AlertId, AlertStatus.Resolved), (alerts[0].AlertId, alerts[0].Status));
+        Assert.Equal(
+            (AlertStatus.Open, reactivated.SyncTaskId, ChannelApiErrorCodes.Rejected, 1),
+            (alerts[1].Status, alerts[1].TaskId, alerts[1].ErrorCode, alerts[1].OccurrenceCount));
+        Assert.NotEqual(failed.AlertId, alerts[1].AlertId);
+    }
+
+    [Fact]
+    public async Task Deactivating_a_mapping_without_an_alert_writes_no_alert_and_sends_no_alert_hint()
+    {
+        // Threshold 0 without stock: the product has an open low-stock alert, whose resolution marks the end of the probe's wait.
+        var product = await CreateProductAsync(threshold: 0);
+        var websiteId = await ChannelIdAsync("website");
+        var mapping = await MapAsync(websiteId, product.ProductId);
+        await using var probe = await HintProbe.StartAsync(fixture.DatabaseConnectionString);
+
+        var deactivated = await UpdateMappingAsync(mapping, mapping.ExternalSku, ChannelProductStatus.Inactive);
+
+        Assert.Equal(ChannelProductStatus.Inactive, deactivated.Status);
+        Assert.Empty(await AlertsAsync(AlertDedupKey.StockSyncFailed(websiteId, product.ProductId)));
+        // A later alert change of the product arrives; nothing about a stock-sync alert was sent before it.
+        await ImportAsync((product.ProductId, 3));
+        await probe.WaitForAsync(
+            _ => AlertHintsOf(probe, product.ProductId, AlertType.LowStock).Any(h => h.Status == AlertStatus.Resolved.ToString()),
+            "hint of the resolved low-stock alert");
+        Assert.Empty(AlertHintsOf(probe, product.ProductId, AlertType.StockSyncFailed));
+        Assert.DoesNotContain(probe.Events, e => e.AlertId is not null && e.ChannelId == websiteId && e.ProductId == product.ProductId);
+    }
+
+    [Fact]
+    public async Task Mapping_update_that_keeps_it_active_leaves_the_stock_sync_alert_unchanged()
+    {
+        var (product, mapping, key) = await FailedPairAsync();
+        var failed = Assert.Single(await AlertsAsync(key));
+
+        // Another external SKU, still Active: a new sync is requested, the alert waits for its result.
+        var updated = await UpdateMappingAsync(mapping, $"{ChannelSimulationOptions.PermanentErrorSkuPrefix}{Guid.NewGuid():N}", ChannelProductStatus.Active);
+
+        Assert.Equal(ChannelProductStatus.Active, updated.Status);
+        Assert.NotNull(updated.SyncTaskId);
+        var unchanged = Assert.Single(await AlertsAsync(key));
+        Assert.Equal(
+            (failed.AlertId, AlertStatus.Open, failed.TaskId, 1, (DateTimeOffset?)null),
+            (unchanged.AlertId, unchanged.Status, unchanged.TaskId, unchanged.OccurrenceCount, unchanged.ResolvedAt));
+        Assert.Equal(product.ProductId, unchanged.ProductId);
+    }
+
+    [Fact]
+    public async Task Update_of_a_mapping_that_is_inactive_already_leaves_a_late_stock_sync_alert_open()
+    {
+        // The known edge: an attempt that was running when the mapping was switched off fails for good afterwards and opens
+        // the alert again. Only the switch-off itself resolves; a later change of the inactive mapping does not.
+        var product = await CreateProductAsync(threshold: 0);
+        var websiteId = await ChannelIdAsync("website");
+        var mapping = await MapAsync(websiteId, product.ProductId);
+        await UpdateMappingAsync(mapping, mapping.ExternalSku, ChannelProductStatus.Inactive);
+        var key = AlertDedupKey.StockSyncFailed(websiteId, product.ProductId);
+        await fixture.WithServicesAsync(async services =>
+        {
+            var db = services.GetRequiredService<OmnichannelDbContext>();
+            await using var transaction = await db.Database.BeginTransactionAsync();
+            await services.GetRequiredService<AlertStore>().OpenOrRefreshAsync(
+                [AlertOccurrence.StockSyncFailed(websiteId, product.ProductId, mapping.SyncTaskId!.Value, ChannelApiErrorCodes.Rejected)],
+                CancellationToken.None);
+            await transaction.CommitAsync();
+            return 0;
+        });
+        var late = Assert.Single(await AlertsAsync(key));
+
+        var updated = await UpdateMappingAsync(mapping, $"EXT-{Guid.NewGuid():N}"[..12], ChannelProductStatus.Inactive);
+
+        Assert.Equal((ChannelProductStatus.Inactive, (Guid?)null), (updated.Status, updated.SyncTaskId));
+        var unchanged = Assert.Single(await AlertsAsync(key));
+        Assert.Equal((late.AlertId, AlertStatus.Open, (DateTimeOffset?)null), (unchanged.AlertId, unchanged.Status, unchanged.ResolvedAt));
+    }
+
+    [Fact]
+    public async Task Rolled_back_deactivation_leaves_the_mapping_active_and_the_stock_sync_alert_open()
+    {
+        var (product, mapping, key) = await FailedPairAsync();
+        var failed = Assert.Single(await AlertsAsync(key));
+        await using var probe = await HintProbe.StartAsync(fixture.DatabaseConnectionString);
+
+        // Another product of the channel owns this external product id: the deactivation that also takes it is refused as a whole.
+        var other = await CreateProductAsync(threshold: 0);
+        var takenId = $"TAKEN-{Guid.NewGuid():N}";
+        await MapAsync(mapping.ChannelId, other.ProductId, externalProductId: takenId, externalSku: null);
+        var conflict = await Assert.ThrowsAsync<ConflictException>(() =>
+            UpdateMappingAsync(mapping, mapping.ExternalSku, ChannelProductStatus.Inactive, externalProductId: takenId));
+        Assert.Equal(ChannelProductErrorCodes.ExternalProductIdTaken, conflict.ErrorCode);
+
+        var stored = await fixture.WithDbAsync(db => db.ChannelProducts.AsNoTracking().SingleAsync(m => m.ChannelProductId == mapping.ChannelProductId));
+        Assert.Equal((ChannelProductStatus.Active, (string?)null), (stored.Status, stored.ExternalProductId));
+        var unchanged = Assert.Single(await AlertsAsync(key));
+        Assert.Equal((failed.AlertId, AlertStatus.Open, (DateTimeOffset?)null), (unchanged.AlertId, unchanged.Status, unchanged.ResolvedAt));
+
+        // The same deactivation without the conflict is applied; the only stock-sync alert hint of the pair is its own.
+        await UpdateMappingAsync(mapping, mapping.ExternalSku, ChannelProductStatus.Inactive);
+        await probe.WaitForAsync(_ => AlertHintsOf(probe, product.ProductId, AlertType.StockSyncFailed).Count >= 1, "hint of the resolved alert");
+        Assert.Equal(AlertStatus.Resolved.ToString(), Assert.Single(AlertHintsOf(probe, product.ProductId, AlertType.StockSyncFailed)).Status);
     }
 
     // ---- other task types -----------------------------------------------------------------------------------------
@@ -778,6 +911,33 @@ public sealed class AlertLifecycleTests(WorkersFixture fixture) : IAsyncLifetime
         fixture.WithServicesAsync(services => services.GetRequiredService<IChannelService>().CreateProductAsync(
             channelId, new CreateChannelProductRequest(productId, null, $"EXT-{Guid.NewGuid():N}"[..12]), CancellationToken.None));
 
+    private Task<ChannelProductSavedResponse> MapAsync(Guid channelId, Guid productId, string? externalProductId, string? externalSku) =>
+        fixture.WithServicesAsync(services => services.GetRequiredService<IChannelService>().CreateProductAsync(
+            channelId, new CreateChannelProductRequest(productId, externalProductId, externalSku), CancellationToken.None));
+
+    private Task<ChannelProductSavedResponse> UpdateMappingAsync(
+        ChannelProductSavedResponse mapping, string? externalSku, ChannelProductStatus status, string? externalProductId = null) =>
+        fixture.WithServicesAsync(services => services.GetRequiredService<IChannelService>().UpdateProductAsync(
+            mapping.ChannelId, mapping.ChannelProductId, new UpdateChannelProductRequest(externalProductId, externalSku, status), CancellationToken.None));
+
+    /// <summary>
+    /// A product mapped on the website channel with an external SKU the simulated channel rejects for good: its initial sync
+    /// has failed and the pair's stock-sync alert is open.
+    /// </summary>
+    private async Task<(ProductResponse Product, ChannelProductSavedResponse Mapping, string AlertKey)> FailedPairAsync()
+    {
+        var product = await CreateProductAsync(threshold: 0);
+        var websiteId = await ChannelIdAsync("website");
+        var mapping = await MapAsync(
+            websiteId, product.ProductId, externalProductId: null, externalSku: $"{ChannelSimulationOptions.PermanentErrorSkuPrefix}{Guid.NewGuid():N}");
+        await RunSimulatedStockSyncAsync(() => WaitForSyncTasksAsync(product.ProductId, tasks => tasks.Count == 1 && tasks.All(t => t.IsTerminal)));
+
+        var key = AlertDedupKey.StockSyncFailed(websiteId, product.ProductId);
+        var alert = Assert.Single(await AlertsAsync(key));
+        Assert.Equal((AlertStatus.Open, mapping.SyncTaskId, ChannelApiErrorCodes.Rejected), (alert.Status, alert.TaskId, alert.ErrorCode));
+        return (product, mapping, key);
+    }
+
     private Task<Order> OrderOfTaskAsync(Guid taskId) =>
         fixture.WithDbAsync(async db =>
         {
@@ -855,6 +1015,25 @@ public sealed class AlertLifecycleTests(WorkersFixture fixture) : IAsyncLifetime
                 services.RemoveHostedService<OrderWorkerService>();
                 services.UseChannelAdapter(channel);
             });
+        await host.StartAsync();
+        try
+        {
+            await until();
+        }
+        finally
+        {
+            await host.StopAsync();
+            host.Dispose();
+        }
+    }
+
+    /// <summary>Stock Sync Worker (and Outbox Publisher) with the simulated channel and its SKU rules, as in Development.</summary>
+    private async Task RunSimulatedStockSyncAsync(Func<Task> until)
+    {
+        var host = fixture.CreateHost(
+            $"alert-sim-{Guid.NewGuid():N}"[..24],
+            new Dictionary<string, string?> { ["ChannelSimulation:SkuRules"] = "true" },
+            services => services.RemoveHostedService<OrderWorkerService>());
         await host.StartAsync();
         try
         {

@@ -3,6 +3,7 @@ using FluentValidation;
 using FluentValidation.Results;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Omnichannel.Application.Alerts;
 using Omnichannel.Application.Channels;
 using Omnichannel.Application.Common.Abstractions;
 using Omnichannel.Application.Common.Exceptions;
@@ -10,6 +11,7 @@ using Omnichannel.Application.Common.Paging;
 using Omnichannel.Application.Common.Validation;
 using Omnichannel.Domain.Entities;
 using Omnichannel.Domain.Enums;
+using Omnichannel.Infrastructure.Persistence.Alerts;
 using Omnichannel.Infrastructure.RabbitMQ;
 
 namespace Omnichannel.Infrastructure.Persistence.Channels;
@@ -17,6 +19,7 @@ namespace Omnichannel.Infrastructure.Persistence.Channels;
 internal sealed class ChannelService(
     OmnichannelDbContext dbContext,
     ICorrelationContext correlationContext,
+    AlertStore alerts,
     ILogger<ChannelService> logger) : IChannelService
 {
     // Translated to SQL, which cannot know which channels are synced (that map is code): the flag is left false here and
@@ -193,11 +196,26 @@ internal sealed class ChannelService(
             .SingleOrDefaultAsync(m => m.ChannelProductId == channelProductId && m.ChannelId == channelId, cancellationToken)
             ?? throw new NotFoundException(nameof(ChannelProduct), channelProductId, ChannelProductErrorCodes.MappingNotFound);
 
-        var syncTaskId = mapping.Update(request.ExternalProductId, request.ExternalSku, request.Status)
-            ? RequestSync(mapping, mapping.Channel.Slug, mapping.Channel.Status)
-            : null;
+        var wasActive = mapping.Status == ChannelProductStatus.Active;
 
-        await SaveMappingAsync(mapping, cancellationToken);
+        Guid? syncTaskId;
+        await using (var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken))
+        {
+            syncTaskId = mapping.Update(request.ExternalProductId, request.ExternalSku, request.Status)
+                ? RequestSync(mapping, mapping.Channel.Slug, mapping.Channel.Status)
+                : null;
+
+            await SaveMappingAsync(mapping, cancellationToken);
+
+            // A mapping that is switched off is not synced any more: a failed sync of its pair needs no attention. Resolved
+            // with the mapping change or not at all; re-activating starts a sync that opens a new alert if it fails.
+            if (wasActive && mapping.Status == ChannelProductStatus.Inactive)
+            {
+                await alerts.ResolveAsync([AlertDedupKey.StockSyncFailed(mapping.ChannelId, mapping.ProductId)], cancellationToken);
+            }
+
+            await transaction.CommitAsync(cancellationToken);
+        }
 
         logger.LogInformation(
             "Mapping {ChannelProductId} on channel {Channel} updated ({Status}); sync task {SyncTaskId}",
