@@ -79,7 +79,9 @@ try {
 
     $import = Invoke-Api POST '/api/inventory/import' $manager @{ documentNumber = "SMOKE-018-GRN1-$n"; items = @(@{ productId = $productId; stock = 10 }) }
     Assert-Step '07 import 10 units (above the threshold)' 200 $import.Status
-    Assert-Step '08 the alert left the default list' 0 @(Get-ProductAlerts $staff $productId 'LowStock').Count
+    # (The helper's answer goes into a variable first: wrapped directly in @(), an empty list would count as one item.)
+    $low = Get-ProductAlerts $staff $productId 'LowStock'
+    Assert-Step '08 the alert left the default list' 0 @($low).Count
     Assert-Step '09 ... and is Resolved' 'Resolved' (Get-NewestStatus (Get-ProductAlerts $staff $productId 'LowStock' $AllStatuses))
 
     # Stock-sync failure: SIM-PERM- is rejected by the simulated channel.
@@ -118,7 +120,8 @@ try {
     $afterOff = (Invoke-Api GET "/api/alerts/$firstSyncAlertId" $staff).Body
     Assert-Step '22 ... the StockSyncFailed alert is Resolved' 'Resolved' ([string]$afterOff.status)
     Assert-Step '23 ... with a resolution time' $true ([bool]$afterOff.resolvedAt)
-    Assert-Step '24 ... and left the default list' 0 @(Get-ProductAlerts $staff $productId 'StockSyncFailed').Count
+    $syncAlerts = Get-ProductAlerts $staff $productId 'StockSyncFailed'
+    Assert-Step '24 ... and left the default list' 0 @($syncAlerts).Count
 
     # Re-activating starts the initial sync again; with a SKU the channel accepts it succeeds and opens no alert.
     $mappingSku = "WEB-SMOKE-018-$n"
@@ -128,7 +131,8 @@ try {
     Assert-Step '26 ... a stock sync was started' $true ([bool]$on.Body.syncTaskId)
     $okTask = if ($on.Body.syncTaskId) { Wait-Task $on.Body.syncTaskId $staff 60 } else { $null }
     Assert-Step '27 the new sync task' 'Succeeded' (Get-TaskStatus $okTask)
-    Assert-Step '28 no unresolved StockSyncFailed alert for the pair' 0 @(Get-ProductAlerts $staff $productId 'StockSyncFailed').Count
+    $syncAlerts = Get-ProductAlerts $staff $productId 'StockSyncFailed'
+    Assert-Step '28 no unresolved StockSyncFailed alert for the pair' 0 @($syncAlerts).Count
     $allSync = Get-ProductAlerts $staff $productId 'StockSyncFailed' $AllStatuses
     Assert-Step '29 the resolved alert is kept, and it is the only one' 1 @($allSync).Count
     Assert-Step '30 ... still Resolved' 'Resolved' (Get-NewestStatus $allSync)
