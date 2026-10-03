@@ -142,7 +142,9 @@ export function AppLayout() {
         </Header>
         <Content style={{ padding: 24, minWidth: 0 }}>
           {/* A boundary per page: while the code of a page loads, the spinner fills the content area and the shell
-              stays as it is. Keyed by path only, so query-string changes (list state) never remount the page. */}
+              stays as it is. Keyed by path only, so query-string changes (list state) never remount the page. The key
+              also makes a detail page a fresh mount when its route parameter changes (`/orders/a` to `/orders/b`):
+              it never shows the previous record, or page state that belongs to it, while the next one loads. */}
           <Suspense key={location.pathname} fallback={<PageLoading />}>
             <Outlet />
           </Suspense>

@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 import type { AuthUser } from '@/features/auth/session';
@@ -259,6 +259,43 @@ describe('order detail', () => {
 
     // Tasks and attempts change in the background: the cached order is not enough.
     await waitFor(() => expect(requests).toHaveLength(2));
+  });
+});
+
+describe('order detail: another order on the mounted page', () => {
+  it('never shows the previous order while the next one loads', async () => {
+    const NEXT_ORDER_ID = '0199a1b2-0000-7000-8000-000000000002';
+    const next = orderDetail({ orderId: NEXT_ORDER_ID, externalOrderId: 'POS-20261002-ZZ0002', totalAmount: 45000 });
+    let release = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    server.use(
+      http.get(api('/orders/:id'), async ({ params }) => {
+        if (params.id !== NEXT_ORDER_ID) {
+          return HttpResponse.json(order);
+        }
+
+        await held;
+        return HttpResponse.json(next);
+      }),
+    );
+    const { router } = renderDetail();
+    await screen.findByRole('heading', { name: 'Đơn hàng WEB-20261001-ABC123' });
+    expect(valueOf(summary(), 'Tổng tiền')).toBe('1.234.567 ₫');
+
+    // The route parameter changes while the page is mounted (a link from one order to another).
+    await act(() => router.navigate(`/orders/${NEXT_ORDER_ID}`));
+
+    // The answer is still on its way: the page says so, with nothing of the first order.
+    expect(await screen.findByRole('heading', { name: 'Đơn hàng' })).toBeInTheDocument();
+    expect(screen.queryByText('WEB-20261001-ABC123')).not.toBeInTheDocument();
+    expect(document.querySelector('main .ant-descriptions')).toBeNull();
+    expect(screen.queryByTestId(`order-task-${TASK_ID}`)).not.toBeInTheDocument();
+
+    release();
+    expect(await screen.findByRole('heading', { name: 'Đơn hàng POS-20261002-ZZ0002' })).toBeInTheDocument();
+    expect(valueOf(summary(), 'Tổng tiền')).toBe('45.000 ₫');
   });
 });
 
