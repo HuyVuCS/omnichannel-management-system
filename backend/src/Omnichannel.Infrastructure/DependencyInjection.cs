@@ -13,6 +13,7 @@ using Omnichannel.Application.Inventory;
 using Omnichannel.Application.Orders;
 using Omnichannel.Application.Processing;
 using Omnichannel.Application.Products;
+using Omnichannel.Application.SystemEvents;
 using Omnichannel.Application.Users;
 using Omnichannel.Infrastructure.Identity;
 using Omnichannel.Infrastructure.Logging;
@@ -26,6 +27,7 @@ using Omnichannel.Infrastructure.Persistence.Inventories;
 using Omnichannel.Infrastructure.Persistence.Orders;
 using Omnichannel.Infrastructure.Persistence.Processing;
 using Omnichannel.Infrastructure.Persistence.Products;
+using Omnichannel.Infrastructure.Persistence.SystemEvents;
 using Omnichannel.Infrastructure.Realtime;
 
 namespace Omnichannel.Infrastructure;
@@ -78,6 +80,7 @@ public static class DependencyInjection
         services.AddScoped<IOrderQueryService, OrderQueryService>();
         services.AddScoped<IProcessingTaskService, ProcessingTaskService>();
         services.AddScoped<IDashboardService, DashboardService>();
+        services.AddScoped<ISystemEventService, SystemEventService>();
 
         return services;
     }
