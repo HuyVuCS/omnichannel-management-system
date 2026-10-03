@@ -91,6 +91,25 @@ Assert-Step 'shown' 200 200
 Add-Case 'passed step: plain values' (($script:Results[0].Expected -is [int]) -and ($script:Results[0].Actual -is [int]))
 Add-Case 'a thrown comparison records no step' ($(try { Assert-Step 'thrown' 1 @(1); $false } catch { $script:Results.Count -eq 1 }))
 
+# The result table: OK first, and values of any length stay inside their columns (no column is dropped, no line is longer
+# than the table).
+$script:Results.Clear()
+Assert-Step '01 short' 200 200
+Assert-Step ('02 a step whose description is much longer than its column: ' + ('word ' * 30)) ('Z' * 150) ('Z' * 150)
+Assert-Step '03 after the long one' $true 'any text'
+$table = Format-SmokeTable $script:Results
+$lines = @($table -split "`r?`n" | Where-Object { $_.Trim() -ne '' })
+$tableWidth = $script:TableWidths.OK + $script:TableWidths.Step + $script:TableWidths.Expected + $script:TableWidths.Actual + 3
+Add-Case 'table: the header starts with OK and has all four columns' ($lines[0] -cmatch '^OK\s+Step\s+Expected\s+Actual\s*$')
+Add-Case 'table: no line is longer than the table' (@($lines | Where-Object { $_.TrimEnd().Length -gt $tableWidth }).Count -eq 0)
+Add-Case 'table: every step starts its row with its verdict' (
+    (@($lines | Where-Object { $_ -cmatch '^True\s+01 short' }).Count -eq 1) -and
+    (@($lines | Where-Object { $_ -cmatch '^True\s+02 a step' }).Count -eq 1) -and
+    (@($lines | Where-Object { $_ -cmatch '^False\s+03 after the long one' }).Count -eq 1))
+# Both values of step 02 are in the table completely: 2 x 150 characters, spread over several lines.
+Add-Case 'table: a long value is wrapped, not cut' (($table.ToCharArray() | Where-Object { $_ -ceq [char]'Z' }).Count -eq 300)
+$script:Results.Clear()
+
 $script:Cases | Format-Table -AutoSize | Out-String -Width 200 | Write-Host
 $failed = @($script:Cases | Where-Object { -not $_.OK }).Count
 if ($failed -eq 0) { Write-Host "PASSED: all $($script:Cases.Count) cases." -ForegroundColor Green; exit 0 }
