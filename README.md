@@ -235,11 +235,21 @@ npm run dev     # http://localhost:5173 - needs the API on http://localhost:5080
     to the address (`useAddressText`) follows it when it changes from outside (menu link, back/forward);
   - date filters keep local dates in the address (`from=YYYY-MM-DD`) and send the local start/end of day with the UTC
     offset;
-  - form dialogs submit through `useFormSubmission`, reset through `useResetFormOnOpen` and give their `Form`
-    `clearOnDestroy`: a dialog must never start with the values of the record it showed before - neither when it is
-    reopened before its close animation ends (the hook resets the mounted form) nor after it was closed completely
-    (the destroyed form is emptied; without that a production build shows the previous record - the development
-    server hides it, because React's StrictMode mounts every field twice);
+  - form dialogs submit through `useFormSubmission`, render `<ResetFormOnOpen openCount={useOpenCount(...)} />` as the
+    last child of their `Form` and give that `Form` `clearOnDestroy`: a dialog must never start with the values of the
+    record it showed before, nor with what was typed and cancelled - neither when it is reopened before its close
+    animation ends (the mounted form is reset, for another record and for the same one) nor after it was closed
+    completely (the destroyed form is emptied; without that a production build shows the previous record - the
+    development server hides it, because React's StrictMode mounts every field twice). The reset runs **inside** the
+    form: the dialog library can render a closing dialog's content one commit after the component that owns it, and a
+    reset in the owner's effect would then use the previous record's `initialValues`;
+  - a segmented control (`VI | EN`, the dashboard's range presets) gets an explicit `name`: it is a group of radio
+    inputs, and under test every generated group name is the same - two controls on one page would be one group, in
+    which only one input can be checked;
+  - a page is remounted whenever the path changes (the keyed `Suspense` in `AppLayout`; the query string never
+    remounts it). For a detail page bound to a route parameter (order, task, channel) this means: while the next record
+    loads, nothing of the previous one is on screen - neither its data nor page state such as the result of the last
+    save. One test per detail page pins this;
   - no business rule is repeated in the client: flags such as `isLowStock` and normalisation such as the SKU come from
     the API; actions a role may not use are hidden, and the API stays the authority;
   - each page is its own chunk (`lazyPage` in `src/app/router.tsx`); the shell stays while a page loads. A chunk that
@@ -258,7 +268,8 @@ npm run dev     # http://localhost:5173 - needs the API on http://localhost:5080
   (`/inventory/import`, Manager/Admin, reached from the inventory and product lists, no menu item), Inventory movements
   (`/inventory/movements`), Products, Customers, Channels, Channel detail (`/channels/{id}`, reached from the channel
   name in the list, no menu item), Sync & Processing (`/processing`), Task detail (`/processing/tasks/{id}`, no menu
-  item), Users. The other menu items show a "coming in task NNN" placeholder.
+  item), Alerts (`/alerts`), Users. The other menu items (Logs / audit: task 018b, Reports: task 021) show a "coming in
+  task NNN" placeholder.
 - **Realtime** (`src/features/realtime`): after sign-in the application opens one SignalR connection to
   `/api/hubs/notifications` (section "Realtime hints and dashboard summary"). The client library
   (`@microsoft/signalr`) is behind a small interface (`hub.ts`) and loaded with a dynamic `import()`, so the login page
@@ -267,8 +278,13 @@ npm run dev     # http://localhost:5173 - needs the API on http://localhost:5080
     most once per second (a throttle): at once when nothing was invalidated in the last second, otherwise together at
     the end of that second. What is on screen is fetched again through the API, a cached list nobody shows is dropped.
     No page polls.
+  - Event → tags (`tagsForEvent`; `all: true` = the same types without ids): `order.created` → order lists, summary;
+    `inventory.changed` → stock, movements, product lists, **alert lists** (a low-stock alert shows the stock of now),
+    summary; `processing.task.changed` → that task, task lists, its order, summary; `alert.changed` → that alert,
+    alert lists, summary; `low_stock.created` → alert lists, summary (it arrives with an `alert.changed` in the same
+    batch; mapped anyway). A new alert only refreshes what is on screen: there is no toast, sound or badge.
   - Every (re)connect and every `resync: true` invalidates the realtime tags (orders, stock, movements, products,
-    tasks, summary) once - never the whole cache. Lists are still fetched again whenever a page is opened.
+    tasks, alerts, summary) once - never the whole cache. Lists are still fetched again whenever a page is opened.
   - The connection is retried after 0, 2, 5, 10, 30 seconds, then every 30 seconds, for as long as the session lasts;
     it is closed on logout and when the token expires. A token the hub refuses (401) ends the session like a 401 of the
     API. The header shows *live* / *connecting* / *reconnecting* / *offline* (offline = only the 30-second retries are
@@ -276,7 +292,23 @@ npm run dev     # http://localhost:5173 - needs the API on http://localhost:5080
   - The client logs warnings and errors only, with `access_token` removed: the token is part of the WebSocket URL.
 - Dashboard: the numbers of `GET /api/dashboard/summary` as the server computed them (no totals, thresholds or range
   limit in the client). The range is in the address: `?range=today|7d|30d` (local days; the default, the last 24 hours,
-  writes and sends nothing) or `?from=...&to=...`. Non-zero numbers link to the list behind them.
+  writes and sends nothing) or `?from=...&to=...`. Non-zero numbers link to the list behind them. The card "Unresolved
+  alerts" shows `summary.alerts` - open, acknowledged, and both per alert type (every type, zeros included) - as they
+  are now, independent of the range (its tooltip says so); each number links to the alert list with that status and
+  type.
+- Alerts (`/alerts`, every role): the list of `GET /api/alerts` with links to what an alert is about (order, task,
+  channel, stock import). Filters - status and type (several values each, `?status=Open&status=Resolved`), product,
+  channel, a range of local days on the last occurrence - sort (the server's three fields) and page live in the
+  address. **Without a status filter the request carries no status: the server's default (open and acknowledged)
+  applies**, and the control says so; "Resolved" and all three are explicit choices. Details come from the response
+  only: for low stock the product's available stock and threshold *as they are now*, for failures the error code
+  (the API sends no message). Manager and Admin acknowledge an `Open` alert after a confirmation (it cannot be undone;
+  the alert stays until the system resolves it) and get a shortcut to the stock import on unresolved stock alerts; a
+  refused acknowledge (`alert_resolved`, `alert_not_found`) is said in the UI language and the list is fetched again.
+  The list is fetched again when the page is opened, on "Refresh", by alert and stock hints, and after a product or
+  channel change (their names and the threshold are shown). At 1280 px type, status, product, channel, details, last
+  occurrence and the action column (fixed to the right edge) are visible without horizontal scrolling. Scripted check:
+  `scripts\smoke\task-018.ps1`.
 - Channels: the list says for every channel whether stock is pushed to it at all (`stockSyncEnabled`, "API
   conventions"). The channel detail shows the channel, a link to its stock-sync tasks, and the products mapped on it
   (search, sort by SKU / created, paging - all in the address). Manager and Admin map a product and change a mapping
@@ -403,7 +435,7 @@ lifecycle `Open` → `Acknowledged` → `Resolved`; `SystemEventLog` stays the e
 | --- | --- | --- | --- |
 | `LowStock` | product (`low_stock:{productId}`) | a stock or threshold change that leaves the product low (`AvailableStock <= LowStockThreshold`, the rule of the inventory list) | a stock or threshold change that leaves it not low |
 | `InsufficientStock` | product (`insufficient_stock:{productId}`) | an order stored as `InsufficientStock`, for each product that was short | the next stock import of the product |
-| `StockSyncFailed` | channel and product (`stock_sync_failed:{channelId}:{productId}`) | a stock-sync task that failed for good | any stock-sync task of the same channel and product that succeeds |
+| `StockSyncFailed` | channel and product (`stock_sync_failed:{channelId}:{productId}`) | a stock-sync task that failed for good | any stock-sync task of the same channel and product that succeeds, or the mapping of the pair being switched off (`Active` → `Inactive`) |
 | `ProcessingFailed` | task (`processing_failed:{taskId}`) | a task of another type that failed for good | that task succeeding (after a manual retry) |
 
 - **Refresh:** a condition that occurs again while its alert is unresolved updates that row (`lastOccurredAt`,
@@ -412,6 +444,13 @@ lifecycle `Open` → `Acknowledged` → `Resolved`; `SystemEventLog` stays the e
   that returns after its alert was resolved opens a new alert; resolved alerts are kept.
 - **Resolving is always the system's decision**, taken from the source tables; there is no manual resolve. A new product
   has no stock, so it starts with a `LowStock` alert.
+- **Deactivated mapping:** changing a channel product mapping from `Active` to `Inactive` resolves the `StockSyncFailed`
+  alert of its channel and product in the same transaction (a pair that is not synced any more needs no attention); a
+  refused change (409) resolves nothing. No other mapping change touches alerts, and deactivating a *channel* does not
+  either (re-activating a channel does not re-sync its mappings, so its alerts keep their meaning). Re-activating the
+  mapping starts its initial sync again, and a failure opens a new alert. Known edge: an attempt that is already running
+  when the mapping is switched off can still fail for good and open the alert again; a manual retry of that task then
+  completes without a push and resolves it.
 - **Acknowledge** (`Manager` / `Admin`): "seen", nothing more - the alert stays until the condition is gone. It is audited
   in `SystemEventLog` (`alert.acknowledged`).
 - **Consistency:** every alert row is written by one SQL statement inside the transaction of the change that causes it
@@ -433,7 +472,9 @@ lifecycle `Open` → `Acknowledged` → `Resolved`; `SystemEventLog` stays the e
 - `GET /api/alerts/{alertId}` (any role): the same item; 404 `alert_not_found`.
 - `POST /api/alerts/{alertId}/acknowledge` (Manager/Admin): 200 with the item - also when it was acknowledged already
   (nothing is written then); 409 `alert_resolved`; 404 `alert_not_found`.
-- Scripted check (needs the Workers host in Development): `powershell -ExecutionPolicy Bypass -File scripts\smoke\task-017.ps1`.
+- Scripted checks (need the Workers host in Development): `powershell -ExecutionPolicy Bypass -File scripts\smoke\task-017.ps1`
+  (lifecycle, acknowledge, summary) and `scripts\smoke\task-018.ps1` (the default list, a deactivated mapping, then the
+  frontend build and tests).
 
 ### Users and token revocation
 
