@@ -3,6 +3,7 @@ import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 import { renderApp } from '@/test/renderApp';
 import { api, server, sessionOf, staffUser } from '@/test/server';
+import { settled } from '@/test/interactions';
 
 /**
  * Task 011: every page is its own chunk (`React.lazy`). The first time a route is opened its code is loaded while the
@@ -24,6 +25,8 @@ describe('route-level code splitting', () => {
 
     expect(await screen.findByRole('heading', { name: 'Khách hàng' })).toBeInTheDocument();
     expect(screen.queryByTestId('page-loading')).not.toBeInTheDocument();
+
+    await settled();
   });
 
   it('loads the chunk of a page when the user navigates to it through the menu', async () => {
@@ -39,6 +42,8 @@ describe('route-level code splitting', () => {
     expect(await screen.findByRole('heading', { name: 'Kênh bán' })).toBeInTheDocument();
     expect(screen.queryByTestId('page-loading')).not.toBeInTheDocument();
     expect(screen.getByTestId('app-sider')).toBe(sider);
+
+    await settled();
   });
 
   it('shows the full-screen fallback while the login page loads', async () => {

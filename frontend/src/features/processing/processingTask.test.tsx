@@ -5,7 +5,7 @@ import type { AuthUser } from '@/features/auth/session';
 import { FLUSH_WINDOW_MS } from '@/features/realtime/hintTags';
 import type { HubFactory } from '@/features/realtime/hub';
 import { fakeHub } from '@/test/hub';
-import { expectLanguageSwitchChangesTextOnly, findDialog } from '@/test/interactions';
+import { expectLanguageSwitchChangesTextOnly, findDialog, settled } from '@/test/interactions';
 import { attempt, ORDER_ID, orderDetail, serveChannels, task, TASK_ID } from '@/test/orders';
 import { failedSyncDetail, serveTask, SYNC_TASK_ID, taskChannels, UNKNOWN_CHANNEL_ID } from '@/test/processing';
 import { renderApp } from '@/test/renderApp';
@@ -134,6 +134,8 @@ describe('processing task detail', () => {
 
     await user.click(screen.getByRole('button', { name: /Quay lại/ }));
     await waitFor(() => expect(location()).toBe('/processing'));
+
+    await settled();
   });
 
   it('is refetched by a realtime hint that names it', async () => {
@@ -245,6 +247,8 @@ describe('manual retry', () => {
     await confirmRetry(user);
 
     expect(await screen.findByText('Tác vụ xử lý không tồn tại.')).toBeInTheDocument();
+
+    await settled();
   });
 
   it('leaves the task as it is when the request fails for an unexpected reason (reported globally)', async () => {

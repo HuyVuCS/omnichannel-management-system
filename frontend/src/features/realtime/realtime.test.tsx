@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import type { AuthUser } from '@/features/auth/session';
 import { CONNECTION_INDICATOR_WIDTH } from '@/shared/components/layout';
 import { fakeHub } from '@/test/hub';
-import { expectLanguageSwitchChangesTextOnly } from '@/test/interactions';
+import { expectLanguageSwitchChangesTextOnly, settled } from '@/test/interactions';
 import { renderApp } from '@/test/renderApp';
 import { adminUser, api, managerUser, server, sessionOf, staffUser } from '@/test/server';
 import { FLUSH_WINDOW_MS } from './hintTags';
@@ -84,6 +84,8 @@ describe('realtime connection lifecycle', () => {
     expect(hub.connections).toHaveLength(1);
     expect(hub.usage.maxOpen).toBe(1);
     expect(hub.latest().stopped).toBe(false);
+
+    await settled();
   });
 
   it('ends the session when the hub refuses the token, like a 401 of the API', async () => {

@@ -8,7 +8,7 @@ import type { HubFactory } from '@/features/realtime/hub';
 import { DASHBOARD_PRESETS_WIDTH, DASHBOARD_UPDATED_WIDTH } from '@/shared/components/layout';
 import { GENERATED_AT, POS_ID, serveSummary, summary, WEBSITE_ID } from '@/test/dashboard';
 import { fakeHub } from '@/test/hub';
-import { expectLanguageSwitchChangesTextOnly, rowOf } from '@/test/interactions';
+import { expectLanguageSwitchChangesTextOnly, rowOf, settled } from '@/test/interactions';
 import { renderApp } from '@/test/renderApp';
 import { api, managerUser, problem, server, sessionOf, staffUser } from '@/test/server';
 
@@ -221,6 +221,8 @@ describe('dashboard', () => {
     expect(await screen.findByRole('heading', { name: 'Cảnh báo' })).toBeInTheDocument();
     expect(location()).toBe('/alerts?status=Open&type=StockSyncFailed');
     await waitFor(() => expect(listRequests).toEqual([{ status: ['Open'], type: ['StockSyncFailed'] }]));
+
+    await settled();
   });
 
   it('opens the low-stock list from its number', async () => {
@@ -267,6 +269,8 @@ describe('dashboard', () => {
     await waitFor(() => expect(requests).toHaveLength(5));
     expect(sent()).toEqual({});
     expect(preset('24 giờ qua')).toBeChecked();
+
+    await settled();
   });
 
   it('takes a custom range of local days from the picker and from the address; no preset is marked then', async () => {
@@ -361,6 +365,8 @@ describe('dashboard', () => {
     await user.click(screen.getByRole('link', { name: 'Tổng quan' }));
     await screen.findByText('Đơn hàng trong khoảng thời gian');
     await waitFor(() => expect(requests).toHaveLength(3));
+
+    await settled();
   });
 
   it('is refetched at once by a realtime hint, and once more by everything else of the same second', async () => {

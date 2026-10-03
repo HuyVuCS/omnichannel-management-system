@@ -3,7 +3,7 @@ import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 import type { AuthUser } from '@/features/auth/session';
 import type { PagedResult } from '@/shared/api/types';
-import { columnTexts, expectLanguageSwitchChangesTextOnly, findDialog, rowOf } from '@/test/interactions';
+import { columnTexts, expectLanguageSwitchChangesTextOnly, findDialog, rowOf, settled } from '@/test/interactions';
 import { renderApp } from '@/test/renderApp';
 import { adminUser, api, managerUser, problem, server, sessionOf, staffUser } from '@/test/server';
 import type { Product } from './productsApi';
@@ -146,6 +146,8 @@ describe('products page', () => {
     await waitFor(() => expect(requests.at(-1)).toMatchObject({ search: 'tra', page: '1' }));
     expect(requests.length).toBe(before + 1);
     expect(location()).toBe('/products?sortDir=asc&search=tra');
+
+    await settled();
   });
 
   it('search box follows the address when it changes from outside (menu link, back), and never writes the old text back', async () => {
@@ -316,6 +318,8 @@ describe('products page', () => {
 
     await waitFor(() => expect(bodies).toHaveLength(1));
     expect(bodies[0]?.expiryDate).toBe('2027-12-31');
+
+    await settled();
   });
 });
 

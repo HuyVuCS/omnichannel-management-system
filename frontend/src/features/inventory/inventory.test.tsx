@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import type { AuthUser } from '@/features/auth/session';
 import type { PagedResult } from '@/shared/api/types';
 import { COFFEE_ID, serveProductCatalog, teaProduct, TEA_ID } from '@/test/catalog';
-import { columnTexts, expectLanguageSwitchChangesTextOnly, rowOf } from '@/test/interactions';
+import { columnTexts, expectLanguageSwitchChangesTextOnly, rowOf, settled } from '@/test/interactions';
 import { renderApp } from '@/test/renderApp';
 import { adminUser, api, managerUser, server, sessionOf, staffUser } from '@/test/server';
 import type { InventoryItem } from './inventoryApi';
@@ -142,6 +142,8 @@ describe('inventory page', () => {
     await appUser.type(screen.getByRole('searchbox'), 'a');
     await waitFor(() => expect(requests.at(-1)).toMatchObject({ search: 'tra', page: '1', lowStockOnly: 'true' }));
     expect(requests.length).toBe(before + 1);
+
+    await settled();
   });
 
   it('never sends a "low stock only" value other than true', async () => {

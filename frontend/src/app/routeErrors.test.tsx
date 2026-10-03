@@ -2,7 +2,7 @@ import { screen, waitFor } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { browser } from '@/shared/utils/browser';
-import { expectLanguageSwitchChangesTextOnly } from '@/test/interactions';
+import { expectLanguageSwitchChangesTextOnly, settled } from '@/test/interactions';
 import { renderApp } from '@/test/renderApp';
 import { api, server, sessionOf, staffUser } from '@/test/server';
 
@@ -57,6 +57,8 @@ describe('route error page', () => {
     expect(await screen.findByRole('heading', { name: 'Sản phẩm' })).toBeInTheDocument();
     expect(screen.queryByTestId('route-error')).not.toBeInTheDocument();
     expect(location()).toBe('/products');
+
+    await settled();
   });
 
   it('shows a generic message, a way back and the reload when a page throws while rendering', async () => {
@@ -79,6 +81,8 @@ describe('route error page', () => {
     expect(await screen.findByRole('heading', { name: 'Tổng quan' })).toBeInTheDocument();
     expect(location()).toBe('/');
     expect(screen.queryByTestId('route-error')).not.toBeInTheDocument();
+
+    await settled();
   });
 
   it('is localised, and a language switch changes its text only', async () => {

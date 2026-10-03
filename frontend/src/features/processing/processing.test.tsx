@@ -6,7 +6,7 @@ import { FLUSH_WINDOW_MS } from '@/features/realtime/hintTags';
 import type { HubFactory } from '@/features/realtime/hub';
 import { POS_ID, WEBSITE_ID } from '@/test/dashboard';
 import { fakeHub } from '@/test/hub';
-import { chooseOption, columnTexts, expectLanguageSwitchChangesTextOnly, rowOf } from '@/test/interactions';
+import { chooseOption, columnTexts, expectLanguageSwitchChangesTextOnly, rowOf, settled } from '@/test/interactions';
 import { ORDER_ID, orderDetail, serveChannels, TASK_ID } from '@/test/orders';
 import {
   failedSync,
@@ -170,6 +170,8 @@ describe('processing list', () => {
       await chooseOption(user, filter('Kênh bán'), 'POS');
       await waitFor(() => expect(requests.at(-1)).toMatchObject({ page: '1', channelId: POS_ID }));
       expect(location()).toBe(`/processing?${SELECTED}`);
+
+      await settled();
     });
 
     it('sends a text filter once per pause in typing, and starts on page 1 again', async () => {
@@ -185,6 +187,8 @@ describe('processing list', () => {
       await user.type(screen.getByRole('textbox', { name: 'Mã lỗi' }), 'channel_rejected');
       await waitFor(() => expect(requests.at(-1)).toMatchObject({ errorCode: 'channel_rejected', page: '1' }));
       expect(requests.length).toBe(before + 1);
+
+      await settled();
     });
 
     it('filters by a range of local days on the creation time, next to the other filters, and starts on page 1 again', async () => {
@@ -198,6 +202,8 @@ describe('processing list', () => {
       expect(new Date(requests.at(-1)!.from!).getTime()).toBe(new Date(2026, 9, 1).getTime());
       expect(new Date(requests.at(-1)!.to!).getTime()).toBe(new Date(2026, 9, 2, 23, 59, 59, 999).getTime());
       expect(location()).toBe(`/processing?${SELECTED}&${TYPED}&from=2026-10-01&to=2026-10-02`);
+
+      await settled();
     });
 
     it('"Clear filters" removes every filter from the address and from the controls', async () => {
@@ -213,6 +219,8 @@ describe('processing list', () => {
       expect(screen.getByRole('textbox', { name: 'Mã lỗi' })).toHaveValue('');
       expect(startInput()).toHaveValue('');
       expect(filter('Kênh bán').closest('.ant-select')).not.toHaveTextContent('POS');
+
+      await settled();
     });
   });
 
@@ -244,6 +252,8 @@ describe('processing list', () => {
     expect(location()).toBe('/processing?status=Failed&sortBy=updatedAt&sortDir=desc');
     expect(sortOf(/Cập nhật lúc/)).toBe('descending');
     expect(sortOf(/Ngày tạo/)).toBeNull();
+
+    await settled();
   });
 
   it('ignores address values that are not valid and never sends them', async () => {
@@ -298,6 +308,8 @@ describe('processing list', () => {
     await user.click(within(rowOf('channel_rejected')).getByRole('button', { name: 'Chi tiết' }));
     await waitFor(() => expect(location()).toBe(`/processing/tasks/${SYNC_TASK_ID}`));
     expect(router.state.location.state).toEqual({ from: address });
+
+    await settled();
   });
 
   it('leads from a task to its order', async () => {

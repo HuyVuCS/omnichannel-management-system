@@ -1,9 +1,22 @@
-import { screen, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import { expect } from 'vitest';
 import { PAGE_SIZE_SELECT_WIDTH } from '@/shared/components/layout';
+import { unansweredRequests } from './pendingRequests';
 import type { renderApp } from './renderApp';
 
 export type AppUser = ReturnType<typeof renderApp>['user'];
+
+/**
+ * The page has what it asked for: no request is on its way, and nothing on screen is still loading (a table, a button,
+ * a spinner). A test whose last step sends a request ends with this - or with the text that request puts on screen -
+ * so that it never ends with a request in flight (the setup fails such a test, see `pendingRequests.ts`).
+ */
+export async function settled() {
+  await waitFor(() => {
+    expect(unansweredRequests()).toEqual([]);
+    expect(document.querySelector('.ant-spin-spinning, .ant-btn-loading')).not.toBeInTheDocument();
+  });
+}
 
 /** The table row that contains `text`. */
 export function rowOf(text: string): HTMLElement {

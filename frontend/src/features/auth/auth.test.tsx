@@ -6,6 +6,7 @@ import type { User } from '@/features/users/usersApi';
 import { renderApp } from '@/test/renderApp';
 import { adminUser, api, problem, server, sessionOf, staffUser } from '@/test/server';
 import { SESSION_STORAGE_KEY, type Session } from './session';
+import { settled } from '@/test/interactions';
 
 const emptyUserPage: PagedResult<User> = { items: [], page: 1, pageSize: 20, totalCount: 0 };
 
@@ -47,6 +48,8 @@ describe('login', () => {
     // Header shows who is signed in.
     expect(screen.getByTestId('app-user')).toHaveTextContent('admin@example.com');
     expect(screen.getByTestId('app-user')).toHaveTextContent('Quản trị');
+
+    await settled();
   });
 
   it('shows one generic error for a wrong password and stays signed out', async () => {
@@ -101,6 +104,8 @@ describe('route guards', () => {
 
     expect(await screen.findByRole('heading', { name: 'Người dùng' })).toBeInTheDocument();
     expect(location()).toBe('/users');
+
+    await settled();
   });
 
   it('never redirects to another site after login', async () => {
@@ -111,6 +116,8 @@ describe('route guards', () => {
 
     expect(await screen.findByRole('heading', { name: 'Tổng quan' })).toBeInTheDocument();
     expect(location()).toBe('/');
+
+    await settled();
   });
 
   it('hides the Users menu item from Staff and answers /users with the 403 page', async () => {
@@ -130,6 +137,8 @@ describe('route guards', () => {
     renderApp({ route: '/', session: sessionOf(adminUser) });
 
     expect(await screen.findByRole('link', { name: 'Người dùng' })).toBeInTheDocument();
+
+    await settled();
   });
 
   it('renders a localised placeholder for pages of later tasks and a 404 page for unknown addresses', async () => {
@@ -147,9 +156,12 @@ describe('session end', () => {
     server.use(http.get(api('/users'), () => problem(401)));
     const { location } = renderApp({ route: '/users', session: sessionOf(adminUser) });
 
+    // The address first: the Users page has an "E-mail" of its own while its 401 is on the way.
+    await waitFor(() => expect(location()).toBe('/login?returnUrl=%2Fusers'));
     await screen.findByLabelText('E-mail');
-    expect(location()).toBe('/login?returnUrl=%2Fusers');
     expect(storedSession()).toBeNull();
+
+    await settled();
   });
 
   it('logs out when the restored session is no longer valid on the server (revoked token)', async () => {
@@ -215,5 +227,7 @@ describe('session end', () => {
     await screen.findByLabelText('E-mail');
     expect(location()).toBe('/login');
     expect(storedSession()).toBeNull();
+
+    await settled();
   });
 });

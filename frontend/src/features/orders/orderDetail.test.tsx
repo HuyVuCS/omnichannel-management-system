@@ -2,7 +2,7 @@ import { act, screen, waitFor, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 import type { AuthUser } from '@/features/auth/session';
-import { expectLanguageSwitchChangesTextOnly } from '@/test/interactions';
+import { expectLanguageSwitchChangesTextOnly, settled } from '@/test/interactions';
 import { attempt, ORDER_ID, orderDetail, serveChannels, TASK_ID } from '@/test/orders';
 import { renderApp } from '@/test/renderApp';
 import { api, managerUser, problem, server, sessionOf, staffUser } from '@/test/server';
@@ -180,6 +180,8 @@ describe('order detail', () => {
     await appUser.click(screen.getByRole('button', { name: 'Về danh sách' }));
     await screen.findByRole('heading', { name: 'Đơn hàng' });
     expect(location()).toBe('/orders');
+
+    await settled();
   });
 
   it('shows the not-found view when the API does not know the order', async () => {
@@ -244,6 +246,8 @@ describe('order detail', () => {
     await appUser.click(screen.getByRole('button', { name: /Quay lại/ }));
     await screen.findByRole('heading', { name: 'Đơn hàng' });
     expect(location()).toBe('/orders');
+
+    await settled();
   });
 
   it('asks the API again whenever the page is opened', async () => {
@@ -259,6 +263,8 @@ describe('order detail', () => {
 
     // Tasks and attempts change in the background: the cached order is not enough.
     await waitFor(() => expect(requests).toHaveLength(2));
+
+    await settled();
   });
 });
 
