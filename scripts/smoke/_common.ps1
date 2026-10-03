@@ -264,9 +264,22 @@ function Invoke-FrontendChecks([int]$FirstStep, [string[]]$RequiredPackages = @(
     }
 }
 
+# The result table as text. OK is the first column, and every column has a fixed width: a long value continues on the
+# next line inside its own column (-Wrap) and never pushes a column - the verdict least of all - out of the table.
+$script:TableWidths = @{ OK = 5; Step = 64; Expected = 34; Actual = 34 }
+function Format-SmokeTable($Results) {
+    $columns = @(
+        @{ Label = 'OK'; Expression = { "$($_.OK)" }; Width = $script:TableWidths.OK },
+        @{ Label = 'Step'; Expression = { "$($_.Step)" }; Width = $script:TableWidths.Step },
+        @{ Label = 'Expected'; Expression = { "$($_.Expected)" }; Width = $script:TableWidths.Expected },
+        @{ Label = 'Actual'; Expression = { "$($_.Actual)" }; Width = $script:TableWidths.Actual }
+    )
+    return ($Results | Format-Table -Property $columns -Wrap | Out-String -Width 160)
+}
+
 function Complete-Smoke {
     Stop-Smoke
-    $script:Results | Format-Table -AutoSize | Out-String -Width 200 | Write-Host
+    Format-SmokeTable $script:Results | Write-Host
     $failed = @($script:Results | Where-Object { -not $_.OK }).Count
     if ($failed -eq 0) { Write-Host "PASSED: all $($script:Results.Count) checks." -ForegroundColor Green; exit 0 }
     Write-Host "FAILED: $failed of $($script:Results.Count) checks." -ForegroundColor Red
