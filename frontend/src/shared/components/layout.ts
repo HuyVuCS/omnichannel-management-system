@@ -47,6 +47,9 @@ export const MULTI_FILTER_WIDTH = 360;
 
 export const SEARCH_WIDTH = 280;
 
+/** A text filter that takes an id: wide enough to show a whole GUID (36 characters) next to its clear button. */
+export const ID_FILTER_WIDTH = 320;
+
 /** A product picker (`SKU — name`) used as a filter or in a form line. */
 export const PRODUCT_SELECT_WIDTH = 360;
 

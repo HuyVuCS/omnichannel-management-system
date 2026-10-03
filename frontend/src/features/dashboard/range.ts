@@ -47,7 +47,15 @@ export function readDashboardRange(searchParams: URLSearchParams, now: Dayjs = d
     return { preset, request: {} };
   }
 
+  return { preset, request: presetLocalDays(preset, now) };
+}
+
+/** The instants of a preset of whole local days: the local start of its first day and the local end of today. */
+export function presetLocalDays(
+  preset: Exclude<RangePreset, '24h'>,
+  now: Dayjs = dayjs(),
+): { from: string; to: string } {
   const today = now.format(API_DATE_FORMAT);
   const firstDay = now.subtract(PRESET_DAYS[preset] - 1, 'day').format(API_DATE_FORMAT);
-  return { preset, request: { from: startOfLocalDay(firstDay), to: endOfLocalDay(today) } };
+  return { from: startOfLocalDay(firstDay), to: endOfLocalDay(today) };
 }

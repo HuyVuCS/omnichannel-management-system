@@ -716,6 +716,75 @@
       "done": "Alert acknowledged."
     }
   },
+  "logs": {
+    "title": "Logs / audit",
+    "columns": {
+      "createdAt": "Time",
+      "level": "Level",
+      "eventType": "Event",
+      "summary": "Summary",
+      "who": "Who",
+      "links": "Links"
+    },
+    "levels": {
+      "Information": "Info",
+      "Warning": "Warning",
+      "Error": "Error",
+      "Critical": "Critical"
+    },
+    "filters": {
+      "level": "Level",
+      "eventType": "Event type",
+      "correlationId": "Correlation ID",
+      "orderId": "Order ID",
+      "taskId": "Task ID",
+      "from": "From",
+      "to": "To",
+      "clear": "Clear filters",
+      "idInvalid": "Not a valid ID (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)."
+    },
+    "links": {
+      "order": "Order",
+      "task": "Task",
+      "trace": "Trace",
+      "traceHint": "Every event of flow {{correlationId}}"
+    },
+    "eventTypes": {
+      "inventory_imported": "Stock import",
+      "order_insufficient_stock": "Order short of stock",
+      "order_already_exists": "Order already exists",
+      "order_message_rejected": "Order message rejected",
+      "stock_sync_message_rejected": "Sync message rejected",
+      "processing_failed": "Task failed",
+      "processing_retry_requested": "Manual retry",
+      "outbox_publish_failed": "Message not published",
+      "alert_acknowledged": "Alert acknowledged",
+      "user_created": "User created",
+      "user_role_changed": "Role changed",
+      "user_locked": "User locked",
+      "user_unlocked": "User unlocked",
+      "user_password_reset": "Password reset"
+    },
+    "summary": {
+      "inventory_imported": "Document {{referenceId}} · {{itemCount}} lines · {{totalQuantity}} units",
+      "order_insufficient_stock": {
+        "one": "Requested {{requested}}, available {{available}}",
+        "many": "{{products}} products short of stock"
+      },
+      "order_already_exists": "Order {{externalOrderId}} already exists",
+      "order_message_rejected": "Message {{messageId}} rejected",
+      "stock_sync_message_rejected": "Message {{messageId}} rejected on {{queue}}",
+      "processing_failed": "{{taskType}} · attempt {{attemptNo}} · {{errorCode}}",
+      "processing_retry_requested": "{{taskType}}: retry requested",
+      "outbox_publish_failed": "{{eventType}} not published after {{publishAttempts}} attempts",
+      "alert_acknowledged": "Alert: {{type}}",
+      "user_created": "Role {{role}}",
+      "user_role_changed": "Role: {{from}} → {{to}}",
+      "user_locked": "Account locked",
+      "user_unlocked": "Account unlocked",
+      "user_password_reset": "Temporary password set"
+    }
+  },
   "dashboard": {
     "title": "Dashboard",
     "updatedAt": "Updated at {{time}}",

@@ -716,6 +716,75 @@
       "done": "Đã ghi nhận cảnh báo."
     }
   },
+  "logs": {
+    "title": "Nhật ký / kiểm toán",
+    "columns": {
+      "createdAt": "Thời điểm",
+      "level": "Mức độ",
+      "eventType": "Sự kiện",
+      "summary": "Nội dung",
+      "who": "Người thực hiện",
+      "links": "Liên kết"
+    },
+    "levels": {
+      "Information": "Thông tin",
+      "Warning": "Cảnh báo",
+      "Error": "Lỗi",
+      "Critical": "Nghiêm trọng"
+    },
+    "filters": {
+      "level": "Mức độ",
+      "eventType": "Loại sự kiện",
+      "correlationId": "Mã tương quan",
+      "orderId": "ID đơn hàng",
+      "taskId": "ID tác vụ",
+      "from": "Từ ngày",
+      "to": "Đến ngày",
+      "clear": "Xoá bộ lọc",
+      "idInvalid": "Không phải ID hợp lệ (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)."
+    },
+    "links": {
+      "order": "Đơn hàng",
+      "task": "Tác vụ",
+      "trace": "Luồng",
+      "traceHint": "Mọi sự kiện của luồng {{correlationId}}"
+    },
+    "eventTypes": {
+      "inventory_imported": "Nhập kho",
+      "order_insufficient_stock": "Đơn thiếu hàng",
+      "order_already_exists": "Đơn đã tồn tại",
+      "order_message_rejected": "Thông điệp đơn bị từ chối",
+      "stock_sync_message_rejected": "Thông điệp đồng bộ bị từ chối",
+      "processing_failed": "Tác vụ thất bại",
+      "processing_retry_requested": "Chạy lại thủ công",
+      "outbox_publish_failed": "Gửi thông điệp thất bại",
+      "alert_acknowledged": "Ghi nhận cảnh báo",
+      "user_created": "Tạo người dùng",
+      "user_role_changed": "Đổi vai trò",
+      "user_locked": "Khoá người dùng",
+      "user_unlocked": "Mở khoá người dùng",
+      "user_password_reset": "Đặt lại mật khẩu"
+    },
+    "summary": {
+      "inventory_imported": "Chứng từ {{referenceId}} · {{itemCount}} dòng · {{totalQuantity}} đơn vị",
+      "order_insufficient_stock": {
+        "one": "Yêu cầu {{requested}}, khả dụng {{available}}",
+        "many": "{{products}} sản phẩm không đủ hàng"
+      },
+      "order_already_exists": "Đơn {{externalOrderId}} đã tồn tại",
+      "order_message_rejected": "Thông điệp {{messageId}} bị từ chối",
+      "stock_sync_message_rejected": "Thông điệp {{messageId}} bị từ chối ở {{queue}}",
+      "processing_failed": "{{taskType}} · lần {{attemptNo}} · {{errorCode}}",
+      "processing_retry_requested": "{{taskType}}: yêu cầu chạy lại",
+      "outbox_publish_failed": "{{eventType}} không gửi được sau {{publishAttempts}} lần",
+      "alert_acknowledged": "Cảnh báo: {{type}}",
+      "user_created": "Vai trò {{role}}",
+      "user_role_changed": "Vai trò: {{from}} → {{to}}",
+      "user_locked": "Tài khoản bị khoá",
+      "user_unlocked": "Tài khoản được mở khoá",
+      "user_password_reset": "Đã đặt mật khẩu tạm thời"
+    }
+  },
   "dashboard": {
     "title": "Tổng quan",
     "updatedAt": "Cập nhật lúc {{time}}",
