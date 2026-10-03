@@ -65,13 +65,19 @@ export function useListQueryState<SortField extends string = never>({
   }, [searchParams, sortFields, defaultSortField]);
 
   const patchParams = useCallback(
-    (changes: Record<string, string | number | undefined>) => {
+    (changes: Record<string, string | number | readonly string[] | undefined>) => {
       setSearchParams(
         (previous) => {
           const next = new URLSearchParams(previous);
           for (const [key, value] of Object.entries(changes)) {
             if (value === undefined || value === '') {
               next.delete(key);
+            } else if (typeof value === 'object') {
+              // A filter with several values: one entry per value (`?status=Open&status=Resolved`); none = absent.
+              next.delete(key);
+              for (const item of value) {
+                next.append(key, item);
+              }
             } else {
               next.set(key, String(value));
             }

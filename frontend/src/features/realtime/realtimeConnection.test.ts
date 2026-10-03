@@ -89,6 +89,7 @@ describe('realtime connection', () => {
       'Inventory',
       'InventoryMovement',
       { type: 'Product', id: 'LIST' },
+      { type: 'Alert', id: 'LIST' },
     ]);
 
     // resync: every realtime tag, never the whole cache - and through the same throttle (the second of the flush

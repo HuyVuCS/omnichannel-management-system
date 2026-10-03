@@ -1,5 +1,6 @@
 import { Suspense } from 'react';
 import { createBrowserRouter, type RouteObject } from 'react-router';
+import { ALERTS_PATH } from '@/features/alerts/paths';
 import { RequireAuth } from '@/features/auth/RequireAuth';
 import { RequireRole } from '@/features/auth/RequireRole';
 import { LOGIN_PATH } from '@/features/auth/returnUrl';
@@ -17,6 +18,7 @@ import { navigationItems } from './navigation';
 // Route-level code splitting: each page is its own chunk, loaded when its route is first opened. The shell (layout,
 // guards, providers) stays in the main chunk. Inside the layout the Suspense boundary is in AppLayout. A chunk that
 // cannot be loaded ends on the route error page (see `lazyPage`).
+const AlertsPage = lazyPage(() => import('@/features/alerts/AlertsPage').then((m) => ({ default: m.AlertsPage })));
 const LoginPage = lazyPage(() => import('@/features/auth/LoginPage').then((m) => ({ default: m.LoginPage })));
 const DashboardPage = lazyPage(() =>
   import('@/features/dashboard/DashboardPage').then((m) => ({ default: m.DashboardPage })),
@@ -68,6 +70,7 @@ const builtPages: Record<string, RouteObject['element']> = {
   '/customers': <CustomersPage />,
   [CHANNELS_PATH]: <ChannelsPage />,
   [PROCESSING_PATH]: <ProcessingPage />,
+  [ALERTS_PATH]: <AlertsPage />,
   '/users': <UsersPage />,
 };
 

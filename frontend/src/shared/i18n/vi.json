@@ -14,7 +14,8 @@
     "actions": "Thao tác",
     "createdAt": "Ngày tạo",
     "refresh": "Làm mới",
-    "optional": "Không bắt buộc"
+    "optional": "Không bắt buộc",
+    "info": "Thông tin"
   },
   "roles": {
     "Admin": "Quản trị",
@@ -96,7 +97,9 @@
     "retry_source_missing": "Không còn thông điệp gốc của tác vụ để gửi lại.",
     "channel_product_exists": "Sản phẩm này đã được gắn trên kênh này.",
     "external_product_id_taken": "Mã sản phẩm trên kênh này đang thuộc về một sản phẩm khác của kênh.",
-    "channel_product_not_found": "Liên kết sản phẩm không còn tồn tại."
+    "channel_product_not_found": "Liên kết sản phẩm không còn tồn tại.",
+    "alert_not_found": "Cảnh báo không còn tồn tại.",
+    "alert_resolved": "Cảnh báo đã được hệ thống giải quyết nên không thể ghi nhận."
   },
   "pages": {
     "notFound": {
@@ -662,6 +665,57 @@
       "finishedAt": "Kết thúc"
     }
   },
+  "alerts": {
+    "title": "Cảnh báo",
+    "filters": {
+      "status": "Trạng thái",
+      "statusDefault": "Chưa giải quyết (đang mở + đã ghi nhận)",
+      "type": "Loại cảnh báo",
+      "product": "Sản phẩm",
+      "channel": "Kênh bán",
+      "from": "Xảy ra từ ngày",
+      "to": "Đến ngày",
+      "clear": "Xoá bộ lọc"
+    },
+    "columns": {
+      "type": "Loại",
+      "status": "Trạng thái",
+      "product": "Sản phẩm",
+      "channel": "Kênh bán",
+      "details": "Chi tiết",
+      "lastOccurredAt": "Lần gần nhất",
+      "occurrenceCount": "Số lần",
+      "firstOccurredAt": "Lần đầu tiên",
+      "acknowledged": "Ghi nhận bởi",
+      "resolvedAt": "Giải quyết lúc"
+    },
+    "types": {
+      "LowStock": "Sắp hết hàng",
+      "InsufficientStock": "Thiếu hàng",
+      "StockSyncFailed": "Lỗi đồng bộ kho",
+      "ProcessingFailed": "Lỗi xử lý"
+    },
+    "statuses": {
+      "Open": "Đang mở",
+      "Acknowledged": "Đã ghi nhận",
+      "Resolved": "Đã giải quyết"
+    },
+    "details": {
+      "lowStock": "Khả dụng {{available}} / ngưỡng {{threshold}}",
+      "lowStockNow": "Số liệu hiện tại của sản phẩm, không phải tại thời điểm cảnh báo.",
+      "order": "Đơn hàng",
+      "task": "Tác vụ"
+    },
+    "actions": {
+      "importStock": "Nhập kho"
+    },
+    "acknowledge": {
+      "action": "Ghi nhận",
+      "confirmTitle": "Ghi nhận cảnh báo này?",
+      "confirmContent": "Cảnh báo được đánh dấu là đã xem; thao tác này không thể hoàn tác. Cảnh báo vẫn còn cho đến khi hệ thống thấy nguyên nhân đã hết.",
+      "done": "Đã ghi nhận cảnh báo."
+    }
+  },
   "dashboard": {
     "title": "Tổng quan",
     "updatedAt": "Cập nhật lúc {{time}}",
@@ -714,6 +768,13 @@
       "failed": "Gửi thất bại",
       "oldestPending": "Chờ lâu nhất",
       "none": "Không có"
+    },
+    "alerts": {
+      "title": "Cảnh báo chưa giải quyết",
+      "hint": "Số liệu hiện tại, không phụ thuộc khoảng thời gian đã chọn.",
+      "open": "Đang mở",
+      "acknowledged": "Đã ghi nhận",
+      "type": "Loại cảnh báo"
     }
   }
 }

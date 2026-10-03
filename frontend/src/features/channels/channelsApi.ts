@@ -127,7 +127,13 @@ export const channelsApi = baseApi.injectEndpoints({
       query: ({ channelId, changes }) => ({ url: `channels/${channelId}`, method: 'PUT', body: changes }),
       invalidatesTags: (result, error, { channelId }) => [
         ...listOnSuccess(result, error),
-        ...(error ? [] : [{ type: 'Channel' as const, id: channelId }]),
+        // The alert lists show the channel's name.
+        ...(error
+          ? []
+          : [
+              { type: 'Channel' as const, id: channelId },
+              { type: 'Alert' as const, id: 'LIST' },
+            ]),
       ],
     }),
     /** The products mapped on a channel (paged; `sku` ascending unless a sort is given). */

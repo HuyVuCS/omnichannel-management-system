@@ -28,7 +28,7 @@ async function submitLogin(user: ReturnType<typeof renderApp>['user']) {
 }
 
 /** A placeholder page: the shell without any request of its own. */
-const QUIET_PAGE = '/alerts';
+const QUIET_PAGE = '/reports';
 
 describe('realtime connection lifecycle', () => {
   it('connects only after sign-in, with the token of the session; logout closes it; a new login is a new connection', async () => {
