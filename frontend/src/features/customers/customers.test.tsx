@@ -139,6 +139,51 @@ describe('customers page', () => {
     expect(requests).toHaveLength(1);
   });
 
+  it('drops the API errors of the optional fields when the form is submitted again', async () => {
+    serveCustomers([an]);
+    const phoneMessage = "'phone' chỉ được chứa chữ số, dấu cách và các ký tự + - ( ).";
+    const addressMessage = "'address' dài tối đa 500 ký tự (máy chủ).";
+    let attempt = 0;
+    server.use(
+      http.post(api('/customers'), () => {
+        attempt += 1;
+        return attempt === 1
+          ? problem(400, {
+              errorCode: 'validation_failed',
+              errors: { phone: [phoneMessage], address: [addressMessage] },
+            })
+          : // The second attempt fails for another reason: the dialog stays open and shows what it holds.
+            problem(409, { errorCode: 'concurrency_conflict' });
+      }),
+    );
+    const { user: appUser } = renderCustomers();
+
+    await appUser.click(await screen.findByRole('button', { name: /Thêm khách hàng/ }));
+    const dialog = await findDialog('Thêm khách hàng');
+    await appUser.type(within(dialog).getByLabelText('Tên khách hàng'), 'Khách lỗi');
+    await appUser.type(within(dialog).getByLabelText('Điện thoại'), 'abc');
+    await appUser.type(within(dialog).getByLabelText('Địa chỉ'), 'Một địa chỉ');
+    await appUser.click(within(dialog).getByRole('button', { name: 'Tạo' }));
+    expect(await within(dialog).findByText(phoneMessage)).toBeInTheDocument();
+    expect(within(dialog).getByText(addressMessage)).toBeInTheDocument();
+
+    // The user removes what the API complained about and sends the form again.
+    await appUser.clear(within(dialog).getByLabelText('Điện thoại'));
+    await appUser.clear(within(dialog).getByLabelText('Địa chỉ'));
+    await appUser.click(within(dialog).getByRole('button', { name: 'Tạo' }));
+
+    expect(
+      await within(dialog).findByText('Dữ liệu đã bị người khác thay đổi. Hãy tải lại rồi thử lại.'),
+    ).toBeInTheDocument();
+    // Phone and address have no rule in the form (theirs are the API's): nothing re-validates them on submit. (The
+    // form removes an error text a moment after its field lost it.)
+    await waitFor(() => {
+      expect(within(dialog).queryByText(phoneMessage)).not.toBeInTheDocument();
+      expect(within(dialog).queryByText(addressMessage)).not.toBeInTheDocument();
+    });
+    expect(attempt).toBe(2);
+  });
+
   it('edits a customer with the form prefilled; then refreshes the list', async () => {
     const { state, requests } = serveCustomers([an, binh]);
     const updates: { id: string; body: unknown }[] = [];

@@ -90,7 +90,15 @@ export function CustomerFormModal({ state, onClose }: CustomerFormModalProps) {
         // With `ResetFormOnOpen`: a dialog opened again must not start with the values of the previous time.
         clearOnDestroy
         initialValues={initialValues}
-        onFinish={(values) => void submit(values)}
+        onFinish={(values) => {
+          // A field with a rule is validated again on every submit, which removes its old API error. Phone and address
+          // have no rule here (theirs are the API's): their errors of the previous attempt are removed by hand.
+          form.setFields([
+            { name: 'phone', errors: [] },
+            { name: 'address', errors: [] },
+          ]);
+          void submit(values);
+        }}
       >
         <Form.Item name="name" label={t('customers.form.name')} rules={[{ required: true, whitespace: true }]}>
           <Input autoComplete="off" />
