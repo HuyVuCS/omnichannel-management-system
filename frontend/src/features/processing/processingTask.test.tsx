@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 import type { AuthUser } from '@/features/auth/session';
@@ -306,6 +306,45 @@ describe('manual retry', () => {
       expect(within(screen.getByTestId(`order-task-${TASK_ID}`)).getByText('Đang chờ')).toBeInTheDocument(),
     );
     expect(state.orderReads).toBe(readsBefore + 1);
+    expect(retryButton()).not.toBeInTheDocument();
+  });
+});
+
+describe('processing task detail: another task on the mounted page', () => {
+  it('never shows the previous task while the next one loads', async () => {
+    const next = task({ taskId: TASK_ID, status: 'Succeeded', orderId: ORDER_ID, correlationId: 'corr-task-1' });
+    let release = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    server.use(
+      http.get(api('/processing/tasks/:id'), async ({ params }) => {
+        if (params.id !== TASK_ID) {
+          return HttpResponse.json(failedSyncDetail());
+        }
+
+        await held;
+        return HttpResponse.json(next);
+      }),
+    );
+    const { router } = renderTask(TASK_PATH, managerUser);
+    await screen.findByRole('heading', { name: 'Đồng bộ tồn kho' });
+    expect(summaryOf()).toHaveTextContent('corr-sync-7');
+    expect(retryButton()).toBeInTheDocument();
+
+    // The route parameter changes while the page is mounted (a link from one task to another).
+    await act(() => router.navigate(`/processing/tasks/${TASK_ID}`));
+
+    // The answer is still on its way: the page says so, with nothing of the first task - also not its retry.
+    expect(await screen.findByRole('heading', { name: 'Tác vụ xử lý' })).toBeInTheDocument();
+    expect(screen.queryByTestId('task-summary')).not.toBeInTheDocument();
+    expect(screen.queryByText('corr-sync-7')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('task-attempts')).not.toBeInTheDocument();
+    expect(retryButton()).not.toBeInTheDocument();
+
+    release();
+    expect(await screen.findByRole('heading', { name: 'Xử lý đơn hàng' })).toBeInTheDocument();
+    expect(summaryOf()).toHaveTextContent('corr-task-1');
     expect(retryButton()).not.toBeInTheDocument();
   });
 });

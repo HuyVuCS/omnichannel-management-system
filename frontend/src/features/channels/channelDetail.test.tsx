@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import { delay, http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 import type { AuthUser } from '@/features/auth/session';
@@ -674,6 +674,55 @@ describe('channel detail: mapping dialog reopened before its close animation has
     expect(within(dialog).getByLabelText('SKU trên kênh')).toHaveValue('');
     expect(within(dialog).getByDisplayValue('COF-01 — Cà phê')).toBeDisabled();
     expect(dialog.querySelector('.ant-select')).toHaveTextContent('Ngừng');
+  });
+});
+
+describe('channel detail: another channel on the mounted page', () => {
+  it('never shows the previous channel, its mappings or the result of its last save while the next channel loads', async () => {
+    const { state } = serveChannelDetail(websiteChannel, [teaMapping]);
+    let release = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    // The other channel answers late and has no mapping; requests for the website fall through to the handlers above.
+    server.use(
+      http.get(api('/channels/:id'), async ({ params }) => {
+        if (params.id !== SHOP_ID) {
+          return undefined;
+        }
+
+        await held;
+        return HttpResponse.json(shopChannel);
+      }),
+      http.get(api('/channels/:id/products'), ({ params }) =>
+        params.id === SHOP_ID ? HttpResponse.json({ items: [], page: 1, pageSize: 20, totalCount: 0 }) : undefined,
+      ),
+    );
+    const { user, router } = renderDetail();
+
+    // A save on the website channel leaves its result above the list.
+    state.updateAnswer = () => HttpResponse.json(savedMapping(teaMapping, null));
+    const dialog = await openEditDialog(user, 'TEA-01');
+    await user.click(within(dialog).getByRole('button', { name: 'Lưu' }));
+    expect(await screen.findByTestId('sync-result')).toHaveTextContent('TEA-01');
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+
+    // The route parameter changes while the page is mounted (a link from one channel to another).
+    await act(() => router.navigate(SHOP_PATH));
+
+    // The answer is still on its way: the page says so, with nothing of the website channel.
+    expect(await screen.findByRole('heading', { name: 'Kênh bán' })).toBeInTheDocument();
+    expect(screen.queryByTestId('channel-summary')).not.toBeInTheDocument();
+    expect(screen.queryByText('TEA-01')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('sync-result')).not.toBeInTheDocument();
+
+    release();
+    expect(await screen.findByRole('heading', { name: 'Cửa hàng mới' })).toBeInTheDocument();
+    expect(summaryOf()).toHaveTextContent('Slugmy-new-shop');
+    // Its own (empty) mapping list, and no result of a save on another channel.
+    await waitFor(() => expect(document.querySelector('.ant-table-placeholder')).toBeInTheDocument());
+    expect(screen.queryByText('TEA-01')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('sync-result')).not.toBeInTheDocument();
   });
 });
 
