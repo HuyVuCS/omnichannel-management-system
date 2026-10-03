@@ -450,8 +450,9 @@ stability"), smoke 25/25 (second run). First-load set 968 kB raw / 317 kB gzip. 
 `GET /api/alerts/{alertId}`, `POST /api/alerts/{alertId}/acknowledge`, `alerts` in the dashboard summary; Part A:
 smoke scripts run npm after stopping their hosts, 4 test workers kept (3 measured 13 % slower), tests > 5 s split,
 strict `Assert-Step` + self-test. Backend 820/820, 15/15 mutants killed; frontend 292 tests, 5 of 5 full runs green
-(second series); smoke 53/53 (throwaway environment as `omnichannel_app`); migration applied and manual steps done by the
-user on 2026-10-03. Review: `docs/tasks/017-*.review.md`.
+(second series); smoke 53/53 (throwaway environment as `omnichannel_app`). Correction (review 018): the user's first
+migration attempt never reached PostgreSQL (container not running); task 018 found the table missing on development and
+the user applied migration `Alerts` later on 2026-10-03. Review: `docs/tasks/017-*.review.md`.
 
 | Topic | Decision | Reason | Revisit when |
 | --- | --- | --- | --- |
@@ -480,3 +481,23 @@ over `SystemEventLogs` + the page. Numbers 019+ are unchanged.
 | Logs/Audit access (018b) | **(user, 2026-10-03)** Manager and Admin; events `user.*` only for Admin, filtered on the server | Managers trace processing, imports and acknowledgements; user-management audit is the Admin's | — |
 | Logs/Audit payload (018b) | The endpoint returns a per-event-type **allowlist** of payload fields (one map in Application); unknown types and fields are not returned; never `lastError` of the outbox | Payloads are free-form jsonb written for operators; the outbox error may carry broker or exception text | A new event type is added (it must enter the map) |
 | Logs/Audit endpoint (018b) | New `GET /api/system-events` (paging contract, filters level / event type / correlation id / order / task / range ≤ 92 days) — doc deviation 18 | Doc §3.2 has the page, §11 no endpoint for it | — |
+
+## Task 018 result (reviewed 2026-10-03)
+
+Alerts page `/alerts` (filters, sort and paging in the address; details per type; acknowledge with confirmation for
+Manager/Admin; import link), `Alert` realtime tag, dashboard card "Unresolved alerts"; Part A: form dialogs reset from
+inside the form (old hook 3/30 failed, fix 0/50), detail pages remount per path (already guaranteed), stale customer
+field errors cleared, products table at 1280 px, smoke table `OK` first, mapping deactivation resolves its stock-sync
+alert. Backend 825/825; frontend 338 tests; first-load set 969 kB raw (+0.9 kB; alerts page lazy, 10 kB); smoke 35/35
+(throwaway) and on development by the user. **Open:** the five-run series of the report (→ 018b Part A1).
+Review: `docs/tasks/018-*.review.md`.
+
+| Topic | Decision | Reason | Revisit when |
+| --- | --- | --- | --- |
+| Form-dialog reset | `useOpenCount(opening)` in the dialog component (advanced during render when `opening` becomes a different truthy value) + `<ResetFormOnOpen openCount>` as the last child of every dialog `<Form>` (layout effect → `resetFields()`); `clearOnDestroy` stays; `useResetFormOnOpen` removed | The dialog renders the closed state between two openings, its memoised content may not; the reset must run in the commit that gave the form its new `initialValues` | AntD major upgrade |
+| Detail page and route parameter | `AppLayout` keys its `Suspense` by `location.pathname`: a detail page is remounted when its parameter changes (no previous `data`, no previous page state); pinned by one test per detail page | Already in place since 011; a second mechanism would duplicate it | The layout key changes |
+| Radio-group names (review 018) | Every `Radio.Group` / `Segmented` gets an explicit, page-unique `name` | Under test every generated name is `test-id`, so separate controls became one native radio group (flaky dashboard test) | — |
+| Optional-field API errors | A dialog clears the API errors of fields without a client rule before each submit (mapping dialog, customer dialog) | AntD does not re-validate fields without rules on submit, so a server error stayed | — |
+| Wide tables | A table may fix its action column to the right and let history columns scroll, as long as what a row is and what can be done with it fit 1280 px (alerts) | Eleven alert columns cannot fit 992 px | — |
+| Mapping deactivation race | `wasActive` is read before the transaction without a lock; two concurrent edits of one mapping can miss the resolve | Mapping edits are rare and manual; a manual retry still resolves | Mapping edits become automated |
+| In-flight requests in tests | (018b Part A2) the test setup fails a test that ends with an unanswered request; one named opt-out | The gotcha caused three red series; a rule the suite enforces beats a manual pass | — |

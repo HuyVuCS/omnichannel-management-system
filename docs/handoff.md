@@ -6,9 +6,11 @@ This file is an index and a snapshot of what is in flight. The repository docume
 - Written: 2026-10-03 05:55 (+07:00), by Claude Code, right after finishing task 017.
 - Branch `master` (nothing pushed). HEAD: `e2bf1b8` "task 017: report" (this file is committed on top of it).
 - Working tree: clean. No API, Workers host, dev server or throwaway container is left running by Claude Code.
-- Newest migration: **`20261002215102_Alerts`** (task 017) — applied to the development database by the user
-  (2026-10-03).
-- Updated by Cowork 2026-10-03 after review 017 (review, roadmap, log, task 018 written).
+- Newest migration: **`20261002215102_Alerts`** (task 017) — applied to the development database by the user late on
+  2026-10-03 (the first attempt never reached PostgreSQL; found by task 018).
+- Updated by Cowork 2026-10-03 after review 018 (review, roadmap, log, task 018b written). **Uncommitted in the working
+  tree:** `README.md` and `docs/tasks/018-frontend-alerts-page.report.md` of task 018 (the report has two placeholders —
+  018b Part A1 completes and commits them) and the Cowork documents of review 018 (see section 9).
 
 ## 2. Project in 5 lines
 Multi-channel order and inventory management: React dashboard → ASP.NET Core API → PostgreSQL (source of truth) →
@@ -26,29 +28,25 @@ Source-of-truth order when documents disagree:
 - Details and the report template: [docs/tasks/README.md](tasks/README.md).
 
 ## 4. Progress
-- 001–017 — Done (titles in [docs/roadmap.md](roadmap.md); 017 [review](tasks/017-alerts-backend.review.md) accepted:
-  no P0–P1 in the new code; a pre-existing P1 form-dialog defect goes to 018 Part A1).
-- 018 — Alerts page + dashboard alert card; Part A from reviews 016b and 017 — **Open**:
-  [task file](tasks/018-frontend-alerts-page.md).
-- 018b — Logs/Audit (`GET /api/system-events` + page) — Planned (split from 018 by the user, 2026-10-03; access and
-  payload decided: implementation log "Task 018 plan").
+- 001–018 — Done (titles in [docs/roadmap.md](roadmap.md); 018 [review](tasks/018-frontend-alerts-page.review.md)
+  accepted with one open item: the five-run series of its report).
+- 018b — Logs/Audit (`GET /api/system-events` + page) + Part A — **Open**: [task file](tasks/018b-logs-audit.md).
 - 019 — S3 product images (presigned upload) — Planned (decision needed first: S3 in development)
 - 020 — Excel export (ClosedXML) — Planned
 
 ## 5. In flight
-**Task 018 is open for Claude Code** (`/next-task`). Decisions: implementation log "Task 017 result", "Task 018 plan".
-Part A, A1 first:
-- A1 (P1) form dialogs reset from a component inside `<Form>` on every open (also the same record); remove
-  `useResetFormOnOpen`; repetition numbers before/after; production-build check;
-- A2 `currentData` on the three detail pages; A3 stale errors on optional customer fields; A4 products table at 1280 px;
-- A5 smoke table: `OK` column first, no dropped columns;
-- A6 (backend) deactivating a mapping resolves its `StockSyncFailed` alert (user's decision).
+**Task 018b is open for Claude Code** (`/next-task`). Decisions: implementation log "Task 018 plan", "Task 018 result".
+- A1 first: finish 018's verification (five full `npm test` runs into the two placeholders of the 018 report), commit
+  that report with the 018 README changes;
+- A2: the test setup fails any test that ends with an unanswered request; fix what it flags;
+- B: `GET /api/system-events` (Manager/Admin, `user.*` Admin only, per-type payload allowlist, never `lastError`, user
+  e-mails by one lookup per page); C: Logs/Audit page with trace by correlation id.
 
 ## 6. Pending for the user
-- Optional: paste the `task-017.ps1` table (the run was reported done, the table was not pasted).
-- Optional: `scripts\smoke\_assert-selftest.ps1`; `task-010` … `013`, `016` after the migration.
-- Still unconfirmed from 016b: `Host=127.0.0.1` in both user-secrets and in `OMNICHANNEL_MIGRATOR_CONNECTION`; the manual
-  browser check of the channel mapping page (report 016b "Manual steps").
+- Optional: paste the smoke tables of `task-017.ps1` / `task-018.ps1` on development (both reported done, not pasted).
+- Still unconfirmed from 016b: `Host=127.0.0.1` in both user-secrets and in `OMNICHANNEL_MIGRATOR_CONNECTION`.
+- Before running smoke scripts or migrations: Docker Desktop running and `postgres` healthy
+  (`docker compose -f docker/docker-compose.yml --env-file docker/.env ps`).
 - Open decisions (roadmap): before 019 — S3 in development; before 024 — where "payment succeeded" comes from.
 
 ## 7. Environment
@@ -74,7 +72,9 @@ Part A, A1 first:
   a test. → report 017.
 - **A frontend test must end with its requests settled**: an in-flight request is answered by the next test's MSW
   handlers. → report 017, "Verification".
-- **Known flake until 018 A1:** the 016b dialog test above — a real product race, not a test problem. → review 017, question 1.
+- **Every dialog `Form` ends with `<ResetFormOnOpen openCount={useOpenCount(…)}>`** and has `clearOnDestroy`. → log "Task 018 result".
+- **Radio groups / `Segmented` need an explicit `name`.** → log "Task 018 result".
+- **Cowork's git:** run `git --no-optional-locks status` from the Cowork VM; a plain `git status` there leaves `.git/index.lock` behind (no unlink right).
 - **Waits in frontend tests:** use the fake clock (`useJumpableClock` / `jump` in `orderEntry.test.tsx`), not real pauses.
 - **`Assert-Step` is strict** (type and value; strings case-sensitive; arrays/objects throw). → `scripts/smoke/_common.ps1`.
 - **Smoke scripts run npm after stopping the hosts they started** (`Invoke-FrontendChecks`). → report 017.
@@ -94,8 +94,9 @@ Part A, A1 first:
   environment (generated credentials, roles from `docker/postgres/init`). → report 017, "Smoke table".
 
 ## 9. Next action
-**Claude Code:** `/next-task` → task 018 (Part A first, A1 before everything else). **User:** run `task-018.ps1` and the
-manual check when the report lists them. **Then Cowork:** review 018, write 018b.
+**User:** commit the Cowork documents of review 018 (`docs/tasks/018-frontend-alerts-page.review.md`,
+`docs/tasks/018b-logs-audit.md`, `docs/roadmap.md`, `docs/implementation-log.md`, `docs/handoff.md`) — **not** the
+018 report or README (018b A1 commits those). **Claude Code:** `/next-task` → 018b. **Then Cowork:** review 018b.
 
 ## 10. Resume prompts
 New Claude Code chat:
@@ -107,5 +108,5 @@ docs/handoff.md.")
 
 New Cowork chat:
 ```
-Dự án Management System. Đọc docs/handoff.md, docs/roadmap.md và docs/implementation-log.md trong thư mục đã kết nối, rồi tiếp tục vai trò lập kế hoạch/review theo docs/tasks/README.md. Review 017 xong, task 018 đã được viết. Việc tiếp theo: review task 018 khi docs/tasks/018-frontend-alerts-page.report.md đã có, rồi viết task 018b (Logs/Audit).
+Dự án Management System. Đọc docs/handoff.md, docs/roadmap.md và docs/implementation-log.md trong thư mục đã kết nối, rồi tiếp tục vai trò lập kế hoạch/review theo docs/tasks/README.md. Review 018 xong, task 018b (Logs/Audit) đã được viết. Việc tiếp theo: review task 018b khi docs/tasks/018b-logs-audit.report.md đã có, rồi viết task 019 (cần quyết định trước: S3 cho môi trường dev).
 ```
