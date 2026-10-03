@@ -273,6 +273,8 @@ describe('alerts list', () => {
       const secondPage = async () => {
         await app.user.click(screen.getByRole('listitem', { name: '2' }));
         await waitFor(() => expect(requests.at(-1)?.params).toMatchObject({ page: '2' }));
+        // The page is part of the address, next to the filters that are set.
+        expect(app.location()).toMatch(/[?&]page=2$/);
       };
       return { ...app, requests, secondPage };
     }
