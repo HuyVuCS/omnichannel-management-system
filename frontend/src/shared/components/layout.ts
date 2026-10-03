@@ -28,7 +28,7 @@ export const SECONDARY_ACTION_WIDTH = 136;
 /** Form dialogs. */
 export const MODAL_WIDTH = 480;
 
-/** Table column with one icon action per row. */
+/** Table column with one icon action per row, or two small ones (`size="small"` buttons in a dense table). */
 export const SINGLE_ACTION_COLUMN_WIDTH = 88;
 
 /** Table column with two icon actions per row. */
