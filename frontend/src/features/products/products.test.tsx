@@ -90,6 +90,25 @@ describe('products page', () => {
     expect(requests).toEqual([{ page: '1', pageSize: '20' }]);
   });
 
+  it.each([
+    ['Manager: with the action column', managerUser, 8],
+    ['Staff: without it', staffUser, 7],
+  ] as const)('fits the content area of a 1280 px window (%s)', async (_name, user, columnCount) => {
+    serveProducts([tea, coffee]);
+    renderProducts(user);
+    await screen.findByText('TEA-01');
+
+    // jsdom has no layout: the fixed column widths are what can be checked. 1280 px window - 240 px menu - 2 × 24 px
+    // padding = 992 px, minus a vertical scrollbar: every column fits, so the table never scrolls sideways there.
+    const widths = [...document.querySelectorAll<HTMLElement>('table colgroup col')].map((col) =>
+      Number.parseInt(col.style.width, 10),
+    );
+    expect(widths).toHaveLength(columnCount);
+    expect(document.querySelectorAll('thead th')).toHaveLength(columnCount);
+    expect(widths.every((width) => width > 0)).toBe(true);
+    expect(widths.reduce((sum, width) => sum + width, 0)).toBeLessThanOrEqual(976);
+  });
+
   it('restores paging, sorting and search from the address (reload) and writes changes back to it', async () => {
     const { requests } = serveProducts([tea, coffee], 45);
     const { user: appUser, location } = renderProducts(
