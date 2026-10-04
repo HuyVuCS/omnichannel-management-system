@@ -23,6 +23,11 @@
     <PackageVersion Include="AWSSDK.S3" Version="4.0.104.1" />
   </ItemGroup>
 
+  <ItemGroup Label="Excel">
+    <!-- Workbooks of the background exports (Report Export Worker). -->
+    <PackageVersion Include="ClosedXML" Version="0.105.1" />
+  </ItemGroup>
+
   <ItemGroup Label="Resilience">
     <PackageVersion Include="Polly.Core" Version="8.8.0" />
   </ItemGroup>

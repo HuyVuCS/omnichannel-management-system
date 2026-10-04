@@ -2,7 +2,8 @@ namespace Omnichannel.Application.Common.Abstractions;
 
 /// <summary>
 /// The private bucket of the application in an S3-compatible object storage. Only what the application needs today:
-/// links a browser can use without the API's token, and the checks of an uploaded object.
+/// links a browser can use without the API's token, the checks of an uploaded object, and storing a file the
+/// application made itself (an export).
 /// <para>
 /// The two <c>Presign…</c> methods compute a link locally and never call the storage. The others do, and fail with
 /// <see cref="Exceptions.ObjectStorageException"/> when the storage does not answer or refuses - never call them
@@ -27,6 +28,14 @@ public interface IObjectStorage
 
     /// <summary>The first <paramref name="count"/> bytes of the object (fewer when it is shorter).</summary>
     Task<byte[]> ReadStartAsync(string key, int count, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Stores <paramref name="content"/> (a seekable stream, read from its current position) under
+    /// <paramref name="key"/>, replacing an object that is there. The object is served with
+    /// <paramref name="contentType"/> and <paramref name="contentDisposition"/> as its <c>Content-Type</c> and
+    /// <c>Content-Disposition</c>. The stream is left open.
+    /// </summary>
+    Task PutAsync(string key, Stream content, string contentType, string contentDisposition, CancellationToken cancellationToken);
 
     /// <summary>Deletes the object. Succeeds when there is none.</summary>
     Task DeleteAsync(string key, CancellationToken cancellationToken);

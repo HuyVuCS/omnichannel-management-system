@@ -6,6 +6,7 @@ using Omnichannel.Application.Common.Messaging;
 using Omnichannel.Application.Inventory;
 using Omnichannel.Application.Orders;
 using Omnichannel.Application.Processing;
+using Omnichannel.Application.Reports;
 using Omnichannel.Application.SystemEvents;
 using Omnichannel.Application.Users;
 using Omnichannel.Workers.OutboxPublisher;
@@ -40,10 +41,10 @@ public sealed class SystemEventDetailsTests
             new[]
             {
                 typeof(AlertEvents), typeof(InventoryEvents), typeof(OrderProcessingEvents), typeof(OutboxEvents),
-                typeof(ProcessingEvents), typeof(StockSyncEvents), typeof(UserEvents)
+                typeof(ProcessingEvents), typeof(ReportEvents), typeof(StockSyncEvents), typeof(UserEvents)
             }.Select(t => t.Name),
             EventClasses.Select(t => t.Name).Order(StringComparer.Ordinal));
-        Assert.Equal(14, EventTypeConstants().Count());
+        Assert.Equal(16, EventTypeConstants().Count());
     }
 
     [Fact]
@@ -70,6 +71,21 @@ public sealed class SystemEventDetailsTests
             Assert.DoesNotContain("reason", fields);
         });
         Assert.Equal(["outboxEventId", "eventType", "publishAttempts"], SystemEventDetails.AllowedFields[OutboxEvents.PublishFailed]);
+    }
+
+    [Fact]
+    public void An_export_request_shows_who_asked_for_which_report_and_never_the_filters()
+    {
+        // The filters hold whatever the user typed (a search text); the task is in the event's own column.
+        Assert.Equal(["reportType", "requestedBy"], SystemEventDetails.AllowedFields[ReportEvents.ExportRequested]);
+        Assert.Equal(["messageId", "reasonCode"], SystemEventDetails.AllowedFields[ReportEvents.MessageRejected]);
+
+        var requester = Guid.NewGuid();
+        var details = SystemEventDetails.Filter(
+            ReportEvents.ExportRequested, $$"""{"reportType":"Orders","requestedBy":"{{requester}}","search":"secret","parameters":[1]}""");
+
+        Assert.Equal(["reportType", "requestedBy"], details!.Select(p => p.Key));
+        Assert.Equal(requester, SystemEventDetails.ActorIdOf(details));
     }
 
     [Fact]

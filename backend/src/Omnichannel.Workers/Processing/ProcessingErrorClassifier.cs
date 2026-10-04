@@ -2,6 +2,7 @@ using System.Net.Sockets;
 using System.Text.RegularExpressions;
 using Npgsql;
 using Omnichannel.Application.Channels;
+using Omnichannel.Application.Common.Exceptions;
 
 namespace Omnichannel.Workers.Processing;
 
@@ -13,8 +14,9 @@ public sealed record ProcessingError(string ErrorCode, string ErrorMessage, bool
 /// Maps an exception of a failed attempt to a stable <c>ErrorCode</c>, a sanitised <c>ErrorMessage</c> (dashboard-safe: no stack
 /// trace, no connection string, no password) and the retry decision:
 /// <list type="bullet">
-/// <item>Transient → retry: deadlock, serialization failure, database unavailable, timeouts, and <c>unexpected</c> (unknown
-/// exceptions are retried, but only up to the attempt limit).</item>
+/// <item>Transient → retry: deadlock, serialization failure, database unavailable, timeouts, the object storage not
+/// answering or refusing (<c>storage_unavailable</c>), and <c>unexpected</c> (unknown exceptions are retried, but only up
+/// to the attempt limit).</item>
 /// <item>Permanent → no retry: PostgreSQL class 22 (data exception), 23514 (check), 23502 (not null), 23503 (foreign key).
 /// 23505 (unique) is handled explicitly where it is expected and otherwise treated as unexpected.</item>
 /// <item>A channel call (<see cref="ChannelApiException"/>) keeps its own code and message; it says itself whether trying again
@@ -29,6 +31,9 @@ public static partial class ProcessingErrorClassifier
     public const string DatabaseUnavailable = "db_unavailable";
     public const string Timeout = "timeout";
     public const string Unexpected = "unexpected";
+
+    /// <summary>The object storage did not answer or refused; its exception names the operation and nothing of the storage.</summary>
+    public const string StorageUnavailable = ObjectStorageException.ErrorCode;
 
     public const string DataError = "data_error";
     public const string CheckViolation = "check_violation";
@@ -66,6 +71,7 @@ public static partial class ProcessingErrorClassifier
         PostgresException { SqlState: PostgresErrorCodes.NotNullViolation } => NotNullViolation,
         PostgresException { SqlState: PostgresErrorCodes.ForeignKeyViolation } => ForeignKeyViolation,
         PostgresException postgres when postgres.SqlState.StartsWith("22", StringComparison.Ordinal) => DataError,
+        ObjectStorageException => StorageUnavailable,
         TimeoutException => Timeout,
         NpgsqlException { InnerException: TimeoutException } => Timeout,
         NpgsqlException { InnerException: SocketException or IOException } => DatabaseUnavailable,

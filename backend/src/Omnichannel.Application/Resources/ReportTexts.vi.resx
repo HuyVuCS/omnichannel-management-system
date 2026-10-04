@@ -1,0 +1,219 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="SheetOrders" xml:space="preserve">
+    <value>Đơn hàng</value>
+    <comment>Sheet name (at most 31 characters, none of : \ / ? * [ ]).</comment>
+  </data>
+  <data name="SheetItems" xml:space="preserve">
+    <value>Dòng hàng</value>
+    <comment>Sheet name.</comment>
+  </data>
+  <data name="SheetInventory" xml:space="preserve">
+    <value>Tồn kho</value>
+    <comment>Sheet name.</comment>
+  </data>
+  <data name="SheetInfo" xml:space="preserve">
+    <value>Thông tin</value>
+    <comment>Sheet name.</comment>
+  </data>
+  <data name="ColCreatedAt" xml:space="preserve">
+    <value>Thời điểm tạo ({TimeZone})</value>
+    <comment>Orders sheet; {TimeZone} is the IANA id of the request.</comment>
+  </data>
+  <data name="ColChannel" xml:space="preserve">
+    <value>Kênh</value>
+    <comment>Orders and Items sheets: the channel's name.</comment>
+  </data>
+  <data name="ColExternalOrderId" xml:space="preserve">
+    <value>Mã đơn hàng bên ngoài</value>
+    <comment>Orders and Items sheets.</comment>
+  </data>
+  <data name="ColCustomerName" xml:space="preserve">
+    <value>Khách hàng</value>
+    <comment>Orders sheet.</comment>
+  </data>
+  <data name="ColCustomerPhone" xml:space="preserve">
+    <value>Số điện thoại khách hàng</value>
+    <comment>Orders sheet.</comment>
+  </data>
+  <data name="ColStatus" xml:space="preserve">
+    <value>Trạng thái</value>
+    <comment>Orders sheet: the label of the order status.</comment>
+  </data>
+  <data name="ColItemCount" xml:space="preserve">
+    <value>Số dòng</value>
+    <comment>Orders sheet: number of item lines.</comment>
+  </data>
+  <data name="ColTotalAmount" xml:space="preserve">
+    <value>Tổng tiền</value>
+    <comment>Orders sheet.</comment>
+  </data>
+  <data name="ColOrderId" xml:space="preserve">
+    <value>Mã đơn hàng</value>
+    <comment>Orders and Items sheets: the internal id.</comment>
+  </data>
+  <data name="ColOrderCreatedAt" xml:space="preserve">
+    <value>Thời điểm tạo đơn ({TimeZone})</value>
+    <comment>Items sheet.</comment>
+  </data>
+  <data name="ColSku" xml:space="preserve">
+    <value>SKU</value>
+    <comment>Items and Inventory sheets.</comment>
+  </data>
+  <data name="ColProductName" xml:space="preserve">
+    <value>Tên sản phẩm</value>
+    <comment>Items and Inventory sheets.</comment>
+  </data>
+  <data name="ColQuantity" xml:space="preserve">
+    <value>Số lượng</value>
+    <comment>Items sheet.</comment>
+  </data>
+  <data name="ColUnitPrice" xml:space="preserve">
+    <value>Đơn giá</value>
+    <comment>Items sheet.</comment>
+  </data>
+  <data name="ColLineTotal" xml:space="preserve">
+    <value>Thành tiền</value>
+    <comment>Items sheet.</comment>
+  </data>
+  <data name="ColPrice" xml:space="preserve">
+    <value>Giá</value>
+    <comment>Inventory sheet.</comment>
+  </data>
+  <data name="ColTotalStock" xml:space="preserve">
+    <value>Tổng tồn</value>
+    <comment>Inventory sheet.</comment>
+  </data>
+  <data name="ColReservedStock" xml:space="preserve">
+    <value>Đang giữ</value>
+    <comment>Inventory sheet.</comment>
+  </data>
+  <data name="ColAvailableStock" xml:space="preserve">
+    <value>Khả dụng</value>
+    <comment>Inventory sheet.</comment>
+  </data>
+  <data name="ColLowStockThreshold" xml:space="preserve">
+    <value>Ngưỡng cảnh báo tồn kho</value>
+    <comment>Inventory sheet.</comment>
+  </data>
+  <data name="ColLowStock" xml:space="preserve">
+    <value>Sắp hết hàng</value>
+    <comment>Inventory sheet: yes / no.</comment>
+  </data>
+  <data name="ColExpiryDate" xml:space="preserve">
+    <value>Hạn dùng</value>
+    <comment>Inventory sheet.</comment>
+  </data>
+  <data name="ColStockUpdatedAt" xml:space="preserve">
+    <value>Cập nhật tồn kho lúc ({TimeZone})</value>
+    <comment>Inventory sheet.</comment>
+  </data>
+  <data name="Yes" xml:space="preserve">
+    <value>Có</value>
+    <comment>Low stock.</comment>
+  </data>
+  <data name="No" xml:space="preserve">
+    <value>Không</value>
+    <comment>Low stock.</comment>
+  </data>
+  <data name="StatusPending" xml:space="preserve">
+    <value>Chờ xử lý</value>
+    <comment>Order status label (as in the UI).</comment>
+  </data>
+  <data name="StatusReserved" xml:space="preserve">
+    <value>Đã giữ hàng</value>
+    <comment>Order status label.</comment>
+  </data>
+  <data name="StatusInsufficientStock" xml:space="preserve">
+    <value>Không đủ hàng</value>
+    <comment>Order status label.</comment>
+  </data>
+  <data name="StatusCancelled" xml:space="preserve">
+    <value>Đã huỷ</value>
+    <comment>Order status label.</comment>
+  </data>
+  <data name="StatusCompleted" xml:space="preserve">
+    <value>Hoàn tất</value>
+    <comment>Order status label.</comment>
+  </data>
+  <data name="InfoReport" xml:space="preserve">
+    <value>Báo cáo</value>
+    <comment>Info sheet: first row.</comment>
+  </data>
+  <data name="ReportOrders" xml:space="preserve">
+    <value>Đơn hàng</value>
+    <comment>Info sheet: the kind of report.</comment>
+  </data>
+  <data name="ReportInventory" xml:space="preserve">
+    <value>Tồn kho</value>
+    <comment>Info sheet: the kind of report.</comment>
+  </data>
+  <data name="InfoChannel" xml:space="preserve">
+    <value>Kênh</value>
+    <comment>Info sheet: filter.</comment>
+  </data>
+  <data name="InfoStatus" xml:space="preserve">
+    <value>Trạng thái</value>
+    <comment>Info sheet: filter.</comment>
+  </data>
+  <data name="InfoCustomer" xml:space="preserve">
+    <value>Khách hàng</value>
+    <comment>Info sheet: filter.</comment>
+  </data>
+  <data name="InfoSearch" xml:space="preserve">
+    <value>Từ khoá tìm kiếm</value>
+    <comment>Info sheet: filter.</comment>
+  </data>
+  <data name="InfoFrom" xml:space="preserve">
+    <value>Từ ({TimeZone})</value>
+    <comment>Info sheet: start of the range.</comment>
+  </data>
+  <data name="InfoTo" xml:space="preserve">
+    <value>Đến ({TimeZone})</value>
+    <comment>Info sheet: end of the range.</comment>
+  </data>
+  <data name="InfoLowStockOnly" xml:space="preserve">
+    <value>Chỉ hàng sắp hết</value>
+    <comment>Info sheet: filter.</comment>
+  </data>
+  <data name="InfoAll" xml:space="preserve">
+    <value>(tất cả)</value>
+    <comment>Info sheet: a filter that was not set.</comment>
+  </data>
+  <data name="InfoTimeZone" xml:space="preserve">
+    <value>Múi giờ</value>
+    <comment>Info sheet.</comment>
+  </data>
+  <data name="InfoGeneratedAt" xml:space="preserve">
+    <value>Thời điểm tạo tệp ({TimeZone})</value>
+    <comment>Info sheet.</comment>
+  </data>
+  <data name="InfoRequestedBy" xml:space="preserve">
+    <value>Người yêu cầu</value>
+    <comment>Info sheet: e-mail of the requester.</comment>
+  </data>
+  <data name="InfoOrderRows" xml:space="preserve">
+    <value>Số đơn hàng</value>
+    <comment>Info sheet: row count of the Orders sheet.</comment>
+  </data>
+  <data name="InfoItemRows" xml:space="preserve">
+    <value>Số dòng hàng</value>
+    <comment>Info sheet: row count of the Items sheet.</comment>
+  </data>
+  <data name="InfoProductRows" xml:space="preserve">
+    <value>Số sản phẩm</value>
+    <comment>Info sheet: row count of the Inventory sheet.</comment>
+  </data>
+</root>

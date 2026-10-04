@@ -11,6 +11,7 @@ using Omnichannel.Application.Common.Paging;
 using Omnichannel.Application.Inventory;
 using Omnichannel.Application.Orders;
 using Omnichannel.Application.Processing;
+using Omnichannel.Application.Reports;
 using Omnichannel.Application.Products;
 using Omnichannel.Application.SystemEvents;
 using Omnichannel.Application.Users;
@@ -343,6 +344,17 @@ public sealed class SystemEventEndpointsTests(ApiFactory factory)
             StockSyncEvents.MessageRejected,
             """{"messageId":"m-2","reasonCode":"unexpected_event_type","reason":"Unexpected event type 'DROP TABLE'; expected 'inventory.changed' or 'stock.sync.requested'.","queue":"stock.sync.website"}""",
             """{"messageId":"m-2","reasonCode":"unexpected_event_type","queue":"stock.sync.website"}"""
+        },
+        {
+            ReportEvents.MessageRejected,
+            """{"messageId":"m-5","reasonCode":"task_mismatch","reason":"Task 01a10000-0000-7000-8000-000000000002 is not an export task with its export row."}""",
+            """{"messageId":"m-5","reasonCode":"task_mismatch"}"""
+        },
+        {
+            // The filters of an export are not part of the event; if they ever were, they would not be returned.
+            ReportEvents.ExportRequested,
+            """{"reportType":"Orders","requestedBy":"system","search":"dropped","parameters":{"customerId":"dropped"}}""",
+            """{"reportType":"Orders","requestedBy":"system"}"""
         },
         {
             ProcessingEvents.Failed,

@@ -7,6 +7,7 @@ using Microsoft.Extensions.Options;
 using Omnichannel.Application.Channels;
 using Omnichannel.Application.Common.Messaging;
 using Omnichannel.Application.Orders;
+using Omnichannel.Application.Reports;
 using Omnichannel.Domain.Enums;
 using Omnichannel.Infrastructure.RabbitMQ;
 using Omnichannel.Workers;
@@ -19,7 +20,7 @@ namespace Omnichannel.Tests.Workers;
 /// <summary>
 /// Task 019 A2: every way a worker rejects a message writes its own <c>reasonCode</c> (<see cref="MessageRejectionCodes"/>)
 /// - through both call sites of each handler: the normal delivery (<c>HandleAsync</c>) and the last delivery the queue
-/// allows (<c>RecordFinalFailureAsync</c> before any attempt).
+/// allows (<c>RecordFinalFailureAsync</c> before any attempt). Task 020: the Report Export Worker uses the same codes.
 /// </summary>
 public sealed class MessageRejectionTests
 {
@@ -136,6 +137,61 @@ public sealed class MessageRejectionTests
         Assert.Equal(expectedCode, Assert.Single(onLastDelivery.Rejections).Rejection.Code);
     }
 
+    // ---- report export worker ----------------------------------------------------------------------------------
+
+    public static TheoryData<string, byte[], ReportExportTaskState?> ExportRejections()
+    {
+        var request = new ReportExportRequestedPayload(TaskId);
+        var wellFormed = Envelope(EventTypes.ReportExportRequested, TaskId, request);
+
+        return new TheoryData<string, byte[], ReportExportTaskState?>
+        {
+            { MessageRejectionCodes.InvalidJson, Encoding.UTF8.GetBytes("{ not json"), null },
+            { MessageRejectionCodes.EmptyBody, Encoding.UTF8.GetBytes("null"), null },
+            { MessageRejectionCodes.UnexpectedEventType, Envelope(EventTypes.OrderCreated, TaskId, request), null },
+            { MessageRejectionCodes.MissingTaskId, Envelope(EventTypes.ReportExportRequested, null, request), null },
+            { MessageRejectionCodes.MissingTaskId, Envelope(EventTypes.ReportExportRequested, Guid.Empty, request), null },
+            { MessageRejectionCodes.MissingMessageIds, Envelope(EventTypes.ReportExportRequested, TaskId, request, messageId: " "), null },
+            { MessageRejectionCodes.MissingMessageIds, Envelope(EventTypes.ReportExportRequested, TaskId, request, correlationId: ""), null },
+            { MessageRejectionCodes.PayloadNotObject, Envelope(EventTypes.ReportExportRequested, TaskId, "text"), null },
+            { MessageRejectionCodes.InvalidPayload, Envelope(EventTypes.ReportExportRequested, TaskId, new { taskId = "x" }), null },
+            { MessageRejectionCodes.TaskIdMismatch, Envelope(EventTypes.ReportExportRequested, TaskId, new ReportExportRequestedPayload(Guid.NewGuid())), null },
+            // A payload without a task id reads as the empty id: not the task of the envelope.
+            { MessageRejectionCodes.TaskIdMismatch, Envelope(EventTypes.ReportExportRequested, TaskId, new { }), null },
+            // Well-formed; what the database says about the task decides.
+            { MessageRejectionCodes.UnknownTask, wellFormed, null },
+            { MessageRejectionCodes.TaskMismatch, wellFormed, ReportExportHandlerTests.State(type: ProcessingTaskType.OrderProcessing, hasExport: false) },
+            { MessageRejectionCodes.TaskMismatch, wellFormed, ReportExportHandlerTests.State(type: ProcessingTaskType.StockSync) },
+            { MessageRejectionCodes.TaskMismatch, wellFormed, ReportExportHandlerTests.State(hasExport: false) }
+        };
+    }
+
+    [Theory]
+    [MemberData(nameof(ExportRejections))]
+    public async Task The_report_export_worker_writes_the_code_of_the_rejection(string expectedCode, byte[] body, ReportExportTaskState? task)
+    {
+        var onDelivery = new ReportExportHandlerTests.FakeExports { TaskState = task };
+        var storage = new ReportExportHandlerTests.FakeStorage(onDelivery.Calls);
+        var result = await ReportExportHandlerTests.Handler(onDelivery, storage).HandleAsync(Delivery(body), CancellationToken.None);
+
+        var rejection = Assert.Single(onDelivery.Rejections);
+        Assert.Equal(expectedCode, rejection.Code);
+        Assert.False(string.IsNullOrWhiteSpace(rejection.Reason));
+        Assert.Equal(new HandlerResult.Reject(rejection.Reason), result);
+        // A rejected message starts no attempt and stores nothing.
+        Assert.DoesNotContain("start", onDelivery.Calls);
+        Assert.Empty(storage.Puts);
+
+        // The same message on the last delivery the queue allows (no HandleAsync before).
+        var onLastDelivery = new ReportExportHandlerTests.FakeExports { TaskState = task };
+        var toDlq = await ReportExportHandlerTests.Handler(onLastDelivery, new ReportExportHandlerTests.FakeStorage(onLastDelivery.Calls))
+            .RecordFinalFailureAsync(Delivery(body), new FinalFailure(null, "delivery_limit", "too many deliveries", "report.export"), CancellationToken.None);
+
+        Assert.True(toDlq);
+        Assert.Equal(expectedCode, Assert.Single(onLastDelivery.Rejections).Code);
+        Assert.Empty(onLastDelivery.FinalFailures);
+    }
+
     // ---- the set of codes --------------------------------------------------------------------------------------
 
     [Fact]
@@ -150,6 +206,7 @@ public sealed class MessageRejectionTests
 
         var covered = OrderRejections().Select(row => (string)row[0])
             .Concat(StockSyncRejections().Select(row => (string)row[0]))
+            .Concat(ExportRejections().Select(row => (string)row[0]))
             .Distinct();
 
         // "Payload is empty": the parsers keep the check, but a payload that passed "is a JSON object" never deserialises

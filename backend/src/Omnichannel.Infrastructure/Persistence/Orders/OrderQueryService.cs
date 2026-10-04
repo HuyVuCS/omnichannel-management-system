@@ -15,44 +15,7 @@ internal sealed class OrderQueryService(OmnichannelDbContext dbContext) : IOrder
 {
     public async Task<PagedResult<OrderSummaryResponse>> ListAsync(OrderListQuery query, CancellationToken cancellationToken)
     {
-        IQueryable<Order> orders = dbContext.Orders.AsNoTracking();
-
-        if (!string.IsNullOrWhiteSpace(query.Channel))
-        {
-            var slug = query.Channel.Trim().ToLowerInvariant();
-            orders = orders.Where(o => o.Channel.Slug == slug);
-        }
-
-        if (query.Status is { } status)
-        {
-            orders = orders.Where(o => o.Status == status);
-        }
-
-        if (query.CustomerId is { } customerId)
-        {
-            orders = orders.Where(o => o.CustomerId == customerId);
-        }
-
-        // Npgsql only writes UTC DateTimeOffset values to timestamptz; clients may send any offset.
-        if (query.From is { } from)
-        {
-            var fromUtc = from.ToUniversalTime();
-            orders = orders.Where(o => o.CreatedAt >= fromUtc);
-        }
-
-        if (query.To is { } to)
-        {
-            var toUtc = to.ToUniversalTime();
-            orders = orders.Where(o => o.CreatedAt <= toUtc);
-        }
-
-        if (query.SearchTerm is { } search)
-        {
-            var pattern = LikePattern.Contains(search);
-            orders = orders.Where(o =>
-                EF.Functions.ILike(o.ExternalOrderId, pattern, LikePattern.EscapeCharacter)
-                || EF.Functions.ILike(o.Customer.Name, pattern, LikePattern.EscapeCharacter));
-        }
+        var orders = OrderFilters.Apply(dbContext.Orders.AsNoTracking(), query.ToFilter());
 
         var totalCount = await orders.CountAsync(cancellationToken);
 

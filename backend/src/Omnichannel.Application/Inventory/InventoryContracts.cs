@@ -31,4 +31,11 @@ public sealed record InventoryListQuery : PageQuery
     /// threshold 0 means "warn when out of stock").
     /// </summary>
     public bool LowStockOnly { get; init; }
+
+    public InventoryFilter ToFilter() => new(SearchTerm, LowStockOnly);
 }
+
+/// <summary>Which products: the filters of the inventory list, shared with the inventory export.</summary>
+/// <param name="Search">Matches SKU or product name; null or blank = no search.</param>
+/// <param name="LowStockOnly">See <see cref="InventoryListQuery.LowStockOnly"/>.</param>
+public sealed record InventoryFilter(string? Search, bool LowStockOnly);

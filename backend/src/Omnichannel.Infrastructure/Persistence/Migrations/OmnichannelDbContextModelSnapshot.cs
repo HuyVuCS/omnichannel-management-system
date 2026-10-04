@@ -875,6 +875,72 @@ namespace Omnichannel.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Omnichannel.Domain.Entities.ReportExport", b =>
+                {
+                    b.Property<Guid>("TaskId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("ObjectKey")
+                        .HasMaxLength(49)
+                        .HasColumnType("character varying(49)");
+
+                    b.Property<string>("Parameters")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("ReportType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<int?>("RowCount")
+                        .HasColumnType("integer");
+
+                    b.Property<long?>("SizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.HasKey("TaskId");
+
+                    b.HasIndex("ExpiresAt")
+                        .HasFilter("\"DeletedAt\" IS NULL");
+
+                    b.HasIndex("CreatedBy", "CreatedAt")
+                        .IsDescending(false, true);
+
+                    b.ToTable("ReportExports", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_ReportExports_Result_AllOrNone", "(\"ObjectKey\" IS NULL AND \"SizeBytes\" IS NULL AND \"RowCount\" IS NULL AND \"CompletedAt\" IS NULL) OR (\"ObjectKey\" IS NOT NULL AND \"SizeBytes\" IS NOT NULL AND \"RowCount\" IS NOT NULL AND \"CompletedAt\" IS NOT NULL)");
+                        });
+                });
+
             modelBuilder.Entity("Omnichannel.Domain.Entities.SystemEventLog", b =>
                 {
                     b.Property<long>("LogId")
@@ -1237,6 +1303,17 @@ namespace Omnichannel.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("Order");
+                });
+
+            modelBuilder.Entity("Omnichannel.Domain.Entities.ReportExport", b =>
+                {
+                    b.HasOne("Omnichannel.Domain.Entities.ProcessingTask", "ProcessingTask")
+                        .WithOne()
+                        .HasForeignKey("Omnichannel.Domain.Entities.ReportExport", "TaskId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("ProcessingTask");
                 });
 
             modelBuilder.Entity("Omnichannel.Domain.Entities.Order", b =>

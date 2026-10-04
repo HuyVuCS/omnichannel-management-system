@@ -4,8 +4,10 @@ using Omnichannel.Application.Common.Abstractions;
 using Omnichannel.Infrastructure;
 using Omnichannel.Infrastructure.ExternalChannels;
 using Omnichannel.Infrastructure.RabbitMQ;
+using Omnichannel.Infrastructure.S3;
 using Omnichannel.Workers.OrderWorker;
 using Omnichannel.Workers.OutboxPublisher;
+using Omnichannel.Workers.ReportExportWorker;
 using Omnichannel.Workers.StockSyncWorker;
 
 namespace Omnichannel.Workers;
@@ -17,6 +19,8 @@ public static class WorkerHostSetup
     {
         services.AddApplication();
         services.AddInfrastructure();
+        // Export files are stored and swept by this host (the keys come from user-secrets or the environment).
+        services.AddObjectStorage();
         services.AddScoped<WorkerCurrentUser>();
         services.AddScoped<ICurrentUser>(sp => sp.GetRequiredService<WorkerCurrentUser>());
         services.AddScoped<WorkerCorrelationContext>();
@@ -50,11 +54,19 @@ public static class WorkerHostSetup
                 resilience.CircuitBreaker = stockSync.Value.CircuitBreaker;
             });
 
+        services.AddOptions<ReportExportWorkerOptions>()
+            .Bind(configuration.GetSection(ReportExportWorkerOptions.SectionName))
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<ReportExportWorkerOptions>, ReportExportWorkerOptionsValidator>();
+        services.AddScoped<ReportExportMessageHandler>();
+
         // Order matters: the topology is declared before any publisher/consumer starts.
         services.AddHostedService<RabbitMqTopologyInitializer>();
         services.AddHostedService<OutboxPublisherService>();
         services.AddHostedService<OrderWorkerService>();
         services.AddHostedService<StockSyncWorkerService>();
+        services.AddHostedService<ReportExportWorkerService>();
+        services.AddHostedService<ReportExportCleanupService>();
 
         return services;
     }

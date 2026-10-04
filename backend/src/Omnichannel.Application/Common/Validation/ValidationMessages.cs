@@ -53,6 +53,11 @@ public static class ValidationMessages
         public const string ImageKeyInvalid = nameof(ImageKeyInvalid);
         public const string ImageNotUploaded = nameof(ImageNotUploaded);
         public const string ImageContentMismatch = nameof(ImageContentMismatch);
+        public const string TimeZoneUnknown = nameof(TimeZoneUnknown);
+        public const string TooManyExports = nameof(TooManyExports);
+        public const string ExportTooLarge = nameof(ExportTooLarge);
+        public const string ExportNotReady = nameof(ExportNotReady);
+        public const string ExportExpired = nameof(ExportExpired);
     }
 
     /// <summary>The text of <paramref name="key"/> in the current UI culture, with <c>{Name}</c> placeholders replaced.</summary>

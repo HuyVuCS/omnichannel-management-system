@@ -17,4 +17,7 @@ public static class EventTypes
     /// task). Published with the channel's stock-sync queue name as the routing key, never with the event type.
     /// </summary>
     public const string StockSyncRequested = "stock.sync.requested";
+
+    /// <summary>Build the Excel file of an export task (queue <c>report.export</c>).</summary>
+    public const string ReportExportRequested = "report.export.requested";
 }

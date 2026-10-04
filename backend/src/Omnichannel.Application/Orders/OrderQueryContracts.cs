@@ -77,4 +77,22 @@ public sealed record OrderListQuery : PageQuery
     public Guid? CustomerId { get; init; }
     public DateTimeOffset? From { get; init; }
     public DateTimeOffset? To { get; init; }
+
+    public OrderFilter ToFilter() => new(Channel, Status, CustomerId, From, To, SearchTerm);
 }
+
+/// <summary>
+/// Which orders: the filters of the order list, shared with the orders export so that a file contains what the list
+/// shows for the same filters.
+/// </summary>
+/// <param name="Channel">Channel slug (case-insensitive); an unknown slug matches nothing.</param>
+/// <param name="From">Inclusive, on <c>CreatedAt</c>.</param>
+/// <param name="To">Inclusive, on <c>CreatedAt</c>.</param>
+/// <param name="Search">Matches the external order id or the customer name; null or blank = no search.</param>
+public sealed record OrderFilter(
+    string? Channel,
+    OrderStatus? Status,
+    Guid? CustomerId,
+    DateTimeOffset? From,
+    DateTimeOffset? To,
+    string? Search);

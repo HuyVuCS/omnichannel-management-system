@@ -184,4 +184,12 @@
     <value>Khoá tải lên</value>
     <comment>Product image confirmation.</comment>
   </data>
+  <data name="timeZone" xml:space="preserve">
+    <value>Múi giờ</value>
+    <comment>Export request.</comment>
+  </data>
+  <data name="reportType" xml:space="preserve">
+    <value>Báo cáo</value>
+    <comment>Export list filter.</comment>
+  </data>
 </root>

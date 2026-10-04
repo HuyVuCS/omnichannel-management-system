@@ -26,20 +26,7 @@ internal sealed class InventoryQueryService(OmnichannelDbContext dbContext) : II
 
     public async Task<PagedResult<InventoryItemResponse>> ListAsync(InventoryListQuery query, CancellationToken cancellationToken)
     {
-        IQueryable<Inventory> inventories = dbContext.Inventories.AsNoTracking();
-
-        if (query.SearchTerm is { } search)
-        {
-            var pattern = LikePattern.Contains(search);
-            inventories = inventories.Where(i =>
-                EF.Functions.ILike(i.Product.Sku, pattern, LikePattern.EscapeCharacter)
-                || EF.Functions.ILike(i.Product.Name, pattern, LikePattern.EscapeCharacter));
-        }
-
-        if (query.LowStockOnly)
-        {
-            inventories = inventories.Where(InventoryPredicates.IsLowStock);
-        }
+        var inventories = InventoryFilters.Apply(dbContext.Inventories.AsNoTracking(), query.ToFilter());
 
         var totalCount = await inventories.CountAsync(cancellationToken);
 
