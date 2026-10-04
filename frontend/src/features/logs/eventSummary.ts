@@ -8,6 +8,33 @@ import { isKnownEventType, type KnownEventType, type SystemEvent } from './syste
 /** What a summary shows for a field the details do not have. */
 const EMPTY = '—';
 
+/**
+ * The `reasonCode`s of a rejected message this client has a label for (`logs.rejection.*`; the API's
+ * `MessageRejectionCodes`). A code that is not listed is shown as it is, a row without one (written before the code
+ * existed) as "—".
+ */
+export const REJECTION_CODES = [
+  'invalid_json',
+  'empty_body',
+  'unexpected_event_type',
+  'missing_task_id',
+  'missing_message_ids',
+  'message_ids_too_long',
+  'payload_not_object',
+  'invalid_payload',
+  'empty_payload',
+  'task_id_mismatch',
+  'missing_order_fields',
+  'no_items',
+  'invalid_item',
+  'duplicate_product',
+  'missing_product_id',
+  'missing_sync_target',
+  'unknown_task',
+  'task_mismatch',
+  'task_of_other_channel',
+] as const;
+
 export interface EventSummary {
   /** One line that says what happened. */
   text: string;
@@ -83,10 +110,21 @@ export function eventSummary(t: TFunction, event: SystemEvent): EventSummary | n
       return { text: t(key, { externalOrderId: text(details.externalOrderId) }) };
 
     case 'order.message_rejected':
-      return { text: t(key, { messageId: text(details.messageId) }) };
+      return {
+        text: t(key, {
+          messageId: text(details.messageId),
+          reason: label(t, 'logs.rejection', REJECTION_CODES, details.reasonCode),
+        }),
+      };
 
     case 'stock_sync.message_rejected':
-      return { text: t(key, { messageId: text(details.messageId), queue: text(details.queue) }) };
+      return {
+        text: t(key, {
+          messageId: text(details.messageId),
+          queue: text(details.queue),
+          reason: label(t, 'logs.rejection', REJECTION_CODES, details.reasonCode),
+        }),
+      };
 
     case 'processing.failed':
       return {

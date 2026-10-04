@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
+import { REJECTION_CODES } from '@/features/logs/eventSummary';
 import { formatDateTime, formatMoney } from '@/shared/utils/format';
 import en from './en.json';
 import { changeLanguage, DEFAULT_LANGUAGE, LANGUAGE_STORAGE_KEY, readStoredLanguage } from './index';
@@ -45,6 +46,10 @@ describe('translations', () => {
     for (const [key, text] of viTexts) {
       expect(placeholders(text), key).toEqual(placeholders(enTexts.get(key) ?? ''));
     }
+  });
+
+  it('every reason code of a rejected message the client lists has a label, and no label is without a code', () => {
+    expect(Object.keys(vi.logs.rejection).sort()).toEqual([...REJECTION_CODES].sort());
   });
 
   it('Vietnamese is the default language and an invalid stored value is ignored', () => {

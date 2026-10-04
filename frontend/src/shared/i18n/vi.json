@@ -765,6 +765,27 @@
       "user_unlocked": "Mở khoá người dùng",
       "user_password_reset": "Đặt lại mật khẩu"
     },
+    "rejection": {
+      "invalid_json": "không phải JSON hợp lệ",
+      "empty_body": "nội dung rỗng",
+      "unexpected_event_type": "loại sự kiện không thuộc hàng đợi này",
+      "missing_task_id": "thiếu mã tác vụ",
+      "missing_message_ids": "thiếu mã thông điệp hoặc mã tương quan",
+      "message_ids_too_long": "mã thông điệp hoặc mã tương quan quá dài",
+      "payload_not_object": "dữ liệu không phải đối tượng JSON",
+      "invalid_payload": "không đọc được dữ liệu",
+      "empty_payload": "dữ liệu rỗng",
+      "task_id_mismatch": "dữ liệu và phong bì nêu hai tác vụ khác nhau",
+      "missing_order_fields": "đơn thiếu kênh, khách hàng hoặc mã đơn",
+      "no_items": "đơn không có dòng hàng",
+      "invalid_item": "dòng hàng không hợp lệ",
+      "duplicate_product": "sản phẩm lặp lại trong đơn",
+      "missing_product_id": "thiếu mã sản phẩm",
+      "missing_sync_target": "thiếu mã kênh hoặc mã sản phẩm",
+      "unknown_task": "tác vụ không tồn tại",
+      "task_mismatch": "tác vụ không khớp với thông điệp",
+      "task_of_other_channel": "tác vụ thuộc kênh khác"
+    },
     "summary": {
       "inventory_imported": "Chứng từ {{referenceId}} · {{itemCount}} dòng · {{totalQuantity}} đơn vị",
       "order_insufficient_stock": {
@@ -772,8 +793,8 @@
         "many": "{{products}} sản phẩm không đủ hàng"
       },
       "order_already_exists": "Đơn {{externalOrderId}} đã tồn tại",
-      "order_message_rejected": "Thông điệp {{messageId}} bị từ chối",
-      "stock_sync_message_rejected": "Thông điệp {{messageId}} bị từ chối ở {{queue}}",
+      "order_message_rejected": "Thông điệp {{messageId}} bị từ chối: {{reason}}",
+      "stock_sync_message_rejected": "Thông điệp {{messageId}} bị từ chối ở {{queue}}: {{reason}}",
       "processing_failed": "{{taskType}} · lần {{attemptNo}} · {{errorCode}}",
       "processing_retry_requested": "{{taskType}}: yêu cầu chạy lại",
       "outbox_publish_failed": "{{eventType}} không gửi được sau {{publishAttempts}} lần",

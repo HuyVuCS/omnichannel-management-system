@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Options;
+using Omnichannel.Application.Common.Messaging;
 using Omnichannel.Application.Orders;
 using Omnichannel.Domain.Enums;
 using Omnichannel.Infrastructure.RabbitMQ;
@@ -34,9 +35,9 @@ public sealed class OrderMessageHandler(
         currentUser.UserId = Actor;
         var instanceId = workerOptions.Value.InstanceId;
 
-        if (!OrderMessageParser.TryParse(delivery.Body, out var message, out var poisonReason))
+        if (!OrderMessageParser.TryParse(delivery.Body, out var message, out var rejection))
         {
-            return await RejectAsync(delivery.MessageId, delivery.CorrelationId, null, poisonReason!, cancellationToken);
+            return await RejectAsync(delivery.MessageId, delivery.CorrelationId, null, rejection!, cancellationToken);
         }
 
         correlationContext.CorrelationId = message!.Envelope.CorrelationId;
@@ -49,7 +50,7 @@ public sealed class OrderMessageHandler(
                 message.Envelope.MessageId,
                 message.Envelope.CorrelationId,
                 message.TaskId,
-                $"No processing task {message.TaskId} exists.",
+                UnknownTask(message.TaskId),
                 cancellationToken);
         }
 
@@ -118,9 +119,9 @@ public sealed class OrderMessageHandler(
         if (taskId is null)
         {
             // Called before HandleAsync (delivery-limit guard): identify the task from the message itself.
-            if (!OrderMessageParser.TryParse(delivery.Body, out var message, out var poisonReason))
+            if (!OrderMessageParser.TryParse(delivery.Body, out var message, out var rejection))
             {
-                await RejectAsync(delivery.MessageId, delivery.CorrelationId, null, poisonReason!, cancellationToken);
+                await RejectAsync(delivery.MessageId, delivery.CorrelationId, null, rejection!, cancellationToken);
                 return true;
             }
 
@@ -128,7 +129,7 @@ public sealed class OrderMessageHandler(
             taskId = message.TaskId;
             if (await reservations.GetTaskStatusAsync(message.TaskId, cancellationToken) is null)
             {
-                await RejectAsync(message.Envelope.MessageId, message.Envelope.CorrelationId, message.TaskId, $"No processing task {message.TaskId} exists.", cancellationToken);
+                await RejectAsync(message.Envelope.MessageId, message.Envelope.CorrelationId, message.TaskId, UnknownTask(message.TaskId), cancellationToken);
                 return true;
             }
         }
@@ -151,13 +152,16 @@ public sealed class OrderMessageHandler(
         string? messageId,
         string? correlationId,
         Guid? taskId,
-        string reason,
+        MessageRejection rejection,
         CancellationToken cancellationToken)
     {
         // If even the log row cannot be written (database down), the exception makes the consumer requeue the message.
-        await reservations.RecordRejectedMessageAsync(messageId, correlationId, taskId, reason, WorkerName, cancellationToken);
-        return new HandlerResult.Reject(reason);
+        await reservations.RecordRejectedMessageAsync(messageId, correlationId, taskId, rejection, WorkerName, cancellationToken);
+        return new HandlerResult.Reject(rejection.Reason);
     }
+
+    private static MessageRejection UnknownTask(Guid taskId) =>
+        new(MessageRejectionCodes.UnknownTask, $"No processing task {taskId} exists.");
 
     private IDisposable? BeginScope(OrderMessage message, string instanceId) => logger.BeginScope(new Dictionary<string, object>
     {

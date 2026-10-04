@@ -107,7 +107,7 @@ internal static class FailureInjectionExtensions
             CancellationToken cancellationToken) =>
             inner.RecordFinalFailureAsync(taskId, attemptId, errorCode, errorMessage, workerName, workerInstanceId, queue, cancellationToken);
 
-        public Task RecordRejectedMessageAsync(string? messageId, string? correlationId, Guid? taskId, string reason, string workerName, CancellationToken cancellationToken) =>
-            inner.RecordRejectedMessageAsync(messageId, correlationId, taskId, reason, workerName, cancellationToken);
+        public Task RecordRejectedMessageAsync(string? messageId, string? correlationId, Guid? taskId, MessageRejection rejection, string workerName, CancellationToken cancellationToken) =>
+            inner.RecordRejectedMessageAsync(messageId, correlationId, taskId, rejection, workerName, cancellationToken);
     }
 }

@@ -23,19 +23,19 @@ public static class StockSyncMessageParser
     // Column lengths of ProcessingTasks.MessageId / CorrelationId: longer values could not be stored with the task.
     private const int MaxIdLength = 100;
 
-    public static bool TryParse(ReadOnlyMemory<byte> body, out StockSyncMessage? message, out string? poisonReason)
+    public static bool TryParse(ReadOnlyMemory<byte> body, out StockSyncMessage? message, out MessageRejection? rejection)
     {
         message = null;
-        poisonReason = Validate(body, out var parsed);
-        if (poisonReason is null)
+        rejection = Validate(body, out var parsed);
+        if (rejection is null)
         {
             message = parsed;
         }
 
-        return poisonReason is null;
+        return rejection is null;
     }
 
-    private static string? Validate(ReadOnlyMemory<byte> body, out StockSyncMessage? message)
+    private static MessageRejection? Validate(ReadOnlyMemory<byte> body, out StockSyncMessage? message)
     {
         message = null;
 
@@ -46,32 +46,36 @@ public static class StockSyncMessageParser
         }
         catch (JsonException exception)
         {
-            return $"Body is not a valid message envelope: {exception.Message}";
+            return new(MessageRejectionCodes.InvalidJson, $"Body is not a valid message envelope: {exception.Message}");
         }
 
         if (envelope is null)
         {
-            return "Body is empty (null envelope).";
+            return new(MessageRejectionCodes.EmptyBody, "Body is empty (null envelope).");
         }
 
         if (envelope.EventType is not (EventTypes.InventoryChanged or EventTypes.StockSyncRequested))
         {
-            return $"Unexpected event type '{envelope.EventType}'; expected '{EventTypes.InventoryChanged}' or '{EventTypes.StockSyncRequested}'.";
+            return new(
+                MessageRejectionCodes.UnexpectedEventType,
+                $"Unexpected event type '{envelope.EventType}'; expected '{EventTypes.InventoryChanged}' or '{EventTypes.StockSyncRequested}'.");
         }
 
         if (string.IsNullOrWhiteSpace(envelope.MessageId) || string.IsNullOrWhiteSpace(envelope.CorrelationId))
         {
-            return "Envelope has no messageId or correlationId.";
+            return new(MessageRejectionCodes.MissingMessageIds, "Envelope has no messageId or correlationId.");
         }
 
         if (envelope.MessageId.Length > MaxIdLength || envelope.CorrelationId.Length > MaxIdLength)
         {
-            return $"Envelope messageId or correlationId is longer than {MaxIdLength} characters.";
+            return new(
+                MessageRejectionCodes.MessageIdsTooLong,
+                $"Envelope messageId or correlationId is longer than {MaxIdLength} characters.");
         }
 
         if (envelope.Payload.ValueKind != JsonValueKind.Object)
         {
-            return "Envelope payload is not a JSON object.";
+            return new(MessageRejectionCodes.PayloadNotObject, "Envelope payload is not a JSON object.");
         }
 
         return envelope.EventType == EventTypes.InventoryChanged
@@ -79,7 +83,7 @@ public static class StockSyncMessageParser
             : ValidateSyncRequested(envelope, out message);
     }
 
-    private static string? ValidateInventoryChanged(MessageEnvelope envelope, out StockSyncMessage? message)
+    private static MessageRejection? ValidateInventoryChanged(MessageEnvelope envelope, out StockSyncMessage? message)
     {
         message = null;
 
@@ -90,12 +94,12 @@ public static class StockSyncMessageParser
         }
         catch (JsonException exception)
         {
-            return $"Payload is not a valid inventory change: {exception.Message}";
+            return new(MessageRejectionCodes.InvalidPayload, $"Payload is not a valid inventory change: {exception.Message}");
         }
 
         if (change is null || change.ProductId == Guid.Empty)
         {
-            return "Payload has no productId.";
+            return new(MessageRejectionCodes.MissingProductId, "Payload has no productId.");
         }
 
         // The stock values of the payload are a snapshot and are not used: the worker reads the current stock.
@@ -103,13 +107,13 @@ public static class StockSyncMessageParser
         return null;
     }
 
-    private static string? ValidateSyncRequested(MessageEnvelope envelope, out StockSyncMessage? message)
+    private static MessageRejection? ValidateSyncRequested(MessageEnvelope envelope, out StockSyncMessage? message)
     {
         message = null;
 
         if (envelope.TaskId is not { } taskId || taskId == Guid.Empty)
         {
-            return "Envelope has no taskId.";
+            return new(MessageRejectionCodes.MissingTaskId, "Envelope has no taskId.");
         }
 
         StockSyncRequestedPayload? request;
@@ -119,22 +123,23 @@ public static class StockSyncMessageParser
         }
         catch (JsonException exception)
         {
-            return $"Payload is not a valid stock-sync request: {exception.Message}";
+            return new(MessageRejectionCodes.InvalidPayload, $"Payload is not a valid stock-sync request: {exception.Message}");
         }
 
         if (request is null)
         {
-            return "Payload is empty.";
+            return new(MessageRejectionCodes.EmptyPayload, "Payload is empty.");
         }
 
         if (request.TaskId != taskId)
         {
-            return $"Payload taskId {request.TaskId} does not match envelope taskId {taskId}.";
+            return new(
+                MessageRejectionCodes.TaskIdMismatch, $"Payload taskId {request.TaskId} does not match envelope taskId {taskId}.");
         }
 
         if (request.ChannelId == Guid.Empty || request.ProductId == Guid.Empty)
         {
-            return "Payload lacks channelId or productId.";
+            return new(MessageRejectionCodes.MissingSyncTarget, "Payload lacks channelId or productId.");
         }
 
         message = new StockSyncMessage(envelope, request.ProductId, taskId, request.ChannelId);

@@ -625,18 +625,21 @@ public sealed partial class StockSyncWorkerTests(WorkersFixture fixture) : IAsyn
         });
 
         var unknownTask = Guid.CreateVersion7();
+        var (json, type, unknown, order, otherChannel) = (
+            $"poison-json-{Guid.NewGuid():N}", $"poison-type-{Guid.NewGuid():N}", $"poison-unknown-{Guid.NewGuid():N}",
+            $"poison-order-{Guid.NewGuid():N}", $"poison-channel-{Guid.NewGuid():N}");
         var poison = new Dictionary<string, byte[]>
         {
             // Not JSON at all.
-            [$"poison-json-{Guid.NewGuid():N}"] = Encoding.UTF8.GetBytes("{ not json"),
+            [json] = Encoding.UTF8.GetBytes("{ not json"),
             // An event this queue does not handle.
-            [$"poison-type-{Guid.NewGuid():N}"] = Directed(EventTypes.OrderCreated, unknownTask, websiteId, product.ProductId),
+            [type] = Directed(EventTypes.OrderCreated, unknownTask, websiteId, product.ProductId),
             // A task that does not exist.
-            [$"poison-unknown-{Guid.NewGuid():N}"] = Directed(EventTypes.StockSyncRequested, unknownTask, websiteId, product.ProductId),
+            [unknown] = Directed(EventTypes.StockSyncRequested, unknownTask, websiteId, product.ProductId),
             // A task of another type.
-            [$"poison-order-{Guid.NewGuid():N}"] = Directed(EventTypes.StockSyncRequested, orderTask.TaskId, websiteId, product.ProductId),
+            [order] = Directed(EventTypes.StockSyncRequested, orderTask.TaskId, websiteId, product.ProductId),
             // The POS task, sent to the website queue.
-            [$"poison-channel-{Guid.NewGuid():N}"] = Directed(EventTypes.StockSyncRequested, onPos.SyncTaskId!.Value, posId, product.ProductId)
+            [otherChannel] = Directed(EventTypes.StockSyncRequested, onPos.SyncTaskId!.Value, posId, product.ProductId)
         };
         foreach (var (messageId, body) in poison)
         {
@@ -666,7 +669,19 @@ public sealed partial class StockSyncWorkerTests(WorkersFixture fixture) : IAsyn
         {
             Assert.Equal((SystemEventLevel.Error, StockSyncMessageHandler.WorkerName), (l.Level, l.WorkerName));
             Assert.Equal(WebsiteQueue, JsonNode.Parse(l.Payload!)!["queue"]!.GetValue<string>());
+            Assert.False(string.IsNullOrWhiteSpace(JsonNode.Parse(l.Payload!)!["reason"]?.GetValue<string>()));
         });
+        // Stored: the code of each rejection next to its text (task 019 A2).
+        Assert.Equal(
+            new Dictionary<string, string>
+            {
+                [json] = MessageRejectionCodes.InvalidJson,
+                [type] = MessageRejectionCodes.UnexpectedEventType,
+                [unknown] = MessageRejectionCodes.UnknownTask,
+                [order] = MessageRejectionCodes.TaskMismatch,
+                [otherChannel] = MessageRejectionCodes.TaskOfOtherChannel
+            },
+            mine.Select(l => JsonNode.Parse(l.Payload!)!).ToDictionary(p => p["messageId"]!.GetValue<string>(), p => p["reasonCode"]!.GetValue<string>()));
 
         // Nothing was pushed for a poison message: the only push is the POS task's own, on POS.
         var push = Assert.Single(channel.PushesOf(product.ProductId));

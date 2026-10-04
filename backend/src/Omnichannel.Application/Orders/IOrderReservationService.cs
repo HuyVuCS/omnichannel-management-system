@@ -52,12 +52,15 @@ public interface IOrderReservationService
         string queue,
         CancellationToken cancellationToken);
 
-    /// <summary>SystemEventLog Error <see cref="OrderProcessingEvents.MessageRejected"/> for a message sent to the DLQ.</summary>
+    /// <summary>
+    /// SystemEventLog Error <see cref="OrderProcessingEvents.MessageRejected"/> for a message sent to the DLQ, with the
+    /// rejection's <c>reasonCode</c> and <c>reason</c>.
+    /// </summary>
     Task RecordRejectedMessageAsync(
         string? messageId,
         string? correlationId,
         Guid? taskId,
-        string reason,
+        MessageRejection rejection,
         string workerName,
         CancellationToken cancellationToken);
 }

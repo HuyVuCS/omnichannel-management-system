@@ -1,3 +1,4 @@
+using Omnichannel.Application.Common.Messaging;
 using Omnichannel.Application.Orders;
 using Omnichannel.Domain.Enums;
 
@@ -58,12 +59,15 @@ public interface IStockSyncService
         string queue,
         CancellationToken cancellationToken);
 
-    /// <summary>SystemEventLog Error <see cref="StockSyncEvents.MessageRejected"/> for a message sent to the DLQ.</summary>
+    /// <summary>
+    /// SystemEventLog Error <see cref="StockSyncEvents.MessageRejected"/> for a message sent to the DLQ, with the
+    /// rejection's <c>reasonCode</c> and <c>reason</c>.
+    /// </summary>
     Task RecordRejectedMessageAsync(
         string? messageId,
         string? correlationId,
         Guid? taskId,
-        string reason,
+        MessageRejection rejection,
         string workerName,
         string queue,
         CancellationToken cancellationToken);
@@ -126,6 +130,6 @@ public static class StockSyncIdempotencyKey
 /// <summary>SystemEventLog event types written by stock sync.</summary>
 public static class StockSyncEvents
 {
-    /// <summary>A message on a stock-sync queue could never be processed and went to the DLQ. Payload: <c>{messageId, reason, queue}</c>.</summary>
+    /// <summary>A message on a stock-sync queue could never be processed and went to the DLQ. Payload: <c>{messageId, reasonCode, reason, queue}</c>.</summary>
     public const string MessageRejected = "stock_sync.message_rejected";
 }

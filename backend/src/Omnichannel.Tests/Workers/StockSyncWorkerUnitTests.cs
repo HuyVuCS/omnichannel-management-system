@@ -69,7 +69,7 @@ public sealed class StockSyncMessageParserTests
         Assert.False(StockSyncMessageParser.TryParse(body, out var message, out var reason));
 
         Assert.Null(message);
-        Assert.Contains(expectedReason, reason, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(expectedReason, reason!.Reason, StringComparison.OrdinalIgnoreCase);
     }
 
     private static byte[] Envelope(string eventType, Guid? taskId, object payload, string messageId = "msg-1", string correlationId = "corr-1") =>

@@ -168,7 +168,7 @@ internal sealed class StockSyncService(
         string? messageId,
         string? correlationId,
         Guid? taskId,
-        string reason,
+        MessageRejection rejection,
         string workerName,
         string queue,
         CancellationToken cancellationToken)
@@ -181,7 +181,7 @@ internal sealed class StockSyncService(
             taskId,
             orderId: null,
             workerName,
-            MessageJson.Serialize(new { messageId, reason, queue }),
+            MessageJson.Serialize(new { messageId, reasonCode = rejection.Code, reason = rejection.Reason, queue }),
             timeProvider.GetUtcNow()));
         await dbContext.SaveChangesAsync(cancellationToken);
     }

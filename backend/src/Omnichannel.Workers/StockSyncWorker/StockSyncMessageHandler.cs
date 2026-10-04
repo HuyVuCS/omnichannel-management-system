@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Options;
 using Omnichannel.Application.Channels;
+using Omnichannel.Application.Common.Messaging;
 using Omnichannel.Domain.Enums;
 using Omnichannel.Infrastructure.RabbitMQ;
 using Omnichannel.Workers.Processing;
@@ -58,9 +59,9 @@ public sealed class StockSyncMessageHandler(
             return HandlerResult.Abandon;
         }
 
-        if (!StockSyncMessageParser.TryParse(delivery.Body, out var message, out var poisonReason))
+        if (!StockSyncMessageParser.TryParse(delivery.Body, out var message, out var rejection))
         {
-            return await RejectAsync(delivery.MessageId, delivery.CorrelationId, null, poisonReason!, cancellationToken);
+            return await RejectAsync(delivery.MessageId, delivery.CorrelationId, null, rejection!, cancellationToken);
         }
 
         correlationContext.CorrelationId = message!.Envelope.CorrelationId;
@@ -68,10 +69,10 @@ public sealed class StockSyncMessageHandler(
         using var messageScope = logger.BeginScope(_logScope);
 
         var target = await ResolveAsync(message, cancellationToken);
-        if (target.PoisonReason is not null)
+        if (target.Rejection is not null)
         {
             return await RejectAsync(
-                message.Envelope.MessageId, message.Envelope.CorrelationId, message.TaskId, target.PoisonReason, cancellationToken);
+                message.Envelope.MessageId, message.Envelope.CorrelationId, message.TaskId, target.Rejection, cancellationToken);
         }
 
         if (target.TaskId is not { } taskId || target.ChannelId is not { } channelId)
@@ -152,19 +153,19 @@ public sealed class StockSyncMessageHandler(
         if (taskId is null)
         {
             // Called before HandleAsync (delivery-limit guard) or before a task was known: identify it from the message itself.
-            if (!StockSyncMessageParser.TryParse(delivery.Body, out var message, out var poisonReason))
+            if (!StockSyncMessageParser.TryParse(delivery.Body, out var message, out var rejection))
             {
-                await RejectAsync(delivery.MessageId, delivery.CorrelationId, null, poisonReason!, cancellationToken);
+                await RejectAsync(delivery.MessageId, delivery.CorrelationId, null, rejection!, cancellationToken);
                 return true;
             }
 
             correlationContext.CorrelationId = message!.Envelope.CorrelationId;
             using var messageScope = _logScope is null ? logger.BeginScope(ScopeOf(message, instanceId)) : null;
             var target = await ResolveAsync(message, cancellationToken);
-            if (target.PoisonReason is not null)
+            if (target.Rejection is not null)
             {
                 await RejectAsync(
-                    message.Envelope.MessageId, message.Envelope.CorrelationId, message.TaskId, target.PoisonReason, cancellationToken);
+                    message.Envelope.MessageId, message.Envelope.CorrelationId, message.TaskId, target.Rejection, cancellationToken);
                 return true;
             }
 
@@ -275,17 +276,20 @@ public sealed class StockSyncMessageHandler(
         var task = await stockSync.GetTaskAsync(message.TaskId!.Value, cancellationToken);
         if (task is null)
         {
-            return ResolvedTask.Poison($"No processing task {message.TaskId} exists.");
+            return ResolvedTask.Poison(MessageRejectionCodes.UnknownTask, $"No processing task {message.TaskId} exists.");
         }
 
         if (task.TaskType != ProcessingTaskType.StockSync || task.ProductId != message.ProductId || task.ChannelId != message.ChannelId)
         {
-            return ResolvedTask.Poison($"Task {task.TaskId} is not a stock-sync task for the product and channel of the message.");
+            return ResolvedTask.Poison(
+                MessageRejectionCodes.TaskMismatch, $"Task {task.TaskId} is not a stock-sync task for the product and channel of the message.");
         }
 
         if (!string.Equals(task.ChannelSlug, channel.Slug, StringComparison.Ordinal))
         {
-            return ResolvedTask.Poison($"Task {task.TaskId} belongs to channel '{task.ChannelSlug}', not to '{channel.Slug}' ({channel.Queue}).");
+            return ResolvedTask.Poison(
+                MessageRejectionCodes.TaskOfOtherChannel,
+                $"Task {task.TaskId} belongs to channel '{task.ChannelSlug}', not to '{channel.Slug}' ({channel.Queue}).");
         }
 
         return new ResolvedTask(task.TaskId, task.ChannelId, task.Status, null);
@@ -295,12 +299,12 @@ public sealed class StockSyncMessageHandler(
         string? messageId,
         string? correlationId,
         Guid? taskId,
-        string reason,
+        MessageRejection rejection,
         CancellationToken cancellationToken)
     {
         // If even the log row cannot be written (database down), the exception makes the consumer retry the message with delay.
-        await stockSync.RecordRejectedMessageAsync(messageId, correlationId, taskId, reason, WorkerName, channel.Queue, cancellationToken);
-        return new HandlerResult.Reject(reason);
+        await stockSync.RecordRejectedMessageAsync(messageId, correlationId, taskId, rejection, WorkerName, channel.Queue, cancellationToken);
+        return new HandlerResult.Reject(rejection.Reason);
     }
 
     private Dictionary<string, object> ScopeOf(StockSyncMessage message, string instanceId) => new()
@@ -314,10 +318,10 @@ public sealed class StockSyncMessageHandler(
     };
 
     /// <param name="TaskId">Null when there is nothing to do (the channel does not sell the product).</param>
-    private sealed record ResolvedTask(Guid? TaskId, Guid? ChannelId, ProcessingTaskStatus? Status, string? PoisonReason)
+    private sealed record ResolvedTask(Guid? TaskId, Guid? ChannelId, ProcessingTaskStatus? Status, MessageRejection? Rejection)
     {
         public static ResolvedTask None { get; } = new(null, null, null, null);
 
-        public static ResolvedTask Poison(string reason) => new(null, null, null, reason);
+        public static ResolvedTask Poison(string code, string reason) => new(null, null, null, new MessageRejection(code, reason));
     }
 }
