@@ -1,4 +1,4 @@
-# One-time setup of the development object storage (product images): generates its access key pair.
+# One-time setup of the development object storage (product images, export files): generates its access key pair.
 # Windows PowerShell 5.1 and PowerShell 7 compatible. ASCII only on purpose (5.1 misreads UTF-8 files without a BOM).
 #
 #   powershell -ExecutionPolicy Bypass -File scripts\setup-object-storage.ps1
@@ -6,15 +6,18 @@
 # What it does:
 #   1. docker/.env: adds OBJECT_STORAGE_BUCKET, OBJECT_STORAGE_ACCESS_KEY_ID and OBJECT_STORAGE_SECRET_ACCESS_KEY when
 #      they are missing (or still hold the placeholder of .env.example). Entries that are there are never changed.
-#   2. User-secrets of Omnichannel.Api: ObjectStorage:AccessKeyId and ObjectStorage:SecretAccessKey, the same values as
-#      in docker/.env - so the API signs with the key the emulator knows.
+#   2. User-secrets of Omnichannel.Api and of Omnichannel.Workers: ObjectStorage:AccessKeyId and
+#      ObjectStorage:SecretAccessKey, the same values as in docker/.env - so both hosts sign with the key the emulator
+#      knows (the API hands out links and checks uploads, the Workers host stores and deletes export files).
 # It never prints a key. Run it again at any time: it changes nothing that is already set, and repeats step 2.
 # Afterwards: docker compose -f docker/docker-compose.yml --env-file docker/.env up -d
 #
-# -EnvFile / -UserSecretsId: other targets than the developer's own files (used to try the script out).
+# -EnvFile / -UserSecretsId / -WorkersUserSecretsId: other targets than the developer's own files (used to try the
+# script out).
 param(
     [string]$EnvFile,
-    [string]$UserSecretsId
+    [string]$UserSecretsId,
+    [string]$WorkersUserSecretsId
 )
 
 $ErrorActionPreference = 'Stop'
@@ -91,30 +94,53 @@ foreach ($value in $keyId, $secret) {
     }
 }
 
-# The same pair for the API. The values go to the tool on its standard input (JSON), never on a command line.
+# The same pair for the API and for the Workers host. The values go to the tool on its standard input (JSON), never on
+# a command line.
 $json = '{"ObjectStorage:AccessKeyId":"' + $keyId + '","ObjectStorage:SecretAccessKey":"' + $secret + '"}'
-$apiProject = Join-Path $repoRoot 'backend\src\Omnichannel.Api'
-# What is piped to a native command is encoded with $OutputEncoding; a byte-order mark in front would not be JSON.
+# What is piped to a native command must arrive as plain JSON, without a byte-order mark in front. Two settings decide:
+# $OutputEncoding encodes the text, and Windows PowerShell 5.1 starts the command with the console's input encoding and
+# writes that encoding's mark first - with a UTF-8 console (chcp 65001, some terminals) the tool would read the mark
+# and fail. Both are ASCII for the two calls below (the JSON is letters and digits); the console gets its own back.
 $OutputEncoding = [System.Text.Encoding]::ASCII
-Push-Location $apiProject
+$consoleInputEncoding = $null
 try {
-    # cmd merges stderr into stdout: under Windows PowerShell 5.1 anything a native command writes to stderr would end
-    # the script. The output (a count, or an error without values) is not shown.
-    if ($UserSecretsId) {
-        $null = $json | cmd /c "dotnet user-secrets set --id $UserSecretsId 2>&1"
-    } else {
-        $null = $json | cmd /c 'dotnet user-secrets set 2>&1'
-    }
-    if ($LASTEXITCODE -ne 0) { throw "dotnet user-secrets set failed (exit code $LASTEXITCODE). Is the .NET SDK installed?" }
-} finally {
-    Pop-Location
+    $consoleInputEncoding = [Console]::InputEncoding
+    [Console]::InputEncoding = [System.Text.Encoding]::ASCII
+} catch {
+    # No console attached (output and input redirected): nothing writes a mark then.
+    $consoleInputEncoding = $null
 }
-Write-Host 'User-secrets of Omnichannel.Api - set: ObjectStorage:AccessKeyId, ObjectStorage:SecretAccessKey'
+
+# Stores the pair in the user-secrets of one project (or of $Id, to try the script out).
+function Set-StorageSecrets([string]$Project, [string]$Id) {
+    Push-Location (Join-Path $repoRoot "backend\src\$Project")
+    try {
+        # cmd merges stderr into stdout: under Windows PowerShell 5.1 anything a native command writes to stderr would
+        # end the script. The output (a count, or an error without values) is not shown.
+        if ($Id) {
+            $null = $json | cmd /c "dotnet user-secrets set --id $Id 2>&1"
+        } else {
+            $null = $json | cmd /c 'dotnet user-secrets set 2>&1'
+        }
+        if ($LASTEXITCODE -ne 0) { throw "dotnet user-secrets set failed for $Project (exit code $LASTEXITCODE). Is the .NET SDK installed?" }
+    } finally {
+        Pop-Location
+    }
+    Write-Host "User-secrets of $Project - set: ObjectStorage:AccessKeyId, ObjectStorage:SecretAccessKey"
+}
+
+try {
+    Set-StorageSecrets 'Omnichannel.Api' $UserSecretsId
+    Set-StorageSecrets 'Omnichannel.Workers' $WorkersUserSecretsId
+} finally {
+    if ($consoleInputEncoding) { [Console]::InputEncoding = $consoleInputEncoding }
+}
 
 $bucket = Get-EnvValue $lines $BucketName
 if ($bucket -ne $DefaultBucket) {
-    Write-Host "Note: $BucketName is '$bucket'. The API must use the same bucket: set ObjectStorage:BucketName (user-secrets or environment)." -ForegroundColor Yellow
+    Write-Host "Note: $BucketName is '$bucket'. The API and the Workers host must use the same bucket: set ObjectStorage:BucketName (user-secrets or environment) for both." -ForegroundColor Yellow
 }
 Write-Host ''
 Write-Host 'Next: docker compose -f docker/docker-compose.yml --env-file docker/.env up -d'
 Write-Host 'If the storage container already ran with other keys, recreate it: add --force-recreate objectstorage'
+Write-Host 'A Workers host that is running reads the keys at its next start.'
