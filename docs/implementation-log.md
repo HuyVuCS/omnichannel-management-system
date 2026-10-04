@@ -489,7 +489,7 @@ Manager/Admin; import link), `Alert` realtime tag, dashboard card "Unresolved al
 inside the form (old hook 3/30 failed, fix 0/50), detail pages remount per path (already guaranteed), stale customer
 field errors cleared, products table at 1280 px, smoke table `OK` first, mapping deactivation resolves its stock-sync
 alert. Backend 825/825; frontend 338 tests; first-load set 969 kB raw (+0.9 kB; alerts page lazy, 10 kB); smoke 35/35
-(throwaway) and on development by the user. **Open:** the five-run series of the report (→ 018b Part A1).
+(throwaway) and on development by the user. The five-run series of the report was completed in 018b A1 (5 of 5 green).
 Review: `docs/tasks/018-*.review.md`.
 
 | Topic | Decision | Reason | Revisit when |
@@ -501,3 +501,50 @@ Review: `docs/tasks/018-*.review.md`.
 | Wide tables | A table may fix its action column to the right and let history columns scroll, as long as what a row is and what can be done with it fit 1280 px (alerts) | Eleven alert columns cannot fit 992 px | — |
 | Mapping deactivation race | `wasActive` is read before the transaction without a lock; two concurrent edits of one mapping can miss the resolve | Mapping edits are rare and manual; a manual retry still resolves | Mapping edits become automated |
 | In-flight requests in tests | (018b Part A2) the test setup fails a test that ends with an unanswered request; one named opt-out | The gotcha caused three red series; a rule the suite enforces beats a manual pass | — |
+
+## Task 018b result (reviewed 2026-10-03)
+
+`GET /api/system-events` (Manager/Admin; `user.*` for an Admin only; `details` through a per-event-type allowlist;
+`actorEmail` / `targetEmail` from one user lookup per page) and the Logs/Audit page `/logs` (filters, sort direction,
+page and window in the address; one summary line per type in vi/en; trace by correlation id); Part A: 018's five-run
+series completed, test guard against requests in flight. Backend 890/890, 19/19 compiling mutants killed; frontend 373
+tests, 5 of 5 full runs green with the guard; smoke 37/37 on development; no migration, no new index (60,000-row
+`EXPLAIN`). Doc deviation 18 confirmed. Review: `docs/tasks/018b-*.review.md`.
+
+| Topic | Decision | Reason | Revisit when |
+| --- | --- | --- | --- |
+| Logs window | Default = `?since=<now − 24 h>` written to the address, **no end**; presets today / 7 / 30 days are whole local days; custom range wins | A fixed end would hide events newer than the first opening; a reload keeps the window | Users need a frozen window for paging through a busy period |
+| Open-ended range | `from` without `to` is not bounded by the 92-day rule | The page never sends a far `since`; Manager/Admin only | 026 (`COUNT` over wide ranges) |
+| Request guard in tests | Counted at the `fetch` call until its promise settles (wrapper over MSW's patched `fetch`), checked first in `afterEach`; one opt-out `allowUnansweredRequests(reason)`; tests end with `settled()` or the text of the last answer | MSW's `request:start` comes one macrotask (~19 ms) after the call, so a last-tick request would be held against the next test | MSW reports requests synchronously |
+| Timing-dependent tests | Found by delaying every answer (120 ms); the switch becomes a committed opt-in in 019 A1 and the suite must be green with it | Red runs appeared only under load; the delay makes them deterministic | — |
+| Successful orders | **No system event** for a reserved order; `SystemEventLog` records exceptions and audited manual actions, the normal flow is traced through the task and its attempts | Information already exists; one more statement in the reserve transaction for nothing new | Operators need one timeline of a normal order (then a view joining tasks and events) |
+| Rejected messages | The text `reason` stays stored and hidden; a `reasonCode` (one constant per rejection path) is stored next to it and returned (019 A2) | The text can quote parser exceptions and values of the rejected message | — |
+| `OutboxEvents.PublishFailed` | Event-type constant in Application, referenced by the publisher | The allowlist must reference constants; Application cannot reference Workers | — |
+
+## Task 019 plan — product images in S3-compatible object storage (2026-10-03)
+
+**Decision (user, 2026-10-03): no AWS** — it costs money; deployment should be free (Vercel or Railway, decided in 025).
+The architecture's rules for images (doc §4.2, §14: no binary in PostgreSQL, key and metadata in the database, private
+bucket, presigned URLs or backend authorization) stay; only the provider changes. Checked 2026-10-03: MinIO no longer
+publishes community container images, and LocalStack's image requires an auth token since 03/2026 — neither is a free
+local option any more.
+
+| Topic | Decision | Reason | Revisit when |
+| --- | --- | --- | --- |
+| Object storage | S3-compatible storage through the S3 API; `AWSSDK.S3` only as the client library (no AWS account), endpoint (`ServiceUrl`), path-style addressing, region, bucket and keys from configuration; development and integration tests use a **local emulator container** (dev only), chosen in 019 by a spike between Garage and SeaweedFS against fixed criteria | One code path for any provider; offline development; Claude Code can run the smoke without external accounts | 025 (production provider) |
+| Images per product | One image per product (doc §11 `…/image`, singular): columns `ImageKey`, `ImageContentType`, `ImageSizeBytes`, `ImageUpdatedAt` on `Product`, all null or all set (check constraint) | No gallery requirement; a separate table adds a join to every product read | Several images are needed |
+| Upload | Presigned **PUT** (5 min, `Content-Type` signed) to a server-generated key `products/{productId}/{uuidv7}`; the client then **confirms** with the key: the server checks the key's prefix, HEAD (exists, ≤ 5 MiB, declared type) and the first bytes (magic bytes of the declared type), then stores the metadata; a rejected object is deleted | A presigned PUT cannot enforce size or content; the confirm step keeps the server the authority; no image bytes pass through the API | Large files (020): presigned POST / multipart |
+| Storage calls and transactions | HEAD / range GET before the database transaction; the replaced object is deleted **after** commit, best effort (warning on failure) | Never hold a transaction during an external call (same rule as channel APIs) | — |
+| Allowed images | `image/jpeg`, `image/png`, `image/webp`; ≤ 5 MiB; no SVG, no GIF | SVG can carry script, and the storage origin serves what is stored | — |
+| Orphans | Never-confirmed uploads and replaced objects whose delete failed stay in the bucket; never referenced, never served | No cleanup job at this volume | 026 (sweep, or a lifecycle rule of the production provider) |
+| Download | Product responses carry `image { url, expiresAt, contentType, sizeBytes, updatedAt }` or null; `url` is a presigned GET (15 min) computed locally per response; the client reuses the URL it has for the same image version until shortly before `expiresAt` | Private bucket; `<img>` cannot send the bearer token; lists refetch on every inventory hint and a new URL each time would defeat the browser cache | A CDN or public-read image bucket |
+| Browser ↔ storage | The browser talks to the storage endpoint directly (PUT, GET) with **no** `Authorization` header; the bucket's CORS allows the dev origins (5173, 4173) for `PUT`/`GET` with `Content-Type` | Presigned URLs are the credential; the API's token must never reach a third party | 025 (production origin) |
+| Roles | Presign, confirm, remove: Manager/Admin (as product create/update); the image is readable by every role that reads products | Same as product writes | — |
+| Secrets | Storage access key id and secret only in user-secrets / environment / `docker/.env`; never logged; presigned URLs never logged (credentials until they expire) | Secrets rules | — |
+| Audit and realtime | No system event and no new hint type for image changes | Product updates write none today | Catalog audit is asked for |
+
+### Deviations / additions to the architecture document
+19. S3-compatible object storage instead of AWS S3 (provider by configuration; a local emulator in development) — user
+    decision, cost.
+20. `PUT /api/products/{id}/image` (confirm) and `DELETE /api/products/{id}/image` in addition to the doc's presign.
+21. Image columns on `Product` (the ERD has none; doc §4.2: key and metadata in the database).
