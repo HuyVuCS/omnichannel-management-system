@@ -548,3 +548,62 @@ local option any more.
     decision, cost.
 20. `PUT /api/products/{id}/image` (confirm) and `DELETE /api/products/{id}/image` in addition to the doc's presign.
 21. Image columns on `Product` (the ERD has none; doc §4.2: key and metadata in the database).
+
+## Task 019 result (reviewed 2026-10-05)
+
+Product images in S3-compatible object storage: `IObjectStorage` + S3 implementation (`AWSSDK.S3` 4.0.104.1 as client
+library), `ObjectStorage` options, image columns on `Products` (migration `ProductImage`), presign / confirm / remove
+endpoints, `image` (presigned GET) on every product response; thumbnails, upload / replace / remove in the product
+dialog; emulator **SeaweedFS 4.48** chosen by the spike (Garage also met the criteria, with more setup); key helper
+`scripts/setup-object-storage.ps1`; Part A: `npm run test:slow` (120 ms answer delay) with `renderLive` ending settled,
+`reasonCode` of rejected messages (19 codes). Backend 1056/1056, 0 warnings; frontend 405 tests, 5 of 5 full runs green,
+one full slow run green; smoke 50/50 on a throwaway environment; production-build browser check. Migration
+`ProductImage` not yet applied to development (user's manual steps). Doc deviations 19–21 confirmed.
+Review: `docs/tasks/019-*.review.md`.
+
+| Topic | Decision | Reason | Revisit when |
+| --- | --- | --- | --- |
+| Emulator | SeaweedFS 4.48 (`weed mini`): bucket, key pair and CORS are container start-up settings — no config file, no init step; only the S3 port, on `127.0.0.1` | Fewest setup steps; works with the SDK's default request checksums | 025 (production provider) |
+| Request checksums | SDK default kept; a provider that rejects them needs `WHEN_REQUIRED` (found with Garage) | The application only presigns, HEADs, reads a range and deletes | 025 |
+| Confirm order | 404 → key form/prefix → same key as the current image (200, no storage call) → HEAD → size → type → first 12 bytes → transaction with the product row locked → delete the replaced object after commit | A client retry works while the storage is down; no storage call in a transaction | — |
+| Concurrent confirmations | Serialised by the product row lock; every replaced object is deleted (not orphaned) | Measured by the test with three confirmations | — |
+| Storage failures | `ObjectStorageException` → 503 `storage_unavailable`; one warning with operation and status / S3 code, never the exception text; one SDK retry, `RequestTimeout` per try | The SDK's exception text can carry the endpoint | — |
+| Hosts without storage | `UnconfiguredObjectStorage` registered by `AddInfrastructure`, replaced by `AddObjectStorage` (API; Workers from 020) | Products without an image work everywhere; anything else fails loudly | — |
+| Stable image link (client) | The link of the same image version (`productId` + `updatedAt`) is reused until 60 s before it expires; forgotten at logout | A new link per response would reload every image on each list refetch | — |
+| Client size limit (review 019 q2) | Constant `MAX_IMAGE_BYTES` (5 MiB) for the early message only; raising `MaxImageBytes` requires changing it (README) | The server decides; a lower limit costs one presign 400 | The limit differs per deployment |
+| Slow run (review 019 q3) | One green full `npm run test:slow` is required for frontend tasks with request tests; every test red in any slow run is fixed (or shown to be an application defect) before that run and listed in the report; the stability measure stays five consecutive normal runs | The delay finds timing dependence, but is not perfectly deterministic | — |
+| Orphan key in logs (review 019 q4) | The warning of a failed delete names product id and object key | The key is not a credential and is what an operator needs to remove the orphan | — |
+| Storage address (review 019 q1) | One `ServiceUrl` for hosts and browsers until 025; then an optional `PublicServiceUrl` with a second, presign-only client (SigV4 signs the host, a signed link cannot be rewritten) | `docker compose --profile app` cannot serve images to the host's browser meanwhile (README) | 025 |
+| Upload link after confirm (review 019) | Accepted until 026: the link can replace the confirmed object until it expires (Manager/Admin only) | Fix = copy to a final key at confirmation; signed `Content-Length` depends on the provider | 026 |
+
+## Task 020 plan — Excel export in the background (2026-10-05)
+
+**Decisions (user, 2026-10-05):** every export runs **in the background** — no synchronous path, also for small
+results; only **Manager/Admin** may export; files are kept **7 days**.
+
+| Topic | Decision | Reason | Revisit when |
+| --- | --- | --- | --- |
+| Export mode | Always background (user): the API writes `ProcessingTask(ReportExport)` + `ReportExports` row + `OutboxEvent(report.export.requested)` + `SystemEventLog` in one transaction and answers 202 `{ taskId }`; Outbox Publisher → queue `report.export` → Report Export Worker. Alternative considered: stream small results from the API and queue only large ones — two code paths, a threshold, ClosedXML memory in the API | One path that is traceable (task, attempts, worker instance), retried, dead-lettered, manually retryable, alerted and pushed to the UI (`processing.task.changed`) with existing machinery; the API does no heavy work | Users need instant small exports |
+| Data model | `ReportExports`: `TaskId` PK/FK (1:1 with the task, no separate id), `ReportType`, `Parameters` jsonb (normalised filters, `timeZone`, `language`), `FileName`, `ExpiresAt`; result `ObjectKey`, `SizeBytes`, `RowCount`, `CompletedAt` (all or none); `DeletedAt`; audit fields (`CreatedBy` = requester). Index `(CreatedBy, CreatedAt DESC)`, partial `(ExpiresAt) WHERE DeletedAt IS NULL` | Status lives in the task (one source); the row holds what the task cannot: parameters, result, retention | — |
+| Message | Payload `{ taskId }` only; the worker reads the parameters from the database | PostgreSQL is the source of truth; a retry copy can never carry stale parameters | — |
+| Object key | `exports/{taskId}.xlsx`, deterministic | A redelivery after upload and before commit overwrites the same object; the cleanup can delete a failed export's file without a stored key — no orphans from crashes | — |
+| Worker steps | terminal → ACK; attempt committed first; expired → permanent failure; read in one `REPEATABLE READ READ ONLY` transaction, streamed, building the workbook; upload after that transaction; one transaction completes export + attempt + task and resolves the `ProcessingFailed` alert; ACK | No external call inside a transaction; orders and items from one snapshot | — |
+| Failures | Storage and transient database errors → delay tiers of 007 (`MaxAttempts` 5); rows above the limit at the worker and an expired export → permanent failure; final failure as every worker (task/attempt `Failed`, `processing.failed`, `ProcessingFailed` alert, DLQ); manual retry unchanged | Same contract as order and stock-sync processing | — |
+| Limits | `Reports:MaxRows` 100,000 (orders + item lines, or products) checked by a `COUNT` at the request (400 `export_too_large`, nothing written) and by the worker; orders need `from`/`to`, range ≤ 366 days; `MaxUnfinishedPerUser` 3 (409 `too_many_exports`, check-then-insert accepted) | ClosedXML builds the workbook in memory (measured in 020); one user cannot fill the queue | Measurement shows a different safe limit |
+| Access | Request: Manager/Admin (user). List, detail, download: the requester only; another user's export is 404, Admins included | Bulk personal data (customer names, phones); exports are reproducible, so nobody needs another user's file | Support needs to see others' exports |
+| Download | `GET /api/reports/exports/{taskId}/download` → `{ url, expiresAt, fileName }`: presigned GET, 5 min; file stored with `Content-Disposition: attachment` (or the header set on the presigned GET if the provider ignores the stored one); not audited | `<a href>` cannot send the API token; the link is used at once | — |
+| Retention | 7 days (user): `ExpiresAt = CreatedAt + Retention`; `ReportExportCleanupService` in the Workers host (hourly, batches): delete the object of terminal exports past `ExpiresAt`, then set `DeletedAt`; status `Expired`. Alternative: a provider lifecycle rule — not available the same way in the emulator and every provider | Exports accumulate with use and contain personal data; unlike image orphans they need a sweep | 025 (provider lifecycle rule could replace the sweep) |
+| Workbook | ClosedXML (pinned); orders: sheets *Orders* + *Items* + *Info*; inventory: one sheet + *Info*; customer name and phone only (no e-mail, address); typed cells, money `#,##0`, timestamps converted to the request's IANA time zone (named in the header), header bold / frozen / auto-filter, fixed widths; texts never written as formulas; headers and labels in the request's language (vi/en) | Excel has no time zone; formula injection; minimum personal data | — |
+| Filters | The filters of `GET /api/orders` and `GET /api/inventory`, reusing their code | An export contains what the page with the same filters shows | — |
+| Storage in Workers | `AddObjectStorage` in the Workers host; `IObjectStorage.PutAsync` added; keys through the Workers user-secrets (setup script) | One abstraction for both hosts | — |
+| Audit and realtime | `report.export_requested` (Information, `reportType`, `requestedBy`) in the request transaction, allowlisted; no new hint type | Bulk data extraction is an audited action; task status changes already notify | — |
+| Frontend | None in 020; the Sync & Processing and Logs/Audit pages show `ReportExport` and the new event type raw until 021 | Both pages already fall back to raw values | — |
+
+### Deviations / additions to the architecture document
+22. `ReportExports` table (the ERD has none).
+23. Task type `ReportExport`, event type `report.export.requested`, queue `report.export` (+ `.dlq`) — not in the doc's
+    §10 topology.
+24. Every export is a background task (doc §13 names it for large exports): the two `POST …/export` endpoints answer
+    202 with a task; added `GET /api/reports/exports`, `GET /api/reports/exports/{taskId}`,
+    `GET /api/reports/exports/{taskId}/download`.
+25. Export files are deleted after 7 days (the doc names no retention).
