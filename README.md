@@ -30,8 +30,12 @@ scripts/smoke/      Scripted manual checks per task (PowerShell)
 
 ```powershell
 Copy-Item docker/.env.example docker/.env   # then edit every value in docker/.env
+powershell -ExecutionPolicy Bypass -File scripts\setup-object-storage.ps1   # keys of the object storage (see "Product images")
 docker compose -f docker/docker-compose.yml --env-file docker/.env up -d
 ```
+
+Three containers start: PostgreSQL, RabbitMQ and the object storage emulator for product images (S3 API on
+`127.0.0.1:8333`, development only). Every port is bound to `127.0.0.1`.
 
 The init script `docker/postgres/init/01-create-roles.sh` creates two roles on the **first** start of the volume:
 
@@ -53,7 +57,8 @@ dotnet build
 dotnet test
 ```
 
-Integration tests need Docker running (Testcontainers PostgreSQL); `dotnet test --filter "Category!=Integration"` runs unit tests only.
+Integration tests need Docker running (Testcontainers: PostgreSQL, RabbitMQ and - started by the first test that uses a
+product image - the object storage emulator `chrislusf/seaweedfs:4.48`); `dotnet test --filter "Category!=Integration"` runs unit tests only.
 
 ### 3. API secrets (user-secrets, never appsettings)
 
@@ -344,6 +349,19 @@ npm run dev     # http://localhost:5173 - needs the API on http://localhost:5080
     waits until no request is on its way and no query or mutation is pending. An invalidation waits for pending
     requests and then refetches (the resync after every hub connect does), so "the page is rendered" is not "nothing
     more will be asked".
+- Product images (`features/products`): the list has a thumbnail column (40 x 40, cropped, lazy, `alt` = the product
+  name; a placeholder when there is no image or it cannot be loaded) for every role. The edit dialog (Manager/Admin)
+  has the image block: preview, "choose image", "remove image" (with a confirmation). Both act at once, not on "Save".
+  An upload is presign -> `PUT` to the storage -> confirm under one busy state; type and size are checked in the
+  client first only to save a request. The `PUT` (`imageUpload.ts`) is a plain `fetch` to another origin, **not** the
+  API's base query: no `Authorization`, no correlation id, only the headers the presign answer names (a test asserts
+  it). API errors use the usual mapping (a 400 on `objectKey` is shown in the block, a 503 `storage_unavailable`
+  globally with the reference code); a refused upload shows one message with the storage's status. The create dialog
+  only says that the image is added after saving (the upload needs the product's id).
+  The API signs a new link for every response and lists are refetched on every stock hint, so the link in use is kept
+  per product and image version (`imageLinks.ts`, applied in `transformResponse`) until 60 s before it expires - a
+  refetch does not change `src`, a new image or a link about to expire does. Tests answer uploads on a fixed storage
+  origin (`src/test/storage.ts`).
 - Channels: the list says for every channel whether stock is pushed to it at all (`stockSyncEnabled`, "API
   conventions"). The channel detail shows the channel, a link to its stock-sync tasks, and the products mapped on it
   (search, sort by SKU / created, paging - all in the address). Manager and Admin map a product and change a mapping
@@ -602,6 +620,97 @@ page; nothing in the API writes, changes or deletes an event.
 - Scripted check (needs the Workers host in Development): `powershell -ExecutionPolicy Bypass -File scripts\smoke\task-018b.ps1`
   (roles, an import, a failed stock sync found again by its correlation id, an acknowledged alert, a locked user, then
   the frontend build and tests).
+
+### Product images
+
+One image per product, kept in **S3-compatible object storage** - never in PostgreSQL, never passing through the API.
+The database holds the object key and what was checked (`Products.ImageKey`, `ImageContentType`, `ImageSizeBytes`,
+`ImageUpdatedAt`: all null or all set). The bucket is **private**; browsers upload and read with **presigned links**.
+No AWS account is involved: `AWSSDK.S3` is only the client library, the provider is configuration, and development
+uses a local emulator (SeaweedFS, service `objectstorage` of `docker/docker-compose.yml`).
+
+- **Setup (once per developer machine):**
+  1. `powershell -ExecutionPolicy Bypass -File scripts\setup-object-storage.ps1` - generates the key pair, adds
+     `OBJECT_STORAGE_BUCKET`, `OBJECT_STORAGE_ACCESS_KEY_ID` and `OBJECT_STORAGE_SECRET_ACCESS_KEY` to `docker/.env`
+     (only entries that are missing) and stores the same pair in the user-secrets of `Omnichannel.Api`
+     (`ObjectStorage:AccessKeyId`, `ObjectStorage:SecretAccessKey`). It prints no key and can be run again.
+  2. `docker compose -f docker/docker-compose.yml --env-file docker/.env up -d` - starts the emulator next to
+     PostgreSQL and RabbitMQ (S3 API on `127.0.0.1:8333`, data in the volume `objectstorage-data`). Bucket, key and
+     CORS are start-up settings of the container: there is no init step, and a restart changes nothing.
+  3. Migration `ProductImage` (section 4).
+- **Upload in three steps** (Manager/Admin, like product create/update):
+  1. `POST /api/products/{id}/image/presign` with `{ contentType, sizeBytes }` - `contentType` is `image/jpeg`,
+     `image/png` or `image/webp` (no SVG: it can carry script, and the storage serves what is stored; no GIF),
+     `1 <= sizeBytes <= ObjectStorage:MaxImageBytes` (5 MiB). Answer: `{ objectKey, uploadUrl, method: "PUT",
+     headers: { "Content-Type": ... }, expiresAt }`. The key is generated by the server:
+     `products/{productId}/{uuidv7}`. Nothing is written to the database; 404 for an unknown product.
+  2. The client sends the file to `uploadUrl` with exactly `method` and `headers` - **to the storage, without the
+     API's `Authorization` header**. The link is valid for 5 minutes and signs the `Content-Type`; the storage
+     rejects another type, a changed signature and an expired link (403).
+  3. `PUT /api/products/{id}/image` with `{ objectKey }` **confirms**. A presigned upload cannot limit size or
+     content, so the API checks the stored object, in this order and outside any transaction: the key has the exact
+     generated form and the prefix of **this** product; the object exists; it is not larger than the limit; its
+     content type is one of the three; its first bytes are the signature of that type (JPEG `FF D8 FF`, PNG
+     `89 50 4E 47 0D 0A 1A 0A`, WebP `RIFF....WEBP`). Each failure is a 400 on `objectKey` (localised), and an object
+     that fails the size, type or content check is **deleted**. Then one transaction locks the product row and stores
+     the image; after the commit the previous image's object is deleted (best effort: a failure is a warning and
+     leaves an orphan). Answer: the product. Confirming the current image again is a 200 that changes nothing.
+     Concurrent confirmations for one product run one after the other: the last one is the image, the others'
+     objects are deleted.
+- **`DELETE /api/products/{id}/image`** (Manager/Admin) clears the image in a transaction and deletes the object after
+  the commit; 204 also when the product has no image.
+- **Reading:** every product response (list, get, create, update, confirm) carries `image`: `{ url, expiresAt,
+  contentType, sizeBytes, updatedAt }` or `null`, for every role that may read products. `url` is a presigned `GET`
+  valid for 15 minutes, **computed locally for every response** - listing products never calls the storage, and
+  works while the storage is down. Two responses carry two different links for the same image; `updatedAt` is what
+  identifies the image (the frontend keeps the link it has for the same `updatedAt` until 60 s before it expires).
+- **Failures of the storage** (unreachable, timeout, refused) end a confirmation as **503** `storage_unavailable`; the
+  product is unchanged and the upload can be confirmed later. The problem document, the log and the exception carry
+  no endpoint, no key id and no link: the log has one warning with the operation (`head`, `read`, `delete`) and the
+  HTTP status / S3 error code or the exception type. Presigned links are credentials until they expire and are never
+  logged.
+- **Orphans:** an upload that is never confirmed, and an object whose delete failed, stay in the bucket. They are
+  never referenced and never served (no link is ever signed for them); there is no sweep yet (task 026).
+- **Configuration** (`ObjectStorage` section; `ObjectStorageOptions`, validated at start-up for presence and ranges -
+  the API never connects to the storage at start-up):
+
+  | Setting | Default | |
+  | --- | --- | --- |
+  | `ServiceUrl` | - (`http://127.0.0.1:8333` in Development) | Endpoint of the S3 API. Links are built on it: it must be the address the users' browsers reach too |
+  | `Region` | `us-east-1` | Region the requests are signed for |
+  | `ForcePathStyle` | `true` | `{endpoint}/{bucket}/{key}`; `false` for providers that need `{bucket}.{endpoint}` |
+  | `BucketName` | - (`omnichannel-dev` in Development) | Must exist; the application never creates it |
+  | `AccessKeyId`, `SecretAccessKey` | - | Environment (`ObjectStorage__AccessKeyId`, ...) or user-secrets, never `appsettings*.json` |
+  | `UploadUrlLifetime` | `00:05:00` | 1 s to 7 days |
+  | `DownloadUrlLifetime` | `00:15:00` | 1 s to 7 days |
+  | `MaxImageBytes` | `5242880` | 1 to 100 MiB |
+  | `RequestTimeout` | `00:00:10` | Per request to the storage; a failed request is tried once more |
+
+- **CORS of the bucket** (not of the API): the browser sends the upload from the frontend's origin to another origin
+  with a `Content-Type`, so the storage must answer the preflight for `PUT` with that header from that origin. The
+  emulator allows `http://localhost:5173` (dev server) and `http://localhost:4173` (`vite preview`) through
+  `-s3.allowedOrigins` in the compose file. `<img>` needs no CORS. A CSP, when one is added (task 026), must allow the
+  storage origin in `img-src` and `connect-src`.
+- **Switching the provider** (task 025; any S3-compatible service): set `ServiceUrl`, `Region`, `BucketName`, the key
+  pair and - if the provider wants virtual-hosted addressing - `ForcePathStyle=false`; create the bucket **private**;
+  set its CORS for the frontend origin (`PUT`, `GET`; header `content-type` - some services compare header names
+  case-sensitively and browsers send them lower-case); give the key read, write and delete on that bucket only. The
+  application only uses presigned `PUT`/`GET`, `HeadObject`, ranged `GetObject` and `DeleteObject`. The SDK's default
+  request checksums are left on (the emulator accepts them); a provider that rejects them needs
+  `RequestChecksumCalculation` / `ResponseChecksumValidation` = `WHEN_REQUIRED` on the client
+  (`S3ObjectStorage`) - found with Garage in the spike of task 019.
+- **The Workers host has no storage** (it does not call `AddObjectStorage`): products without an image work there,
+  anything that needs the storage throws.
+- **`docker compose --profile app`:** the containerised API reaches the storage at `http://objectstorage:8333`, and
+  the links it hands out carry that address, which a browser on the host cannot resolve. Images work with the API
+  run from the IDE / `dotnet run`; the address for a deployed API is decided in task 025.
+- **Emulator notes:** SeaweedFS 4.48 (`chrislusf/seaweedfs`, Apache-2.0), single process (`weed mini`), only the S3
+  port is published and only on `127.0.0.1`. To start over with an empty bucket:
+  `docker compose -f docker/docker-compose.yml --env-file docker/.env rm -sfv objectstorage` and remove the volume
+  `omnichannel_objectstorage-data`. After changing the keys in `docker/.env`, recreate the container
+  (`up -d --force-recreate objectstorage`) and run the setup script again.
+- **Scripted check:** `powershell -ExecutionPolicy Bypass -File scripts\smoke\task-019.ps1` (needs the emulator up
+  and migration `ProductImage`).
 
 ### Users and token revocation
 

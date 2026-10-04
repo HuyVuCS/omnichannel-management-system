@@ -22,6 +22,7 @@ export function product(overrides: Partial<Product> & Pick<Product, 'productId' 
     isLowStock: false,
     createdAt: '2026-09-30T03:15:00+00:00',
     updatedAt: null,
+    image: null,
     ...overrides,
   };
 }

@@ -1,6 +1,7 @@
 import { combineReducers, configureStore } from '@reduxjs/toolkit';
 import { authReducer } from '@/features/auth/authSlice';
 import { loadSession, saveSession } from '@/features/auth/session';
+import { forgetImageLinks } from '@/features/products/imageLinks';
 import { realtimeReducer } from '@/features/realtime/realtimeSlice';
 import { apiErrorMiddleware } from '@/shared/api/apiErrorBus';
 import { baseApi } from '@/shared/api/baseApi';
@@ -38,6 +39,8 @@ export function createAppStore() {
     saveSession(current);
     if (ended) {
       store.dispatch(baseApi.util.resetApiState());
+      // Image links are credentials of the storage for a few minutes: the next user gets their own.
+      forgetImageLinks();
     }
   });
 

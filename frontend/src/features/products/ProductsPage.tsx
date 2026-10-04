@@ -11,6 +11,7 @@ import { TruncatedText } from '@/shared/components/TruncatedText';
 import { useListQueryState } from '@/shared/hooks/useListQueryState';
 import { formatDate, formatDateTime, formatMoney } from '@/shared/utils/format';
 import { ProductFormModal, type ProductFormState } from './components/ProductFormModal';
+import { ProductThumbnail, THUMBNAIL_SIZE } from './components/ProductThumbnail';
 import { StockStatusTag } from './components/StockStatusTag';
 import { PRODUCT_SORT_FIELDS, useListProductsQuery, type Product } from './productsApi';
 
@@ -26,13 +27,15 @@ const WRITE_ROLES = ['Admin', 'Manager'] as const;
  * language. The table uses the medium size for it: the default cell padding would cost 16 px more per column.
  */
 const WIDTHS = {
-  sku: 124,
-  name: 180,
-  price: 118,
+  // The thumbnail and the cell padding of the medium table (8 px each side), plus room for the header text.
+  image: THUMBNAIL_SIZE + 18,
+  sku: 116,
+  name: 144,
+  price: 112,
   availableStock: 112,
   stockStatus: 104,
   expiryDate: 104,
-  createdAt: 144,
+  createdAt: 136,
 } as const;
 const COLUMNS_WIDTH = Object.values(WIDTHS).reduce((sum, width) => sum + width, 0);
 
@@ -53,6 +56,13 @@ export function ProductsPage() {
   const { sortOrder } = list;
   const columns = useMemo<TableProps<Product>['columns']>(
     () => [
+      {
+        key: 'image',
+        title: t('products.columns.image'),
+        width: WIDTHS.image,
+        // Every role that reads products sees their images.
+        render: (_: unknown, product) => <ProductThumbnail image={product.image} name={product.name} />,
+      },
       {
         key: 'sku',
         dataIndex: 'sku',

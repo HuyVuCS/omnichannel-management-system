@@ -92,6 +92,7 @@
     "stock_limit_exceeded": "Số lượng nhập làm tồn kho vượt quá giới hạn cho phép.",
     "order_conflict": "Mã đơn hàng này đã được dùng trên kênh này với nội dung khác. Hãy tạo số mới cho đơn hàng này.",
     "order_not_found": "Đơn hàng không tồn tại.",
+    "storage_unavailable": "Hiện không kết nối được kho lưu trữ tệp. Vui lòng thử lại sau giây lát.",
     "task_not_found": "Tác vụ xử lý không tồn tại.",
     "task_not_failed": "Tác vụ không còn ở trạng thái thất bại nên không thể thử lại.",
     "retry_source_missing": "Không còn thông điệp gốc của tác vụ để gửi lại.",
@@ -188,7 +189,8 @@
       "price": "Giá",
       "availableStock": "Tồn khả dụng",
       "stockStatus": "Tình trạng",
-      "expiryDate": "Hạn dùng"
+      "expiryDate": "Hạn dùng",
+      "image": "Ảnh"
     },
     "stock": {
       "low": "Sắp hết",
@@ -215,6 +217,26 @@
     },
     "actions": {
       "importStock": "Nhập kho"
+    },
+    "image": {
+      "label": "Ảnh sản phẩm",
+      "none": "Chưa có ảnh",
+      "unavailable": "Không tải được ảnh",
+      "choose": "Chọn ảnh",
+      "remove": "Xoá ảnh",
+      "hint": "JPEG, PNG hoặc WebP, tối đa 5 MB.",
+      "createNote": "Ảnh được thêm sau khi đã lưu sản phẩm.",
+      "saved": "Đã lưu ảnh.",
+      "removed": "Đã xoá ảnh.",
+      "invalid": {
+        "type": "Tệp phải là ảnh JPEG, PNG hoặc WebP.",
+        "empty": "Tệp rỗng.",
+        "size": "Tệp lớn hơn 5 MB."
+      },
+      "uploadFailed": "Kho lưu trữ không nhận tệp tải lên (HTTP {{status}}). Vui lòng thử lại.",
+      "uploadUnreachable": "Không kết nối được kho lưu trữ. Hãy kiểm tra kết nối và thử lại.",
+      "removeConfirmTitle": "Xoá ảnh của sản phẩm này?",
+      "removeConfirmContent": "Ảnh sẽ bị xoá và không thể khôi phục."
     }
   },
   "customers": {
