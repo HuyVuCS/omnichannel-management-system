@@ -9,7 +9,7 @@ namespace Omnichannel.Api.Controllers;
 [ApiController]
 [Route("api/products")]
 [Authorize(Policy = AuthorizationPolicies.AnyStaff)]
-public sealed class ProductsController(IProductService productService) : ControllerBase
+public sealed class ProductsController(IProductService productService, IProductImageService imageService) : ControllerBase
 {
     [HttpGet]
     [ProducesResponseType<PagedResult<ProductResponse>>(StatusCodes.Status200OK)]
@@ -46,4 +46,39 @@ public sealed class ProductsController(IProductService productService) : Control
         UpdateProductRequest request,
         CancellationToken cancellationToken) =>
         Ok(await productService.UpdateAsync(id, request, cancellationToken));
+
+    /// <summary>A link for uploading the product's image straight to the object storage (step 1 of 3: presign, upload, confirm).</summary>
+    [HttpPost("{id:guid}/image/presign")]
+    [Authorize(Policy = AuthorizationPolicies.ManagerOrAdmin)]
+    [ProducesResponseType<PresignProductImageResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<PresignProductImageResponse>> PresignImage(
+        Guid id,
+        PresignProductImageRequest request,
+        CancellationToken cancellationToken) =>
+        Ok(await imageService.PresignAsync(id, request, cancellationToken));
+
+    /// <summary>Confirms an upload: the stored object is checked and becomes the product's image.</summary>
+    [HttpPut("{id:guid}/image")]
+    [Authorize(Policy = AuthorizationPolicies.ManagerOrAdmin)]
+    [ProducesResponseType<ProductResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status503ServiceUnavailable)]
+    public async Task<ActionResult<ProductResponse>> ConfirmImage(
+        Guid id,
+        ConfirmProductImageRequest request,
+        CancellationToken cancellationToken) =>
+        Ok(await imageService.ConfirmAsync(id, request, cancellationToken));
+
+    [HttpDelete("{id:guid}/image")]
+    [Authorize(Policy = AuthorizationPolicies.ManagerOrAdmin)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> RemoveImage(Guid id, CancellationToken cancellationToken)
+    {
+        await imageService.RemoveAsync(id, cancellationToken);
+        return NoContent();
+    }
 }

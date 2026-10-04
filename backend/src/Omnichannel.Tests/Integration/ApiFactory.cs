@@ -35,10 +35,39 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
     private static int _nextRemoteIp;
 
     private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:17").Build();
+    private readonly StorageEmulator _storage = new();
+    private readonly SemaphoreSlim _storageStart = new(1, 1);
+    private bool _storageStarted;
     private readonly Dictionary<string, (Guid UserId, string Email, string SecurityStamp)> _roleUsers = [];
 
     /// <summary>The API test database (for Workers hosts in end-to-end tests).</summary>
     public string DatabaseConnectionString => _postgres.GetConnectionString();
+
+    /// <summary>How long one request of the API to the storage may take in this host (production default: 10 s).</summary>
+    public static readonly TimeSpan StorageRequestTimeout = TimeSpan.FromSeconds(3);
+
+    /// <summary>
+    /// The object storage the API host is configured for, started by the first caller. The host itself never needs it
+    /// to run: only a test that uploads, confirms or removes an image does.
+    /// </summary>
+    public async Task<StorageEmulator> StorageAsync()
+    {
+        await _storageStart.WaitAsync();
+        try
+        {
+            if (!_storageStarted)
+            {
+                await _storage.StartAsync();
+                _storageStarted = true;
+            }
+
+            return _storage;
+        }
+        finally
+        {
+            _storageStart.Release();
+        }
+    }
 
     /// <summary>Everything the API host logged (Serilog), for assertions on what must never be logged.</summary>
     public CapturingLogSink Logs { get; } = new();
@@ -76,6 +105,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
     {
         await DisposeAsync();
         await _postgres.DisposeAsync();
+        await _storage.DisposeAsync();
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -85,6 +115,14 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         builder.UseSetting("ConnectionStrings:Default", _postgres.GetConnectionString());
         builder.UseSetting("Jwt:SigningKey", TestSigningKey);
         builder.UseSetting("TokenRevocation:CacheDuration", RevocationCacheDuration.ToString("c"));
+        // Configuration only: nothing connects to the storage until a test uses an image (StorageAsync starts it).
+        builder.UseSetting("ObjectStorage:ServiceUrl", _storage.ServiceUrl);
+        builder.UseSetting("ObjectStorage:Region", StorageEmulator.Region);
+        builder.UseSetting("ObjectStorage:ForcePathStyle", "true");
+        builder.UseSetting("ObjectStorage:BucketName", StorageEmulator.Bucket);
+        builder.UseSetting("ObjectStorage:AccessKeyId", _storage.AccessKeyId);
+        builder.UseSetting("ObjectStorage:SecretAccessKey", _storage.SecretAccessKey);
+        builder.UseSetting("ObjectStorage:RequestTimeout", StorageRequestTimeout.ToString("c"));
         // Log sources that see request URLs or the realtime traffic are captured at their most talkative level, so the
         // tests can show that the hub's access token (query string) is in none of them.
         builder.UseSetting("Serilog:MinimumLevel:Override:Microsoft.AspNetCore.Hosting.Diagnostics", "Information");

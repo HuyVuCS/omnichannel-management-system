@@ -172,4 +172,16 @@
     <value>Loại sự kiện</value>
     <comment>System event filter.</comment>
   </data>
+  <data name="contentType" xml:space="preserve">
+    <value>Loại ảnh</value>
+    <comment>Product image upload.</comment>
+  </data>
+  <data name="sizeBytes" xml:space="preserve">
+    <value>Kích thước ảnh</value>
+    <comment>Product image upload.</comment>
+  </data>
+  <data name="objectKey" xml:space="preserve">
+    <value>Khoá tải lên</value>
+    <comment>Product image confirmation.</comment>
+  </data>
 </root>

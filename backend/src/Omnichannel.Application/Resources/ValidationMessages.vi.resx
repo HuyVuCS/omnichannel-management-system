@@ -104,4 +104,24 @@
     <value>Khoảng thời gian từ '{From}' đến '{PropertyName}' không được dài quá {MaxDays} ngày.</value>
     <comment>Dashboard range from/to; {From} is the field name of from.</comment>
   </data>
+  <data name="ImageTypeNotAllowed" xml:space="preserve">
+    <value>Ảnh phải là tệp JPEG, PNG hoặc WebP.</value>
+    <comment>Product image: declared content type (presign) or the content type of the uploaded object (confirm).</comment>
+  </data>
+  <data name="ImageTooLarge" xml:space="preserve">
+    <value>Ảnh không được lớn hơn {MaxSize}.</value>
+    <comment>Product image: declared size (presign) or the size of the uploaded object (confirm); {MaxSize} e.g. 5 MB.</comment>
+  </data>
+  <data name="ImageKeyInvalid" xml:space="preserve">
+    <value>Đây không phải khoá tải lên của sản phẩm này.</value>
+    <comment>Product image confirm: the key is malformed or belongs to another product.</comment>
+  </data>
+  <data name="ImageNotUploaded" xml:space="preserve">
+    <value>Chưa có tệp nào được tải lên cho khoá này.</value>
+    <comment>Product image confirm: no object under the key.</comment>
+  </data>
+  <data name="ImageContentMismatch" xml:space="preserve">
+    <value>Nội dung tệp không phải là ảnh thuộc loại đã khai báo khi tải lên.</value>
+    <comment>Product image confirm: the first bytes are not the signature of the stored content type.</comment>
+  </data>
 </root>
