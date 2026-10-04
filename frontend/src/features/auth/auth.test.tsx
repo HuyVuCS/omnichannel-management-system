@@ -214,6 +214,8 @@ describe('session end', () => {
       });
       expect(storedSession()).toBeNull();
       await waitFor(() => expect(location()).toBe('/login?returnUrl=%2Freports'));
+      // The session check of the first render may still be on its way: the clock was jumped, the answer was not.
+      await settled();
     } finally {
       vi.useRealTimers();
     }

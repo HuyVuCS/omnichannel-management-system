@@ -214,7 +214,9 @@ npm run dev     # http://localhost:5173 - needs the API on http://localhost:5080
   its own origin (no CORS involved).
 - Sign in with a user of the API (the bootstrap admin, or one created on the Users page).
 - Other scripts: `npm run typecheck`, `npm run lint` (ESLint + Prettier check), `npm test` (Vitest, no API needed: requests
-  are answered by MSW; **a test that ends with a request still unanswered fails**, see "Tests" below), `npm run build` (output in `frontend/dist`), `npm run preview`, `npm run format`,
+  are answered by MSW; **a test that ends with a request still unanswered fails**, see "Tests" below), `npm run test:slow`
+  (the same suite with every answer delayed - for any task that adds tests with requests, see "Tests" below),
+  `npm run build` (output in `frontend/dist`), `npm run preview`, `npm run format`,
   `npm run measure` (after a build: the first-load set - entry chunk and everything it imports statically - per file
   and in total, raw and gzip; `scripts/measure-bundle.mjs`).
 - Structure: `src/app` (store, router, providers, layout), `src/shared` (API layer, components, i18n, helpers),
@@ -333,6 +335,15 @@ npm run dev     # http://localhost:5173 - needs the API on http://localhost:5080
   a test on what the last answer puts on screen (`findBy…`, `waitFor`), not right after the click that sends a
   request - a request in flight is answered while the next test runs. A test whose subject is a request that is never
   answered calls `allowUnansweredRequests('<reason>')`; that is the only opt-out.
+  - **`npm run test:slow`** runs the same suite with every answer 120 ms late (`TEST_ANSWER_DELAY_MS`, read by
+    `pendingRequests.ts`; unset = no delay; `npm run test:slow -- <file>` for one file). On a quiet machine answers
+    are instant, so a test that depends on that - ends with a request in flight, counts requests before an earlier
+    refetch was answered - is red only now and then, under load; with the delay it is red in every run. **Run it for
+    every task that adds tests with requests**; it must be green. The delay is real time: a fake clock does not skip it.
+  - A test that counts requests starts counting on an idle cache: `await settled(store)` (`test/interactions.ts`)
+    waits until no request is on its way and no query or mutation is pending. An invalidation waits for pending
+    requests and then refetches (the resync after every hub connect does), so "the page is rendered" is not "nothing
+    more will be asked".
 - Channels: the list says for every channel whether stock is pushed to it at all (`stockSyncEnabled`, "API
   conventions"). The channel detail shows the channel, a link to its stock-sync tasks, and the products mapped on it
   (search, sort by SKU / created, paging - all in the address). Manager and Admin map a product and change a mapping

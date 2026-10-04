@@ -5,16 +5,29 @@ import { unansweredRequests } from './pendingRequests';
 import type { renderApp } from './renderApp';
 
 export type AppUser = ReturnType<typeof renderApp>['user'];
+type AppStore = ReturnType<typeof renderApp>['store'];
 
 /**
  * The page has what it asked for: no request is on its way, and nothing on screen is still loading (a table, a button,
  * a spinner). A test whose last step sends a request ends with this - or with the text that request puts on screen -
  * so that it never ends with a request in flight (the setup fails such a test, see `pendingRequests.ts`).
+ *
+ * With the `store`, the cache is idle too: no query or mutation is pending. That is what a test needs before it counts
+ * requests: an invalidation waits while a request is pending (RTK Query's delayed invalidation) and starts its
+ * refetches in the dispatch that ends the last one - so once nothing is pending, every invalidation so far has been
+ * answered.
  */
-export async function settled() {
+export async function settled(store?: AppStore) {
   await waitFor(() => {
     expect(unansweredRequests()).toEqual([]);
     expect(document.querySelector('.ant-spin-spinning, .ant-btn-loading')).not.toBeInTheDocument();
+    if (store) {
+      const { queries, mutations } = store.getState().api;
+      const pending = [...Object.values(queries), ...Object.values(mutations)].filter(
+        (entry) => entry?.status === 'pending',
+      );
+      expect(pending).toEqual([]);
+    }
   });
 }
 
