@@ -646,7 +646,10 @@ uses a local emulator (SeaweedFS, service `objectstorage` of `docker/docker-comp
      `products/{productId}/{uuidv7}`. Nothing is written to the database; 404 for an unknown product.
   2. The client sends the file to `uploadUrl` with exactly `method` and `headers` - **to the storage, without the
      API's `Authorization` header**. The link is valid for 5 minutes and signs the `Content-Type`; the storage
-     rejects another type, a changed signature and an expired link (403).
+     rejects another type, a changed signature and an expired link (403). The link stays valid for its **whole**
+     lifetime, also after the confirmation of step 3: a second `PUT` with it replaces the confirmed object with
+     content nobody checked (the stored size is then stale). Only a Manager/Admin holds such a link; task 026 closes
+     this by copying the object to a final key at confirmation.
   3. `PUT /api/products/{id}/image` with `{ objectKey }` **confirms**. A presigned upload cannot limit size or
      content, so the API checks the stored object, in this order and outside any transaction: the key has the exact
      generated form and the prefix of **this** product; the object exists; it is not larger than the limit; its
@@ -683,18 +686,24 @@ uses a local emulator (SeaweedFS, service `objectstorage` of `docker/docker-comp
   | `AccessKeyId`, `SecretAccessKey` | - | Environment (`ObjectStorage__AccessKeyId`, ...) or user-secrets, never `appsettings*.json` |
   | `UploadUrlLifetime` | `00:05:00` | 1 s to 7 days |
   | `DownloadUrlLifetime` | `00:15:00` | 1 s to 7 days |
-  | `MaxImageBytes` | `5242880` | 1 to 100 MiB |
+  | `MaxImageBytes` | `5242880` | 1 to 100 MiB. The frontend's early size check is the constant `MAX_IMAGE_BYTES` (`frontend/src/features/products/imageUpload.ts`): **raising** this setting needs that constant raised too, or the client refuses files the server would take. A lower setting needs nothing: the presign answers 400 with the configured limit |
   | `RequestTimeout` | `00:00:10` | Per request to the storage; a failed request is tried once more |
 
 - **CORS of the bucket** (not of the API): the browser sends the upload from the frontend's origin to another origin
   with a `Content-Type`, so the storage must answer the preflight for `PUT` with that header from that origin. The
-  emulator allows `http://localhost:5173` (dev server) and `http://localhost:4173` (`vite preview`) through
-  `-s3.allowedOrigins` in the compose file. `<img>` needs no CORS. A CSP, when one is added (task 026), must allow the
-  storage origin in `img-src` and `connect-src`.
+  emulator allows the dev server (port 5173) and `vite preview` (port 4173), each as `http://localhost:…` and as
+  `http://127.0.0.1:…`, through `-s3.allowedOrigins` in the compose file - an origin is compared as text, so the two
+  names of the local machine are two origins. A container that already runs keeps its old list: recreate it once
+  (`up -d --force-recreate objectstorage`; the bucket and its objects stay). `<img>` needs no CORS. A CSP, when one is
+  added (task 026), must allow the storage origin in `img-src` and `connect-src`.
 - **Switching the provider** (task 025; any S3-compatible service): set `ServiceUrl`, `Region`, `BucketName`, the key
   pair and - if the provider wants virtual-hosted addressing - `ForcePathStyle=false`; create the bucket **private**;
   set its CORS for the frontend origin (`PUT`, `GET`; header `content-type` - some services compare header names
-  case-sensitively and browsers send them lower-case); give the key read, write and delete on that bucket only. The
+  case-sensitively and browsers send them lower-case); give the key read, write, delete **and list** on that bucket
+  only. List is needed although the application never lists: several S3-compatible services answer the `HEAD` of a
+  missing object with **403** instead of 404 when the key may not list the bucket, and the confirmation would then
+  report "not uploaded" as a 503 `storage_unavailable`. The provider check of task 025 must show a 404 for a `HEAD` of
+  a key that does not exist. The
   application only uses presigned `PUT`/`GET`, `HeadObject`, ranged `GetObject` and `DeleteObject`. The SDK's default
   request checksums are left on (the emulator accepts them); a provider that rejects them needs
   `RequestChecksumCalculation` / `ResponseChecksumValidation` = `WHEN_REQUIRED` on the client

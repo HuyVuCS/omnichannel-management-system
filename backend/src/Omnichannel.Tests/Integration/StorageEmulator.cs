@@ -26,8 +26,12 @@ public sealed class StorageEmulator : IAsyncDisposable
     public const string Bucket = "omnichannel-test";
     public const string Region = "us-east-1";
 
-    /// <summary>The origin the bucket's CORS allows, as the development compose file does for the dev server.</summary>
-    public const string AllowedOrigin = "http://localhost:5173";
+    /// <summary>
+    /// The origins the bucket's CORS allows, as the development compose file does: the dev server and <c>vite preview</c>,
+    /// each under both names of the local machine.
+    /// </summary>
+    public static readonly IReadOnlyList<string> AllowedOrigins =
+        ["http://localhost:5173", "http://localhost:4173", "http://127.0.0.1:5173", "http://127.0.0.1:4173"];
 
     private const int S3Port = 8333;
 
@@ -44,7 +48,7 @@ public sealed class StorageEmulator : IAsyncDisposable
 
         _container = new ContainerBuilder(Image)
             .WithCommand(
-                "mini", "-dir=/data", $"-bucket={Bucket}", $"-s3.allowedOrigins={AllowedOrigin}",
+                "mini", "-dir=/data", $"-bucket={Bucket}", $"-s3.allowedOrigins={string.Join(',', AllowedOrigins)}",
                 "-admin.ui=false", "-webdav=false", "-s3.port.iceberg=0")
             .WithEnvironment("AWS_ACCESS_KEY_ID", AccessKeyId)
             .WithEnvironment("AWS_SECRET_ACCESS_KEY", SecretAccessKey)

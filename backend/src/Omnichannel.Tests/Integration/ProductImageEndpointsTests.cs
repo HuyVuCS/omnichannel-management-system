@@ -245,12 +245,23 @@ public sealed class ProductImageEndpointsTests(ApiFactory factory) : IAsyncLifet
         var product = await CreateProductAsync();
         var presigned = await PresignAsync(product.ProductId, ProductImageRules.Png, 10);
 
-        using var allowed = await PreflightAsync(presigned.UploadUrl, StorageEmulator.AllowedOrigin);
-        using var other = await PreflightAsync(presigned.UploadUrl, "http://evil.example");
+        // The dev server and `vite preview`, each as localhost and as 127.0.0.1 (the project's rule for local addresses).
+        Assert.Contains("http://127.0.0.1:5173", StorageEmulator.AllowedOrigins);
+        foreach (var origin in StorageEmulator.AllowedOrigins)
+        {
+            using var allowed = await PreflightAsync(presigned.UploadUrl, origin);
 
-        Assert.True(allowed.IsSuccessStatusCode);
-        Assert.Equal(StorageEmulator.AllowedOrigin, Assert.Single(allowed.Headers.GetValues("Access-Control-Allow-Origin")));
-        Assert.False(other.Headers.Contains("Access-Control-Allow-Origin"));
+            Assert.True(allowed.IsSuccessStatusCode, origin);
+            Assert.Equal(origin, Assert.Single(allowed.Headers.GetValues("Access-Control-Allow-Origin")));
+        }
+
+        // Another host, and an allowed host on a port that is not: an origin is compared as a whole.
+        foreach (var origin in new[] { "http://evil.example", "http://127.0.0.1:8080" })
+        {
+            using var other = await PreflightAsync(presigned.UploadUrl, origin);
+
+            Assert.False(other.Headers.Contains("Access-Control-Allow-Origin"), origin);
+        }
     }
 
     // ---- confirm ----------------------------------------------------------------------------------------------
