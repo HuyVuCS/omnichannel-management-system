@@ -13,19 +13,19 @@ public sealed record OrderMessage(MessageEnvelope Envelope, Guid TaskId, OrderCr
 /// </summary>
 public static class OrderMessageParser
 {
-    public static bool TryParse(ReadOnlyMemory<byte> body, out OrderMessage? message, out string? poisonReason)
+    public static bool TryParse(ReadOnlyMemory<byte> body, out OrderMessage? message, out MessageRejection? rejection)
     {
         message = null;
-        poisonReason = Validate(body, out var parsed);
-        if (poisonReason is null)
+        rejection = Validate(body, out var parsed);
+        if (rejection is null)
         {
             message = parsed;
         }
 
-        return poisonReason is null;
+        return rejection is null;
     }
 
-    private static string? Validate(ReadOnlyMemory<byte> body, out OrderMessage? message)
+    private static MessageRejection? Validate(ReadOnlyMemory<byte> body, out OrderMessage? message)
     {
         message = null;
 
@@ -36,32 +36,34 @@ public static class OrderMessageParser
         }
         catch (JsonException exception)
         {
-            return $"Body is not a valid message envelope: {exception.Message}";
+            return new(MessageRejectionCodes.InvalidJson, $"Body is not a valid message envelope: {exception.Message}");
         }
 
         if (envelope is null)
         {
-            return "Body is empty (null envelope).";
+            return new(MessageRejectionCodes.EmptyBody, "Body is empty (null envelope).");
         }
 
         if (envelope.EventType != EventTypes.OrderCreated)
         {
-            return $"Unexpected event type '{envelope.EventType}'; expected '{EventTypes.OrderCreated}'.";
+            return new(
+                MessageRejectionCodes.UnexpectedEventType,
+                $"Unexpected event type '{envelope.EventType}'; expected '{EventTypes.OrderCreated}'.");
         }
 
         if (envelope.TaskId is not { } taskId || taskId == Guid.Empty)
         {
-            return "Envelope has no taskId.";
+            return new(MessageRejectionCodes.MissingTaskId, "Envelope has no taskId.");
         }
 
         if (string.IsNullOrWhiteSpace(envelope.MessageId) || string.IsNullOrWhiteSpace(envelope.CorrelationId))
         {
-            return "Envelope has no messageId or correlationId.";
+            return new(MessageRejectionCodes.MissingMessageIds, "Envelope has no messageId or correlationId.");
         }
 
         if (envelope.Payload.ValueKind != JsonValueKind.Object)
         {
-            return "Envelope payload is not a JSON object.";
+            return new(MessageRejectionCodes.PayloadNotObject, "Envelope payload is not a JSON object.");
         }
 
         OrderCreatedPayload? order;
@@ -71,37 +73,40 @@ public static class OrderMessageParser
         }
         catch (JsonException exception)
         {
-            return $"Payload is not a valid order: {exception.Message}";
+            return new(MessageRejectionCodes.InvalidPayload, $"Payload is not a valid order: {exception.Message}");
         }
 
         if (order is null)
         {
-            return "Payload is empty.";
+            return new(MessageRejectionCodes.EmptyPayload, "Payload is empty.");
         }
 
         if (order.TaskId != taskId)
         {
-            return $"Payload taskId {order.TaskId} does not match envelope taskId {taskId}.";
+            return new(
+                MessageRejectionCodes.TaskIdMismatch, $"Payload taskId {order.TaskId} does not match envelope taskId {taskId}.");
         }
 
         if (order.ChannelId == Guid.Empty || order.CustomerId == Guid.Empty || string.IsNullOrWhiteSpace(order.ExternalOrderId))
         {
-            return "Payload lacks channelId, customerId or externalOrderId.";
+            return new(MessageRejectionCodes.MissingOrderFields, "Payload lacks channelId, customerId or externalOrderId.");
         }
 
         if (order.Items is not { Count: > 0 } items)
         {
-            return "Payload has no items.";
+            return new(MessageRejectionCodes.NoItems, "Payload has no items.");
         }
 
         if (items.Any(i => i is null || i.ProductId == Guid.Empty || i.Stock <= 0 || i.UnitPrice < 0))
         {
-            return "Payload has an item without productId, with a non-positive stock or a negative unit price.";
+            return new(
+                MessageRejectionCodes.InvalidItem,
+                "Payload has an item without productId, with a non-positive stock or a negative unit price.");
         }
 
         if (items.Select(i => i.ProductId).Distinct().Count() != items.Count)
         {
-            return "Payload contains the same product more than once.";
+            return new(MessageRejectionCodes.DuplicateProduct, "Payload contains the same product more than once.");
         }
 
         message = new OrderMessage(envelope, taskId, order);

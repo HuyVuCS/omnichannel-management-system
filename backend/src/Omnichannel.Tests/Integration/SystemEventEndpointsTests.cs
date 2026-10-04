@@ -336,13 +336,13 @@ public sealed class SystemEventEndpointsTests(ApiFactory factory)
         },
         {
             OrderProcessingEvents.MessageRejected,
-            """{"messageId":"m-1","reason":"Body is not a valid message envelope: 'p' is an invalid start of a value. Path: $ | LineNumber: 0 | BytePositionInLine: 0."}""",
-            """{"messageId":"m-1"}"""
+            """{"messageId":"m-1","reasonCode":"invalid_json","reason":"Body is not a valid message envelope: 'p' is an invalid start of a value. Path: $ | LineNumber: 0 | BytePositionInLine: 0."}""",
+            """{"messageId":"m-1","reasonCode":"invalid_json"}"""
         },
         {
             StockSyncEvents.MessageRejected,
-            """{"messageId":"m-2","reason":"Unexpected event type 'DROP TABLE'; expected 'inventory.changed' or 'stock.sync.requested'.","queue":"stock.sync.website"}""",
-            """{"messageId":"m-2","queue":"stock.sync.website"}"""
+            """{"messageId":"m-2","reasonCode":"unexpected_event_type","reason":"Unexpected event type 'DROP TABLE'; expected 'inventory.changed' or 'stock.sync.requested'.","queue":"stock.sync.website"}""",
+            """{"messageId":"m-2","reasonCode":"unexpected_event_type","queue":"stock.sync.website"}"""
         },
         {
             ProcessingEvents.Failed,
@@ -416,8 +416,26 @@ public sealed class SystemEventEndpointsTests(ApiFactory factory)
         // Nowhere in the answer, under any name.
         Assert.DoesNotContain("dropped", body);
         Assert.DoesNotContain("lastError", body);
-        Assert.DoesNotContain("reason", body);
+        // The text of a rejection: neither the field ("reasonCode" is the one that is returned) nor what it says.
+        Assert.DoesNotContain("\"reason\"", body);
+        Assert.DoesNotContain("Body is not", body);
+        Assert.DoesNotContain("DROP TABLE", body);
         Assert.DoesNotContain("secret", body);
+    }
+
+    [Theory]
+    [InlineData(OrderProcessingEvents.MessageRejected, """{"messageId":"m-1","reason":"Envelope has no taskId."}""", """{"messageId":"m-1"}""")]
+    [InlineData(StockSyncEvents.MessageRejected, """{"messageId":"m-2","reason":"Envelope has no taskId.","queue":"stock.sync.pos"}""", """{"messageId":"m-2","queue":"stock.sync.pos"}""")]
+    public async Task A_rejected_message_stored_before_the_reason_code_existed_has_none(string eventType, string payload, string expectedDetails)
+    {
+        var correlationId = NewCorrelationId();
+        await SeedRawAsync(eventType, correlationId, T0, payload);
+
+        var body = await _admin.GetStringAsync($"/api/system-events?correlationId={correlationId}");
+
+        var item = Assert.Single(JsonSerializer.Deserialize<PagedResult<SystemEventResponse>>(body, TestData.Json)!.Items);
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse(expectedDetails), item.Details), $"details: {item.Details?.ToJsonString()}");
+        Assert.DoesNotContain("reason", body);
     }
 
     [Fact]

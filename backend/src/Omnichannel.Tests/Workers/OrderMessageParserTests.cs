@@ -46,7 +46,7 @@ public sealed class OrderMessageParserTests
 
         Assert.False(parsed);
         Assert.Null(message);
-        Assert.False(string.IsNullOrWhiteSpace(reason));
+        Assert.False(string.IsNullOrWhiteSpace(reason?.Reason));
     }
 
     private static string Payload(Guid? taskId = null, Guid? customerId = null, OrderCreatedItem[]? items = null) =>

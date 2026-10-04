@@ -316,8 +316,8 @@ describe('logs: rows', () => {
       IMPORT_SUMMARY,
       'Yêu cầu 100, khả dụng 4',
       'Đơn WEB-20261003-AB12CD đã tồn tại',
-      'Thông điệp msg-17 bị từ chối',
-      'Thông điệp msg-18 bị từ chối ở stock.sync.pos',
+      'Thông điệp msg-17 bị từ chối: không phải JSON hợp lệ',
+      'Thông điệp msg-18 bị từ chối ở stock.sync.pos: tác vụ thuộc kênh khác',
       'Đồng bộ tồn kho · lần 3 · channel_rejected',
       'Đồng bộ tồn kho: yêu cầu chạy lại',
       'order.created không gửi được sau 10 lần',
@@ -358,8 +358,8 @@ describe('logs: rows', () => {
       'Document PN/2026-0042 · 2 lines · 1.500 units',
       'Requested 100, available 4',
       'Order WEB-20261003-AB12CD already exists',
-      'Message msg-17 rejected',
-      'Message msg-18 rejected on stock.sync.pos',
+      'Message msg-17 rejected: not valid JSON',
+      'Message msg-18 rejected on stock.sync.pos: task belongs to another channel',
       'Stock sync · attempt 3 · channel_rejected',
       'Stock sync: retry requested',
       'order.created not published after 10 attempts',
@@ -484,6 +484,51 @@ describe('logs: rows', () => {
       'Vai trò Auditor',
     ]);
     expect(columnTexts('Người thực hiện')).toEqual(Array.from({ length: 7 }, () => '—'));
+  });
+
+  it('says why a message was rejected: the label of its reason code, an unknown code as it is, a dash without one', async () => {
+    const rejected = (logId: number, eventType: string, details: Record<string, unknown>) =>
+      systemEvent({ logId, level: 'Error', eventType, details });
+    serveSystemEvents([
+      rejected(6, 'order.message_rejected', { messageId: 'm-6', reasonCode: 'unknown_task' }),
+      // A code of a newer API.
+      rejected(5, 'order.message_rejected', { messageId: 'm-5', reasonCode: 'signature_invalid' }),
+      // Written before the code existed.
+      rejected(4, 'order.message_rejected', { messageId: 'm-4' }),
+      rejected(3, 'stock_sync.message_rejected', {
+        messageId: 'm-3',
+        reasonCode: 'task_mismatch',
+        queue: 'stock.sync.pos',
+      }),
+      rejected(2, 'stock_sync.message_rejected', {
+        messageId: 'm-2',
+        reasonCode: 'quota_exceeded',
+        queue: 'stock.sync.pos',
+      }),
+      rejected(1, 'stock_sync.message_rejected', { messageId: 'm-1', queue: 'stock.sync.pos' }),
+    ]);
+    const { user } = renderLogs(BASE, adminUser);
+    await screen.findByText('Thông điệp m-6 bị từ chối: tác vụ không tồn tại');
+
+    expect(columnTexts('Nội dung')).toEqual([
+      'Thông điệp m-6 bị từ chối: tác vụ không tồn tại',
+      'Thông điệp m-5 bị từ chối: signature_invalid',
+      'Thông điệp m-4 bị từ chối: —',
+      'Thông điệp m-3 bị từ chối ở stock.sync.pos: tác vụ không khớp với thông điệp',
+      'Thông điệp m-2 bị từ chối ở stock.sync.pos: quota_exceeded',
+      'Thông điệp m-1 bị từ chối ở stock.sync.pos: —',
+    ]);
+
+    await switchLanguage(user, 'EN');
+    await screen.findByText('Message m-6 rejected: task does not exist');
+    expect(columnTexts('Summary')).toEqual([
+      'Message m-6 rejected: task does not exist',
+      'Message m-5 rejected: signature_invalid',
+      'Message m-4 rejected: —',
+      'Message m-3 rejected on stock.sync.pos: task does not match the message',
+      'Message m-2 rejected on stock.sync.pos: quota_exceeded',
+      'Message m-1 rejected on stock.sync.pos: —',
+    ]);
   });
 
   it('keeps a row inside a 1280 px window', async () => {
@@ -765,7 +810,7 @@ describe('logs: refresh and errors', () => {
     state.items = [orderRejectedEvent, importedEvent];
     await user.click(screen.getByRole('button', { name: /Làm mới/ }));
 
-    expect(await screen.findByText('Thông điệp msg-17 bị từ chối')).toBeInTheDocument();
+    expect(await screen.findByText('Thông điệp msg-17 bị từ chối: không phải JSON hợp lệ')).toBeInTheDocument();
     expect(rows()).toHaveLength(2);
   });
 

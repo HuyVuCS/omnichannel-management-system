@@ -161,7 +161,7 @@ internal sealed class OrderReservationService(
         string? messageId,
         string? correlationId,
         Guid? taskId,
-        string reason,
+        MessageRejection rejection,
         string workerName,
         CancellationToken cancellationToken)
     {
@@ -173,7 +173,7 @@ internal sealed class OrderReservationService(
             taskId,
             orderId: null,
             workerName,
-            MessageJson.Serialize(new { messageId, reason }),
+            MessageJson.Serialize(new { messageId, reasonCode = rejection.Code, reason = rejection.Reason }),
             timeProvider.GetUtcNow()));
         await dbContext.SaveChangesAsync(cancellationToken);
     }

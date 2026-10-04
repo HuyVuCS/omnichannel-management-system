@@ -254,9 +254,14 @@ public sealed partial class OrderWorkerTests(WorkersFixture fixture) : IAsyncLif
         var logs = await fixture.WithDbAsync(db => db.SystemEventLogs.AsNoTracking()
             .Where(l => l.EventType == OrderProcessingEvents.MessageRejected)
             .ToListAsync());
-        var rejectedIds = logs.Select(l => JsonNode.Parse(l.Payload!)!["messageId"]?.GetValue<string>()).ToList();
-        Assert.Contains(invalidJsonId, rejectedIds);
-        Assert.Contains(unknownTaskMessageId, rejectedIds);
+        // Stored: the code next to the text (task 019 A2). Other tests of the collection reject messages too.
+        var rejected = logs
+            .Select(l => JsonNode.Parse(l.Payload!)!)
+            .Where(p => p["messageId"]?.GetValue<string>() is { } id && (id == invalidJsonId || id == unknownTaskMessageId))
+            .ToDictionary(p => p["messageId"]!.GetValue<string>(), p => (Code: p["reasonCode"]?.GetValue<string>(), Reason: p["reason"]?.GetValue<string>()));
+        Assert.Equal(MessageRejectionCodes.InvalidJson, rejected[invalidJsonId].Code);
+        Assert.Equal(MessageRejectionCodes.UnknownTask, rejected[unknownTaskMessageId].Code);
+        Assert.All(rejected.Values, r => Assert.False(string.IsNullOrWhiteSpace(r.Reason)));
         Assert.All(logs, l => Assert.Equal((SystemEventLevel.Error, OrderMessageHandler.WorkerName), (l.Level, l.WorkerName)));
         Assert.Equal(ordersBefore, await fixture.WithDbAsync(db => db.Orders.CountAsync()));
         Assert.False(await fixture.WithDbAsync(db => db.ProcessingAttempts.AnyAsync(a => a.TaskId == unknownTaskId)));

@@ -765,6 +765,27 @@
       "user_unlocked": "User unlocked",
       "user_password_reset": "Password reset"
     },
+    "rejection": {
+      "invalid_json": "not valid JSON",
+      "empty_body": "empty body",
+      "unexpected_event_type": "event type not handled by this queue",
+      "missing_task_id": "no task ID",
+      "missing_message_ids": "no message ID or correlation ID",
+      "message_ids_too_long": "message ID or correlation ID too long",
+      "payload_not_object": "payload is not a JSON object",
+      "invalid_payload": "payload cannot be read",
+      "empty_payload": "empty payload",
+      "task_id_mismatch": "payload and envelope name different tasks",
+      "missing_order_fields": "order without channel, customer or order number",
+      "no_items": "order without items",
+      "invalid_item": "invalid order item",
+      "duplicate_product": "product repeated in the order",
+      "missing_product_id": "no product ID",
+      "missing_sync_target": "no channel or product ID",
+      "unknown_task": "task does not exist",
+      "task_mismatch": "task does not match the message",
+      "task_of_other_channel": "task belongs to another channel"
+    },
     "summary": {
       "inventory_imported": "Document {{referenceId}} · {{itemCount}} lines · {{totalQuantity}} units",
       "order_insufficient_stock": {
@@ -772,8 +793,8 @@
         "many": "{{products}} products short of stock"
       },
       "order_already_exists": "Order {{externalOrderId}} already exists",
-      "order_message_rejected": "Message {{messageId}} rejected",
-      "stock_sync_message_rejected": "Message {{messageId}} rejected on {{queue}}",
+      "order_message_rejected": "Message {{messageId}} rejected: {{reason}}",
+      "stock_sync_message_rejected": "Message {{messageId}} rejected on {{queue}}: {{reason}}",
       "processing_failed": "{{taskType}} · attempt {{attemptNo}} · {{errorCode}}",
       "processing_retry_requested": "{{taskType}}: retry requested",
       "outbox_publish_failed": "{{eventType}} not published after {{publishAttempts}} attempts",

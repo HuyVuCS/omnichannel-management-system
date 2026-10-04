@@ -37,8 +37,9 @@ public static class SystemEventDetails
             [OrderProcessingEvents.InsufficientStock] = ["orderId", "taskId", "items"],
             [OrderProcessingEvents.OrderAlreadyExists] = ["taskId", "orderId", "externalOrderId"],
             // Not "reason": it can quote the JSON parser's exception and values of the rejected message (its event type).
-            [OrderProcessingEvents.MessageRejected] = ["messageId"],
-            [StockSyncEvents.MessageRejected] = ["messageId", "queue"],
+            // "reasonCode" is one of MessageRejectionCodes; rows written before task 019 have none.
+            [OrderProcessingEvents.MessageRejected] = ["messageId", "reasonCode"],
+            [StockSyncEvents.MessageRejected] = ["messageId", "reasonCode", "queue"],
             // "errorMessage" is the attempt's message, sanitised when it is stored (doc §5.1).
             [ProcessingEvents.Failed] = ["taskId", "taskType", "attemptNo", "errorCode", "errorMessage", "queue"],
             [ProcessingEvents.RetryRequested] =

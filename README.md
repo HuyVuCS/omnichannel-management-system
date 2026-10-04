@@ -536,8 +536,8 @@ page; nothing in the API writes, changes or deletes an event.
   | `inventory.imported` | Information | `referenceId`, `itemCount`, `totalQuantity` |
   | `order.insufficient_stock` | Warning | `orderId`, `taskId`, `items` (`productId`, `requested`, `available` per line) |
   | `order.already_exists` | Warning | `taskId`, `orderId`, `externalOrderId` |
-  | `order.message_rejected` | Error | `messageId` |
-  | `stock_sync.message_rejected` | Error | `messageId`, `queue` |
+  | `order.message_rejected` | Error | `messageId`, `reasonCode` |
+  | `stock_sync.message_rejected` | Error | `messageId`, `reasonCode`, `queue` |
   | `processing.failed` | Error | `taskId`, `taskType`, `attemptNo`, `errorCode`, `errorMessage` (the attempt's sanitised message), `queue` |
   | `processing.retry_requested` | Information | `taskId`, `taskType`, `requestedBy`, `previousMessageId`, `newMessageId`, `attemptBudgetStart` |
   | `outbox.publish_failed` | Error | `outboxEventId`, `eventType`, `publishAttempts` |
@@ -549,6 +549,34 @@ page; nothing in the API writes, changes or deletes an event.
   Never returned: `lastError` of `outbox.publish_failed` (broker or exception text) and `reason` of the two
   `…message_rejected` events (it can quote the JSON parser's exception and values of the rejected message). Both stay
   in the database and in the Workers log for whoever operates the system.
+- **`reasonCode` of a rejected message** (`MessageRejectionCodes` in `Omnichannel.Application`, stored next to the
+  text `reason`): one code per way a worker rejects a message. The Logs page shows its label (`logs.rejection.*`),
+  an unknown code as it is, and "—" for a row written before the code existed.
+
+  | `reasonCode` | The message … | Worker |
+  | --- | --- | --- |
+  | `invalid_json` | is not JSON, or not the JSON of an envelope | both |
+  | `empty_body` | is the JSON value `null` | both |
+  | `unexpected_event_type` | has an event type the queue does not handle | both |
+  | `missing_task_id` | names no task (`order.created`, `stock.sync.requested`) | both |
+  | `missing_message_ids` | has no `messageId` or no `correlationId` | both |
+  | `message_ids_too_long` | has a `messageId` or `correlationId` of more than 100 characters | stock sync |
+  | `payload_not_object` | has a payload that is not a JSON object | both |
+  | `invalid_payload` | has a payload that cannot be read as the payload of its event type | both |
+  | `empty_payload` | has an empty payload (kept as a guard; no message reaches it) | both |
+  | `task_id_mismatch` | names one task in the envelope and another in the payload | both |
+  | `missing_order_fields` | is an order without channel, customer or external order id | order |
+  | `no_items` | is an order without items | order |
+  | `invalid_item` | has an item without product, with a quantity ≤ 0 or a negative price | order |
+  | `duplicate_product` | has the same product on more than one item | order |
+  | `missing_product_id` | is an inventory change without a product | stock sync |
+  | `missing_sync_target` | is a stock-sync request without channel or product | stock sync |
+  | `unknown_task` | names a task that does not exist | both |
+  | `task_mismatch` | names a task that is not a stock-sync task for its product and channel | stock sync |
+  | `task_of_other_channel` | names a task of another channel than the queue it arrived on | stock sync |
+
+  A new rejection path gets its own constant (listed in `MessageRejectionCodes.All`), a case in
+  `MessageRejectionTests` and a label in `vi.json` / `en.json` + `REJECTION_CODES` (`features/logs/eventSummary.ts`).
 - **`actorEmail` / `targetEmail`:** the e-mail address of the user named by `actorUserId`, `requestedBy` or
   `acknowledgedBy`, and by `targetUserId`. A value that is no user id (`system`, `system:order-worker`) or names a
   user that does not exist is null. Read from the returned `details` only.

@@ -67,7 +67,7 @@ export const orderRejectedEvent = systemEvent({
   createdAt: new Date(2026, 9, 3, 9, 0).toISOString(),
   correlationId: 'corr-poison-1',
   workerName: 'OrderWorker',
-  details: { messageId: 'msg-17' },
+  details: { messageId: 'msg-17', reasonCode: 'invalid_json' },
 });
 
 export const syncRejectedEvent = systemEvent({
@@ -76,7 +76,7 @@ export const syncRejectedEvent = systemEvent({
   eventType: 'stock_sync.message_rejected',
   createdAt: new Date(2026, 9, 3, 8, 50).toISOString(),
   workerName: 'StockSyncWorker',
-  details: { messageId: 'msg-18', queue: 'stock.sync.pos' },
+  details: { messageId: 'msg-18', reasonCode: 'task_of_other_channel', queue: 'stock.sync.pos' },
 });
 
 /** The POS channel rejected a stock sync for good, on the third attempt. */
