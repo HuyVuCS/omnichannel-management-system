@@ -787,6 +787,9 @@ describe('order entry: outcome by push', () => {
 
     await waitFor(() => expect(indicator()).toHaveTextContent('Trực tiếp'));
     jump(FLUSH_WINDOW_MS);
+    // The resync of the new connection waits for the page's first requests and then refetches: a test that counts
+    // requests starts after it, however long the answers take.
+    await settled(app.store);
     return { ...everything, ...app, hub };
   }
 

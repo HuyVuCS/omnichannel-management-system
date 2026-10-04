@@ -13,6 +13,21 @@ const pending = new Map<number, string>();
 let nextId = 0;
 let allowedReason: string | undefined;
 
+/**
+ * Opt-in latency (`npm run test:slow`): every answer arrives this many milliseconds later. Off by default. On a quiet
+ * machine answers are instant and a test that depends on that is green; under load it is red now and then. The delay
+ * makes such a test red in every run - run it for any task that adds tests with requests.
+ */
+export const ANSWER_DELAY_ENV = 'TEST_ANSWER_DELAY_MS';
+
+function answerDelayMs(): number {
+  const value = Number(process.env[ANSWER_DELAY_ENV] ?? 0);
+  return Number.isFinite(value) && value > 0 ? value : 0;
+}
+
+// The real timer, taken before any test installs a fake clock: latency is real time and cannot be jumped over.
+const realSetTimeout = globalThis.setTimeout;
+
 function requestLine(input: RequestInfo | URL, init: RequestInit | undefined): string {
   if (input instanceof Request) {
     return `${input.method} ${input.url}`;
@@ -27,13 +42,16 @@ function requestLine(input: RequestInfo | URL, init: RequestInit | undefined): s
  */
 export function trackPendingRequests(): () => void {
   const inner = globalThis.fetch;
+  const delayMs = answerDelayMs();
+  const late = (response: Response) =>
+    new Promise<Response>((resolve) => realSetTimeout(() => resolve(response), delayMs));
 
   const tracked: typeof fetch = (input, init) => {
     const id = nextId++;
     pending.set(id, requestLine(input, init));
     // Either way the request is over: an answer (any status), a network error, or an abort.
     const settled = () => pending.delete(id);
-    const answer = inner(input, init);
+    const answer = delayMs > 0 ? inner(input, init).then(late) : inner(input, init);
     answer.then(settled, settled);
     return answer;
   };

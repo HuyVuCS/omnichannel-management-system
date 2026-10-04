@@ -225,6 +225,9 @@ describe('stock import', () => {
     expect(columnTexts('Sản phẩm')).toEqual(['TEA-01 — Trà xanh']);
     // The pre-filled product belonged to that document: a new import starts empty.
     expect(location()).toBe('/inventory/import');
+
+    // The import made the product stale; its refetch may still be on its way.
+    await settled();
   });
 
   it('ignores a productId in the address that is not an id', async () => {
