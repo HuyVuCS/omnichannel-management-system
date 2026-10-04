@@ -33,6 +33,11 @@ public sealed class GlobalExceptionHandler(
             ValidationException validation => CreateValidationProblem(validation),
             NotFoundException notFound => Create(StatusCodes.Status404NotFound, "Resource not found", notFound.Message, notFound.ErrorCode),
             ConflictException conflict => Create(StatusCodes.Status409Conflict, "Conflict", conflict.Message, conflict.ErrorCode),
+            ObjectStorageException => Create(
+                StatusCodes.Status503ServiceUnavailable,
+                "Storage unavailable",
+                "The file storage cannot be reached at the moment. Try again in a moment.",
+                ObjectStorageException.ErrorCode),
             DbUpdateConcurrencyException => Create(
                 StatusCodes.Status409Conflict,
                 "Concurrency conflict",
@@ -45,7 +50,12 @@ public sealed class GlobalExceptionHandler(
                 "internal_error")
         };
 
-        if (problem.Status >= StatusCodes.Status500InternalServerError)
+        if (exception is ObjectStorageException storage)
+        {
+            // What failed was logged where it failed; here only that a request ended with 503 because of it.
+            logger.LogWarning("Request failed with 503: object storage {Operation} failed", storage.Operation);
+        }
+        else if (problem.Status >= StatusCodes.Status500InternalServerError)
         {
             logger.LogError(exception, "Unhandled exception");
         }

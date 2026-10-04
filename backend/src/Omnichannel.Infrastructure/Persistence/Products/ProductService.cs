@@ -9,25 +9,32 @@ using Omnichannel.Infrastructure.Persistence.Inventories;
 
 namespace Omnichannel.Infrastructure.Persistence.Products;
 
-internal sealed class ProductService(OmnichannelDbContext dbContext, AlertStore alerts) : IProductService
+internal sealed class ProductService(OmnichannelDbContext dbContext, AlertStore alerts, ProductImageLinks imageLinks) : IProductService
 {
     // Every product gets its inventory row on creation; the null branch only guards the LEFT JOIN.
     // IsLowStock is the shared rule (InventoryPredicates), inlined so it runs in SQL: there is no second definition.
-    private static readonly Expression<Func<Product, ProductResponse>> ToResponse =
-        InventoryPredicates.Inline<Product, ProductResponse>(
-            (p, isLowStock) => new ProductResponse(
-                p.ProductId,
-                p.Sku,
-                p.Name,
-                p.Price,
-                p.LowStockThreshold,
-                p.ExpiryDate,
-                p.Inventory == null ? 0 : p.Inventory.TotalStock,
-                p.Inventory == null ? 0 : p.Inventory.ReservedStock,
-                p.Inventory == null ? 0 : p.Inventory.AvailableStock,
-                isLowStock,
-                p.CreatedAt,
-                p.UpdatedAt),
+    // The image columns come along as they are stored; the link is added after the query (ToResponse).
+    private static readonly Expression<Func<Product, ProductRow>> ToRow =
+        InventoryPredicates.Inline<Product, ProductRow>(
+            (p, isLowStock) => new ProductRow(
+                new ProductResponse(
+                    p.ProductId,
+                    p.Sku,
+                    p.Name,
+                    p.Price,
+                    p.LowStockThreshold,
+                    p.ExpiryDate,
+                    p.Inventory == null ? 0 : p.Inventory.TotalStock,
+                    p.Inventory == null ? 0 : p.Inventory.ReservedStock,
+                    p.Inventory == null ? 0 : p.Inventory.AvailableStock,
+                    isLowStock,
+                    p.CreatedAt,
+                    p.UpdatedAt,
+                    null),
+                p.ImageKey,
+                p.ImageContentType,
+                p.ImageSizeBytes,
+                p.ImageUpdatedAt),
             InventoryPredicates.IsLowStockProduct);
 
     public async Task<PagedResult<ProductResponse>> ListAsync(ProductListQuery query, CancellationToken cancellationToken)
@@ -62,14 +69,14 @@ internal sealed class ProductService(OmnichannelDbContext dbContext, AlertStore 
             ordered = products.OrderBy(p => p.Sku, query.IsDescending);
         }
 
-        var items = await ordered
+        var rows = await ordered
             .ThenBy(p => p.ProductId)
             .Skip(query.Skip)
             .Take(query.PageSize)
-            .Select(ToResponse)
+            .Select(ToRow)
             .ToListAsync(cancellationToken);
 
-        return new PagedResult<ProductResponse>(items, query.Page, query.PageSize, totalCount);
+        return new PagedResult<ProductResponse>(rows.Select(ToResponse).ToList(), query.Page, query.PageSize, totalCount);
     }
 
     public Task<ProductResponse> GetAsync(Guid productId, CancellationToken cancellationToken) =>
@@ -128,10 +135,24 @@ internal sealed class ProductService(OmnichannelDbContext dbContext, AlertStore 
     }
 
     private async Task<ProductResponse> LoadAsync(Guid productId, CancellationToken cancellationToken) =>
-        await dbContext.Products
-            .AsNoTracking()
-            .Where(p => p.ProductId == productId)
-            .Select(ToResponse)
-            .SingleOrDefaultAsync(cancellationToken)
-        ?? throw new NotFoundException(nameof(Product), productId);
+        ToResponse(
+            await dbContext.Products
+                .AsNoTracking()
+                .Where(p => p.ProductId == productId)
+                .Select(ToRow)
+                .SingleOrDefaultAsync(cancellationToken)
+            ?? throw new NotFoundException(nameof(Product), productId));
+
+    /// <summary>The response with its image link, computed locally: no call to the storage, whatever the page size.</summary>
+    private ProductResponse ToResponse(ProductRow row) =>
+        row.ImageKey is null
+            ? row.Product
+            : row.Product with { Image = imageLinks.For(row.ImageKey, row.ImageContentType, row.ImageSizeBytes, row.ImageUpdatedAt) };
+
+    private sealed record ProductRow(
+        ProductResponse Product,
+        string? ImageKey,
+        string? ImageContentType,
+        long? ImageSizeBytes,
+        DateTimeOffset? ImageUpdatedAt);
 }

@@ -7,6 +7,7 @@ namespace Omnichannel.Application.Products;
 /// The low-stock rule evaluated by the server (<c>AvailableStock &lt;= LowStockThreshold</c>, the same expression as the
 /// inventory list and the alerts). Clients show it; they never re-implement the rule.
 /// </param>
+/// <param name="Image">The product's image, or null when it has none (see <see cref="ProductImageResponse"/>).</param>
 public sealed record ProductResponse(
     Guid ProductId,
     string Sku,
@@ -19,7 +20,8 @@ public sealed record ProductResponse(
     int AvailableStock,
     bool IsLowStock,
     DateTimeOffset CreatedAt,
-    DateTimeOffset? UpdatedAt);
+    DateTimeOffset? UpdatedAt,
+    ProductImageResponse? Image = null);
 
 /// <summary>Stock is never set here: a new product starts with an empty inventory row.</summary>
 public sealed record CreateProductRequest(

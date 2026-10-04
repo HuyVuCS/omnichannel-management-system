@@ -43,6 +43,37 @@ services:
       timeout: 10s
       retries: 10
 
+  # S3-compatible object storage for development only (product images): SeaweedFS, everything in one process.
+  # Production uses a hosted S3-compatible provider (task 025); the application only knows the S3 API.
+  # Bucket, access key and CORS are start-up settings of the container, so there is no init step, and starting it again
+  # changes nothing: the bucket is created only when it does not exist. The bucket is private - every request needs a
+  # signature of the key below.
+  objectstorage:
+    image: chrislusf/seaweedfs:4.48
+    restart: unless-stopped
+    command:
+      - mini
+      - -dir=/data
+      - -bucket=${OBJECT_STORAGE_BUCKET:?OBJECT_STORAGE_BUCKET is required}
+      # Browsers upload and read with presigned links: the origins of the dev server and of `vite preview`.
+      - -s3.allowedOrigins=http://localhost:5173,http://localhost:4173
+      - -admin.ui=false
+      - -webdav=false
+      - -s3.port.iceberg=0
+    environment:
+      AWS_ACCESS_KEY_ID: ${OBJECT_STORAGE_ACCESS_KEY_ID:?OBJECT_STORAGE_ACCESS_KEY_ID is required (scripts/setup-object-storage.ps1)}
+      AWS_SECRET_ACCESS_KEY: ${OBJECT_STORAGE_SECRET_ACCESS_KEY:?OBJECT_STORAGE_SECRET_ACCESS_KEY is required (scripts/setup-object-storage.ps1)}
+    ports:
+      # The S3 API only; master, volume and filer ports stay inside the container.
+      - "127.0.0.1:8333:8333"
+    volumes:
+      - objectstorage-data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8333/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
   api:
     profiles: ["app"]
     build:
@@ -58,9 +89,16 @@ services:
       Jwt__SigningKey: ${JWT_SIGNING_KEY:?JWT_SIGNING_KEY is required}
       BootstrapAdmin__Email: ${BOOTSTRAP_ADMIN_EMAIL:-}
       BootstrapAdmin__Password: ${BOOTSTRAP_ADMIN_PASSWORD:-}
+      # Reached from inside the compose network. Links the containerised API hands out carry this address, which a
+      # browser on the host cannot resolve: images work with the API run from the IDE (README "Product images").
+      ObjectStorage__ServiceUrl: http://objectstorage:8333
+      ObjectStorage__BucketName: ${OBJECT_STORAGE_BUCKET}
+      ObjectStorage__AccessKeyId: ${OBJECT_STORAGE_ACCESS_KEY_ID}
+      ObjectStorage__SecretAccessKey: ${OBJECT_STORAGE_SECRET_ACCESS_KEY}
     ports:
       - "127.0.0.1:8080:8080"
 
 volumes:
   postgres-data:
   rabbitmq-data:
+  objectstorage-data:

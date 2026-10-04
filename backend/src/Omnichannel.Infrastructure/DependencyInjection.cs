@@ -7,6 +7,7 @@ using Microsoft.Extensions.Options;
 using Omnichannel.Application.Alerts;
 using Omnichannel.Application.Auth;
 using Omnichannel.Application.Channels;
+using Omnichannel.Application.Common.Abstractions;
 using Omnichannel.Application.Customers;
 using Omnichannel.Application.Dashboard;
 using Omnichannel.Application.Inventory;
@@ -29,6 +30,7 @@ using Omnichannel.Infrastructure.Persistence.Processing;
 using Omnichannel.Infrastructure.Persistence.Products;
 using Omnichannel.Infrastructure.Persistence.SystemEvents;
 using Omnichannel.Infrastructure.Realtime;
+using Omnichannel.Infrastructure.S3;
 
 namespace Omnichannel.Infrastructure;
 
@@ -73,6 +75,11 @@ public static class DependencyInjection
         services.AddScoped<IStockSyncService, StockSyncService>();
         services.AddScoped<ICustomerService, CustomerService>();
         services.AddScoped<IProductService, ProductService>();
+        // Product images need the object storage; a host without one (AddObjectStorage not called) serves products
+        // that have no image and fails loudly on anything else.
+        services.TryAddSingleton<IObjectStorage, UnconfiguredObjectStorage>();
+        services.AddScoped<ProductImageLinks>();
+        services.AddScoped<IProductImageService, ProductImageService>();
         services.AddScoped<IInventoryQueryService, InventoryQueryService>();
         services.AddScoped<IInventoryImportService, InventoryImportService>();
         services.AddScoped<IOrderIntakeService, OrderIntakeService>();

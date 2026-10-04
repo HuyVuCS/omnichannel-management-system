@@ -144,3 +144,42 @@ Authorization: Bearer {{token}}
 # in a URL of this file.
 POST {{baseUrl}}/api/hubs/notifications/negotiate?negotiateVersion=1
 Authorization: Bearer {{token}}
+
+### ---- Product images (task 019; presign / confirm / remove: Manager/Admin) ----
+### The bytes never pass through the API: 1. presign, 2. PUT the file to uploadUrl (the storage), 3. confirm.
+
+### 1. A link for one upload (contentType: image/jpeg, image/png or image/webp; sizeBytes: 1 .. 5 MiB)
+# @name presign
+POST {{baseUrl}}/api/products/{{productId}}/image/presign
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "contentType": "image/png",
+  "sizeBytes": 20480
+}
+
+### 2. The upload itself goes to the storage, NOT to the API: no Authorization header, exactly the Content-Type above.
+###    (uploadUrl is a credential for five minutes - never paste it anywhere.)
+PUT {{presign.response.body.uploadUrl}}
+Content-Type: image/png
+
+< ./sample.png
+
+### 3. Confirm: the stored object is checked (key of this product, size, type, first bytes) and becomes the image.
+###    200 with the product (image.url = a download link for 15 minutes); 400 on objectKey; 503 storage_unavailable.
+PUT {{baseUrl}}/api/products/{{productId}}/image
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "objectKey": "{{presign.response.body.objectKey}}"
+}
+
+### The product with its image (every role; a new image.url with each answer)
+GET {{baseUrl}}/api/products/{{productId}}
+Authorization: Bearer {{token}}
+
+### Remove the image - 204, also when the product has none
+DELETE {{baseUrl}}/api/products/{{productId}}/image
+Authorization: Bearer {{token}}

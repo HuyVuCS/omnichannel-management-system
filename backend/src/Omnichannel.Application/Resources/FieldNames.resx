@@ -172,4 +172,16 @@
     <value>Event type</value>
     <comment>System event filter.</comment>
   </data>
+  <data name="contentType" xml:space="preserve">
+    <value>Image type</value>
+    <comment>Product image upload.</comment>
+  </data>
+  <data name="sizeBytes" xml:space="preserve">
+    <value>Image size</value>
+    <comment>Product image upload.</comment>
+  </data>
+  <data name="objectKey" xml:space="preserve">
+    <value>Upload key</value>
+    <comment>Product image confirmation.</comment>
+  </data>
 </root>

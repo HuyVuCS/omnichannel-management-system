@@ -10,6 +10,11 @@ public class Product : AuditableEntity
 
     public const int MaxSkuLength = 64;
 
+    /// <summary><c>products/{productId}/{objectId}</c>: 9 characters and two GUIDs of 36 with a slash between them.</summary>
+    public const int MaxImageKeyLength = 82;
+
+    public const int MaxImageContentTypeLength = 32;
+
     /// <summary>Format of a normalised SKU (after <see cref="NormalizeSku"/>). SKUs are sent to channel APIs and exports.</summary>
     public const string SkuPattern = "^[A-Z0-9][A-Z0-9._-]*$";
 
@@ -36,7 +41,39 @@ public class Product : AuditableEntity
     public int LowStockThreshold { get; private set; }
     public DateOnly? ExpiryDate { get; private set; }
 
+    /// <summary>
+    /// The product's image: the key of its object in the object storage and what was checked when the upload was
+    /// confirmed. The image itself is never stored here. All four are null (no image) or all four are set.
+    /// </summary>
+    public string? ImageKey { get; private set; }
+    public string? ImageContentType { get; private set; }
+    public long? ImageSizeBytes { get; private set; }
+    public DateTimeOffset? ImageUpdatedAt { get; private set; }
+
     public Inventory? Inventory { get; private set; }
+
+    /// <summary>The object that is the product's image from now on. The caller has checked the object itself.</summary>
+    public void SetImage(string key, string contentType, long sizeBytes, DateTimeOffset updatedAt)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(key);
+        ArgumentException.ThrowIfNullOrWhiteSpace(contentType);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(key.Length, MaxImageKeyLength);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(contentType.Length, MaxImageContentTypeLength);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(sizeBytes);
+
+        ImageKey = key;
+        ImageContentType = contentType;
+        ImageSizeBytes = sizeBytes;
+        ImageUpdatedAt = updatedAt;
+    }
+
+    public void ClearImage()
+    {
+        ImageKey = null;
+        ImageContentType = null;
+        ImageSizeBytes = null;
+        ImageUpdatedAt = null;
+    }
 
     /// <summary>SKU is immutable; stock is changed only through inventory movements.</summary>
     public void Update(string name, decimal price, int lowStockThreshold, DateOnly? expiryDate)

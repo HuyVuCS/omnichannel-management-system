@@ -104,4 +104,24 @@
     <value>The range from '{From}' to '{PropertyName}' must not be longer than {MaxDays} days.</value>
     <comment>Dashboard range from/to; {From} is the field name of from.</comment>
   </data>
+  <data name="ImageTypeNotAllowed" xml:space="preserve">
+    <value>The image must be a JPEG, PNG or WebP file.</value>
+    <comment>Product image: declared content type (presign) or the content type of the uploaded object (confirm).</comment>
+  </data>
+  <data name="ImageTooLarge" xml:space="preserve">
+    <value>The image must not be larger than {MaxSize}.</value>
+    <comment>Product image: declared size (presign) or the size of the uploaded object (confirm); {MaxSize} e.g. 5 MB.</comment>
+  </data>
+  <data name="ImageKeyInvalid" xml:space="preserve">
+    <value>This is not an upload key of this product.</value>
+    <comment>Product image confirm: the key is malformed or belongs to another product.</comment>
+  </data>
+  <data name="ImageNotUploaded" xml:space="preserve">
+    <value>No file has been uploaded for this key.</value>
+    <comment>Product image confirm: no object under the key.</comment>
+  </data>
+  <data name="ImageContentMismatch" xml:space="preserve">
+    <value>The content of the file is not an image of the type it was uploaded as.</value>
+    <comment>Product image confirm: the first bytes are not the signature of the stored content type.</comment>
+  </data>
 </root>

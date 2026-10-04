@@ -11,6 +11,7 @@ using Omnichannel.Application.Common.Validation;
 using Omnichannel.Infrastructure;
 using Omnichannel.Infrastructure.Identity;
 using Omnichannel.Infrastructure.Persistence;
+using Omnichannel.Infrastructure.S3;
 using Serilog;
 using Serilog.Formatting.Compact;
 
@@ -55,6 +56,7 @@ try
     // Application / infrastructure
     builder.Services.AddApplication();
     builder.Services.AddInfrastructure();
+    builder.Services.AddObjectStorage();
     builder.Services.AddIdentityInfrastructure();
     builder.Services.AddHttpContextAccessor();
     builder.Services.AddScoped<ICurrentUser, HttpCurrentUser>();

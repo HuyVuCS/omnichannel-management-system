@@ -48,6 +48,11 @@ public static class ValidationMessages
         public const string PasswordRequiresUpper = nameof(PasswordRequiresUpper);
         public const string PasswordRequiresNonAlphanumeric = nameof(PasswordRequiresNonAlphanumeric);
         public const string PasswordRequiresUniqueChars = nameof(PasswordRequiresUniqueChars);
+        public const string ImageTypeNotAllowed = nameof(ImageTypeNotAllowed);
+        public const string ImageTooLarge = nameof(ImageTooLarge);
+        public const string ImageKeyInvalid = nameof(ImageKeyInvalid);
+        public const string ImageNotUploaded = nameof(ImageNotUploaded);
+        public const string ImageContentMismatch = nameof(ImageContentMismatch);
     }
 
     /// <summary>The text of <paramref name="key"/> in the current UI culture, with <c>{Name}</c> placeholders replaced.</summary>

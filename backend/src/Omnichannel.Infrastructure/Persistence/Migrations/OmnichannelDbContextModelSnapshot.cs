@@ -821,6 +821,20 @@ namespace Omnichannel.Infrastructure.Persistence.Migrations
                     b.Property<DateOnly?>("ExpiryDate")
                         .HasColumnType("date");
 
+                    b.Property<string>("ImageContentType")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("ImageKey")
+                        .HasMaxLength(82)
+                        .HasColumnType("character varying(82)");
+
+                    b.Property<long?>("ImageSizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset?>("ImageUpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<int>("LowStockThreshold")
                         .HasColumnType("integer");
 
@@ -853,6 +867,8 @@ namespace Omnichannel.Infrastructure.Persistence.Migrations
 
                     b.ToTable("Products", null, t =>
                         {
+                            t.HasCheckConstraint("CK_Products_Image_AllOrNone", "(\"ImageKey\" IS NULL AND \"ImageContentType\" IS NULL AND \"ImageSizeBytes\" IS NULL AND \"ImageUpdatedAt\" IS NULL) OR (\"ImageKey\" IS NOT NULL AND \"ImageContentType\" IS NOT NULL AND \"ImageSizeBytes\" IS NOT NULL AND \"ImageUpdatedAt\" IS NOT NULL)");
+
                             t.HasCheckConstraint("CK_Products_LowStockThreshold_NonNegative", "\"LowStockThreshold\" >= 0");
 
                             t.HasCheckConstraint("CK_Products_Price_NonNegative", "\"Price\" >= 0");
