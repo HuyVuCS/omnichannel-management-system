@@ -30,12 +30,12 @@ scripts/smoke/      Scripted manual checks per task (PowerShell)
 
 ```powershell
 Copy-Item docker/.env.example docker/.env   # then edit every value in docker/.env
-powershell -ExecutionPolicy Bypass -File scripts\setup-object-storage.ps1   # keys of the object storage (see "Product images")
+powershell -ExecutionPolicy Bypass -File scripts\setup-object-storage.ps1   # keys of the object storage, for docker/.env, the API and the Workers
 docker compose -f docker/docker-compose.yml --env-file docker/.env up -d
 ```
 
-Three containers start: PostgreSQL, RabbitMQ and the object storage emulator for product images (S3 API on
-`127.0.0.1:8333`, development only). Every port is bound to `127.0.0.1`.
+Three containers start: PostgreSQL, RabbitMQ and the object storage emulator for product images and export files (S3
+API on `127.0.0.1:8333`, development only). Every port is bound to `127.0.0.1`.
 
 The init script `docker/postgres/init/01-create-roles.sh` creates two roles on the **first** start of the volume:
 
@@ -58,7 +58,7 @@ dotnet test
 ```
 
 Integration tests need Docker running (Testcontainers: PostgreSQL, RabbitMQ and - started by the first test that uses a
-product image - the object storage emulator `chrislusf/seaweedfs:4.48`); `dotnet test --filter "Category!=Integration"` runs unit tests only.
+product image or an export file - the object storage emulator `chrislusf/seaweedfs:4.48`); `dotnet test --filter "Category!=Integration"` runs unit tests only.
 
 ### 3. API secrets (user-secrets, never appsettings)
 
@@ -100,17 +100,20 @@ dotnet run --project src/Omnichannel.Api --launch-profile http
 
 Run the API in Docker instead: `docker compose -f docker/docker-compose.yml --env-file docker/.env --profile app up -d --build` (port 8080).
 
-### 6. Workers (Outbox Publisher, Order Worker, Stock Sync Worker)
+### 6. Workers (Outbox Publisher, Order Worker, Stock Sync Worker, Report Export Worker)
 
-The Workers host runs three background workers in one process:
+The Workers host runs these background workers in one process:
 
 | Worker | What it does |
 | --- | --- |
 | Outbox Publisher | publishes pending outbox rows to RabbitMQ (exchange `omnichannel.topic`) |
 | Order Worker | consumes `order.processing`: stores the order and reserves the stock in one transaction |
 | Stock Sync Worker | consumes `stock.sync.website`, `stock.sync.pos`, `stock.sync.marketplace`: pushes stock to the channels (section 7) |
+| Report Export Worker | consumes `report.export`: builds the Excel file of an export and stores it in the object storage ("Reports and Excel export") |
+| Export retention sweep | every hour: deletes the files of exports older than 7 days |
 
-It uses the **runtime** database role and the RabbitMQ user from `docker/.env` (secrets via user-secrets, never appsettings):
+It uses the **runtime** database role and the RabbitMQ user from `docker/.env` (secrets via user-secrets, never appsettings),
+and the keys of the object storage, which `scripts\setup-object-storage.ps1` (section 1) stores in its user-secrets:
 
 ```powershell
 cd src/Omnichannel.Workers
@@ -130,6 +133,9 @@ dotnet run --project src/Omnichannel.Workers
 - Optional settings: `OutboxPublisher:BatchSize` (100), `PollInterval` (1 s), `MaxAttempts` (10), `InitialBackoff` (1 s),
   `MaxBackoff` (5 min), `ConfirmTimeout` (10 s); `Worker:InstanceId` (default `{MachineName}-{ProcessId}`).
 - Stock Sync Worker (queues `stock.sync.*`): see section 7.
+- Report Export Worker (queue `report.export`) and the retention sweep: see "Reports and Excel export". The host needs
+  the `ObjectStorage` settings to start (endpoint and bucket are in `appsettings.Development.json`, the keys in its
+  user-secrets); a broker that already exists gets the new queue and its `.dlq` at the next start of the host.
 - Order Worker (queue `order.processing`): `OrderWorker:Concurrency` (4), `OrderWorker:MaxAttempts` (5).
   Temporary failures are retried after 5 s / 30 s / 2 min / 10 min (delay queues `omnichannel.delay.*`,
   `RabbitMq:RetryDelays` to change the tiers). After the last attempt, or at once for a permanent error (bad data, check or
@@ -556,6 +562,8 @@ page; nothing in the API writes, changes or deletes an event.
   | `order.already_exists` | Warning | `taskId`, `orderId`, `externalOrderId` |
   | `order.message_rejected` | Error | `messageId`, `reasonCode` |
   | `stock_sync.message_rejected` | Error | `messageId`, `reasonCode`, `queue` |
+  | `report_export.message_rejected` | Error | `messageId`, `reasonCode` |
+  | `report.export_requested` | Information | `reportType`, `requestedBy` (the task is the event's `taskId`; never the filters of the export) |
   | `processing.failed` | Error | `taskId`, `taskType`, `attemptNo`, `errorCode`, `errorMessage` (the attempt's sanitised message), `queue` |
   | `processing.retry_requested` | Information | `taskId`, `taskType`, `requestedBy`, `previousMessageId`, `newMessageId`, `attemptBudgetStart` |
   | `outbox.publish_failed` | Error | `outboxEventId`, `eventType`, `publishAttempts` |
@@ -564,7 +572,7 @@ page; nothing in the API writes, changes or deletes an event.
   | `user.role_changed` | Information | `targetUserId`, `actorUserId`, `from`, `to` |
   | `user.locked`, `user.unlocked`, `user.password_reset` | Information | `targetUserId`, `actorUserId` |
 
-  Never returned: `lastError` of `outbox.publish_failed` (broker or exception text) and `reason` of the two
+  Never returned: `lastError` of `outbox.publish_failed` (broker or exception text) and `reason` of the three
   `…message_rejected` events (it can quote the JSON parser's exception and values of the rejected message). Both stay
   in the database and in the Workers log for whoever operates the system.
 - **`reasonCode` of a rejected message** (`MessageRejectionCodes` in `Omnichannel.Application`, stored next to the
@@ -573,27 +581,28 @@ page; nothing in the API writes, changes or deletes an event.
 
   | `reasonCode` | The message … | Worker |
   | --- | --- | --- |
-  | `invalid_json` | is not JSON, or not the JSON of an envelope | both |
-  | `empty_body` | is the JSON value `null` | both |
-  | `unexpected_event_type` | has an event type the queue does not handle | both |
-  | `missing_task_id` | names no task (`order.created`, `stock.sync.requested`) | both |
-  | `missing_message_ids` | has no `messageId` or no `correlationId` | both |
+  | `invalid_json` | is not JSON, or not the JSON of an envelope | all |
+  | `empty_body` | is the JSON value `null` | all |
+  | `unexpected_event_type` | has an event type the queue does not handle | all |
+  | `missing_task_id` | names no task (`order.created`, `stock.sync.requested`, `report.export.requested`) | all |
+  | `missing_message_ids` | has no `messageId` or no `correlationId` | all |
   | `message_ids_too_long` | has a `messageId` or `correlationId` of more than 100 characters | stock sync |
-  | `payload_not_object` | has a payload that is not a JSON object | both |
-  | `invalid_payload` | has a payload that cannot be read as the payload of its event type | both |
-  | `empty_payload` | has an empty payload (kept as a guard; no message reaches it) | both |
-  | `task_id_mismatch` | names one task in the envelope and another in the payload | both |
+  | `payload_not_object` | has a payload that is not a JSON object | all |
+  | `invalid_payload` | has a payload that cannot be read as the payload of its event type | all |
+  | `empty_payload` | has an empty payload (kept as a guard; no message reaches it) | all |
+  | `task_id_mismatch` | names one task in the envelope and another in the payload | all |
   | `missing_order_fields` | is an order without channel, customer or external order id | order |
   | `no_items` | is an order without items | order |
   | `invalid_item` | has an item without product, with a quantity ≤ 0 or a negative price | order |
   | `duplicate_product` | has the same product on more than one item | order |
   | `missing_product_id` | is an inventory change without a product | stock sync |
   | `missing_sync_target` | is a stock-sync request without channel or product | stock sync |
-  | `unknown_task` | names a task that does not exist | both |
-  | `task_mismatch` | names a task that is not a stock-sync task for its product and channel | stock sync |
+  | `unknown_task` | names a task that does not exist | all |
+  | `task_mismatch` | names a task that is not a stock-sync task for its product and channel, or not an export task with its export row | stock sync, export |
   | `task_of_other_channel` | names a task of another channel than the queue it arrived on | stock sync |
 
-  A new rejection path gets its own constant (listed in `MessageRejectionCodes.All`), a case in
+  "all" = Order Worker, Stock Sync Worker and Report Export Worker (task 020 added no code of its own). A new
+  rejection path gets its own constant (listed in `MessageRejectionCodes.All`), a case in
   `MessageRejectionTests` and a label in `vi.json` / `en.json` + `REJECTION_CODES` (`features/logs/eventSummary.ts`).
 - **`actorEmail` / `targetEmail`:** the e-mail address of the user named by `actorUserId`, `requestedBy` or
   `acknowledgedBy`, and by `targetUserId`. A value that is no user id (`system`, `system:order-worker`) or names a
@@ -606,7 +615,8 @@ page; nothing in the API writes, changes or deletes an event.
   order; `GET /api/processing/tasks?correlationId=…` its tasks.
 - **Adding an event type:**
   1. a constant in the `…Events` class of its feature in `Omnichannel.Application` (`InventoryEvents`,
-     `OrderProcessingEvents`, `ProcessingEvents`, `StockSyncEvents`, `OutboxEvents`, `AlertEvents`, `UserEvents`; a new
+     `OrderProcessingEvents`, `ProcessingEvents`, `StockSyncEvents`, `ReportEvents`, `OutboxEvents`, `AlertEvents`,
+     `UserEvents`; a new
      class must be public, static and named `…Events`), used by the code that writes the event;
   2. an entry in `SystemEventDetails.AllowedFields` with the fields that are safe to show: the application's own ids,
      codes, counts and names - never exception or broker text, never a fragment of a message the application did not
@@ -632,8 +642,9 @@ uses a local emulator (SeaweedFS, service `objectstorage` of `docker/docker-comp
 - **Setup (once per developer machine):**
   1. `powershell -ExecutionPolicy Bypass -File scripts\setup-object-storage.ps1` - generates the key pair, adds
      `OBJECT_STORAGE_BUCKET`, `OBJECT_STORAGE_ACCESS_KEY_ID` and `OBJECT_STORAGE_SECRET_ACCESS_KEY` to `docker/.env`
-     (only entries that are missing) and stores the same pair in the user-secrets of `Omnichannel.Api`
-     (`ObjectStorage:AccessKeyId`, `ObjectStorage:SecretAccessKey`). It prints no key and can be run again.
+     (only entries that are missing) and stores the same pair in the user-secrets of `Omnichannel.Api` and of
+     `Omnichannel.Workers` (`ObjectStorage:AccessKeyId`, `ObjectStorage:SecretAccessKey`). It prints no key and can be
+     run again (after task 020: run it once more, so the Workers host gets the keys).
   2. `docker compose -f docker/docker-compose.yml --env-file docker/.env up -d` - starts the emulator next to
      PostgreSQL and RabbitMQ (S3 API on `127.0.0.1:8333`, data in the volume `objectstorage-data`). Bucket, key and
      CORS are start-up settings of the container: there is no init step, and a restart changes nothing.
@@ -704,12 +715,15 @@ uses a local emulator (SeaweedFS, service `objectstorage` of `docker/docker-comp
   missing object with **403** instead of 404 when the key may not list the bucket, and the confirmation would then
   report "not uploaded" as a 503 `storage_unavailable`. The provider check of task 025 must show a 404 for a `HEAD` of
   a key that does not exist. The
-  application only uses presigned `PUT`/`GET`, `HeadObject`, ranged `GetObject` and `DeleteObject`. The SDK's default
+  application only uses presigned `PUT`/`GET`, `HeadObject`, ranged `GetObject`, `DeleteObject` and - for export files -
+  `PutObject`. The SDK's default
   request checksums are left on (the emulator accepts them); a provider that rejects them needs
   `RequestChecksumCalculation` / `ResponseChecksumValidation` = `WHEN_REQUIRED` on the client
   (`S3ObjectStorage`) - found with Garage in the spike of task 019.
-- **The Workers host has no storage** (it does not call `AddObjectStorage`): products without an image work there,
-  anything that needs the storage throws.
+- **Both hosts use the storage** (`AddObjectStorage`, the same `ObjectStorage` section and validation): the API for
+  images and download links, the Workers host for export files ("Reports and Excel export"). The interface has one
+  more operation since task 020, `PutAsync` (a seekable stream with its `Content-Type` and `Content-Disposition`),
+  used only by the Report Export Worker; the provider key therefore needs `PutObject` as well.
 - **`docker compose --profile app`:** the containerised API reaches the storage at `http://objectstorage:8333`, and
   the links it hands out carry that address, which a browser on the host cannot resolve. Images work with the API
   run from the IDE / `dotnet run`; the address for a deployed API is decided in task 025.
@@ -720,6 +734,137 @@ uses a local emulator (SeaweedFS, service `objectstorage` of `docker/docker-comp
   (`up -d --force-recreate objectstorage`) and run the setup script again.
 - **Scripted check:** `powershell -ExecutionPolicy Bypass -File scripts\smoke\task-019.ps1` (needs the emulator up
   and migration `ProductImage`).
+
+### Reports and Excel export
+
+Orders and inventory can be exported as Excel files (`.xlsx`). **Every export is built in the background** - there is no
+synchronous path, also for a small result: the API only stores the request and answers; the Report Export Worker
+(Workers host) builds the file with ClosedXML and stores it in the object storage; the requester downloads it with a
+short-lived link. So an export is traceable, retried, dead-lettered, manually retryable, alerted and pushed to the UI
+like every other asynchronous task.
+
+```
+POST /api/reports/…/export ─► one transaction: ProcessingTask(ReportExport) + ReportExports row
+        202 { taskId }                         + OutboxEvent(report.export.requested) + SystemEventLog(report.export_requested)
+Outbox Publisher ─► omnichannel.topic ─► queue report.export ─► Report Export Worker
+        attempt (committed first) ─► read the rows in ONE read-only snapshot, building the workbook
+        ─► upload exports/{taskId}.xlsx (after that transaction) ─► one transaction: result + attempt + task Succeeded ─► ACK
+GET /api/reports/exports/{taskId}/download ─► { url (presigned GET, 5 min), expiresAt, fileName }
+```
+
+- **Setup** (once, after pulling task 020): run `scripts\setup-object-storage.ps1` again - it now stores the storage
+  keys in the user-secrets of the Workers host too -, apply migration `ReportExports` (section 4), restart the Workers
+  host. Without the keys the Workers host does not start (`ObjectStorage:AccessKeyId is required`).
+- **Roles:** `Manager` and `Admin` may export; Staff gets 403. **An export belongs to the user who asked for it**: list,
+  detail and download answer for the requester only. For anybody else - an administrator included - the export does
+  not exist (404 `export_not_found`, never 403). Exports hold customer names and phone numbers and can be produced
+  again at any time, so nobody needs another user's file.
+- **`POST /api/reports/orders/export`** - body: the filters of `GET /api/orders` with the same meaning (`channel` slug,
+  `status`, `customerId`, `search`; all optional), `from` and `to` (**required**, on the order's creation time,
+  inclusive, at most `Reports:MaxRangeDays` apart) and `timeZone` (**required**, an IANA name such as
+  `Asia/Ho_Chi_Minh`). Rows: the orders and their item lines.
+  **`POST /api/reports/inventory/export`** - body: `search`, `lowStockOnly` (the filters of `GET /api/inventory`) and
+  `timeZone`. Rows: the products.
+  Both use the filter code of the lists (`OrderFilters`, `InventoryFilters`): a file contains what the page shows for
+  the same filters. Answer **202** `{ taskId }` with `Location: /api/reports/exports/{taskId}`.
+- **What a request checks, in this order:**
+  1. the fields: 400 `validation_failed` on the field, in the language of `Accept-Language` (range missing, `to`
+     before `from`, range too long, unknown status, unknown or missing time zone);
+  2. the requester's unfinished exports (`Pending`, `InProgress`, `RetryScheduled`): `Reports:MaxUnfinishedPerUser` or
+     more → **409 `too_many_exports`**. This is check-then-insert without a lock: two requests of one user at the same
+     moment can both pass (one export above the limit, accepted);
+  3. a `COUNT` with the same filters: more than `Reports:MaxRows` rows → **400 `export_too_large`**, nothing is
+     written. The `detail` of both answers is localised (vi/en).
+- **The message carries only `{ taskId }`**: the worker reads the parameters from `ReportExports` (PostgreSQL is the
+  source of truth; a retry copy can never carry stale parameters). The stored `Parameters` (jsonb) are the normalised
+  request - slug lower-case, blank filters as null, the range in UTC - plus `timeZone` and `language` (`vi` or `en`,
+  the language of the request: the texts of the file are written in it).
+- **Reading** (the requester only): `GET /api/reports/exports` (paged; `sortBy` only `createdAt`, newest first unless
+  `sortDir=asc`; filter `reportType`), `GET /api/reports/exports/{taskId}`. Item: `taskId`, `reportType`, `status`,
+  `parameters`, `fileName`, `rowCount`, `sizeBytes`, `createdAt`, `completedAt`, `expiresAt`, `errorCode`.
+  `status` is the status of the task (`Pending`, `InProgress`, `RetryScheduled`, `Succeeded`, `Failed`) or **`Expired`**
+  once the file was deleted. `errorCode` is the code of the last attempt of a `Failed` export, otherwise null - never
+  an error text. `rowCount` = data rows of the file (orders + item lines, or products).
+- **Download:** `GET /api/reports/exports/{taskId}/download` → `{ url, expiresAt, fileName }`: a presigned `GET` valid
+  for `Reports:DownloadLinkLifetime`, computed locally (no call to the storage), to be opened by the browser without
+  the API's token. 409 `export_not_ready` unless the export `Succeeded`, 409 `export_expired` once its file was
+  deleted. The file is stored with `Content-Type` `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`
+  and `Content-Disposition: attachment; filename="<fileName>"`; the storage serves both from the stored object (checked
+  with the emulator), so nothing is added to the link. The link is a credential: it is returned and never logged.
+  A download is not audited; the request is (`report.export_requested` with `reportType` and `requestedBy`).
+- **The file** (`orders_20261005-1030.xlsx`: the report and the local time of the request in its time zone):
+
+  | Sheet | Columns |
+  | --- | --- |
+  | *Orders* (one row per order, by creation time) | created at, channel, external order id, customer name, customer phone, status (label), lines, total amount, order id |
+  | *Items* (one row per item line, by order then SKU) | order created at, external order id, channel, SKU, product name, quantity, unit price, line total (a value), order id |
+  | *Inventory* (one row per product, by SKU) | SKU, name, price, total, reserved, available, low-stock threshold, low stock (yes/no, the rule of the inventory list), expiry date, stock updated at |
+  | *Info* (both reports) | report, the filters as entered (channel and customer by name), time zone, generated at, requested by (e-mail), row counts |
+
+  No customer e-mail and no address. Header row bold, frozen, with an auto-filter; column widths fixed (never measured
+  over the data). Numbers are numbers (money `#,##0`), dates are dates, and a point in time is an Excel date-time
+  **converted to the requested time zone** (daylight saving time included) with the zone in the column header - Excel
+  has no time zone. **Every text is written as a value, never as a formula**: a customer called `=1+1` or `@SUM(A1)` is
+  the text `=1+1`. Sheet names, headers and labels are in the language of the request (`ReportTexts.resx` /
+  `ReportTexts.vi.resx`).
+- **Reading consistency:** the worker reads in one `REPEATABLE READ, READ ONLY` transaction, streamed and without
+  change tracking: orders and item lines come from the same snapshot (an order committed in between is in neither
+  sheet). Nothing outside the database is called in that transaction.
+- **Failures** follow the other workers: the object storage not answering (`storage_unavailable`) and temporary
+  database errors are retried after 5 s / 30 s / 2 min / 10 min up to `ReportExportWorker:MaxAttempts` (5); then the
+  task is `Failed`, `processing.failed` is written, a `ProcessingFailed` alert is opened and the message goes to
+  `report.export.dlq`. Not retried: more rows than `Reports:MaxRows` at the worker (`export_too_large` - the data grew
+  after the request), an export whose retention time is over before it was built (`export_expired`), parameters the
+  host cannot read (`export_parameters_invalid`, e.g. a time zone the Workers host does not know). The key of the
+  file depends on the task alone, so a redelivery after the upload and before the commit stores the same object again -
+  no orphan. A host that stops while it builds leaves the message for redelivery.
+- **Reading a failed export on the Sync & Processing page:** filter the task type `ReportExport` (shown under its raw
+  name until task 021), open the task: its attempts show worker, instance, error code and the sanitised message; the
+  alert of the failure is on the Alerts page (`ProcessingFailed`). "Retry" there
+  (`POST /api/processing/tasks/{id}/retry`) republishes the request with a fresh attempt budget; when it succeeds the
+  alert resolves. The same task id is the export's id, so `GET /api/reports/exports/{taskId}` shows `Failed` with its
+  `errorCode` to the requester.
+- **Retention:** the file is kept `Reports:Retention` (7 days) from the request (`expiresAt`). The Workers host sweeps
+  every `Reports:CleanupInterval` (first round at most 30 s after start-up): for each export past `expiresAt` whose
+  task has ended it deletes `exports/{taskId}.xlsx` (outside any transaction; a missing object is success - this also
+  removes the file of a failed export whose upload happened) and then marks the row (`DeletedAt`) - the export is
+  `Expired`. A delete that fails is a warning with the task id and is tried again in the next round; an export whose
+  task is still waiting is left to the worker (which fails it as `export_expired`). Several instances may sweep at
+  the same time. The rows themselves are kept.
+- **Configuration** (`Reports` section, read by the API and the Workers host, validated at start-up):
+
+  | Setting | Default | Range | |
+  | --- | --- | --- | --- |
+  | `MaxRows` | `100000` | 1 - 1,000,000 | Rows of one export (orders + item lines, or products), checked at the request and by the worker |
+  | `MaxUnfinishedPerUser` | `3` | 1 - 100 | Waiting or running exports per user |
+  | `MaxRangeDays` | `366` | 1 - 3660 | Longest range of an orders export |
+  | `DownloadLinkLifetime` | `00:05:00` | 1 s - 7 days | Validity of a download link |
+  | `Retention` | `7.00:00:00` | 1 min - 366 days | How long a file is kept |
+  | `CleanupInterval` | `01:00:00` | 1 s - 1 day | Pause between two sweeps |
+  | `CleanupBatchSize` | `100` | 1 - 1000 | Exports per batch of a sweep |
+
+  Workers host only: `ReportExportWorker:Concurrency` (1; 1 - 8) and `ReportExportWorker:MaxAttempts` (5; 1 - 20). The
+  workbook is built **in memory**, so the memory of the Workers process grows with `MaxRows` and with `Concurrency`.
+  Measured at the default limit (task 020, one export at a time, Workers host idle at 95 MiB): 100,000 rows of an
+  orders export (25,000 orders + 75,000 lines) took 6 s, a 4.1 MiB file and a peak working set of 255 MiB; 100,000
+  products took 5.5 s, a 5.1 MiB file and 336 MiB. Raising `MaxRows` or `Concurrency` multiplies that. More throughput
+  comes from more Workers instances, not from a higher concurrency. For large files over a slow link the Workers host
+  may need a larger `ObjectStorage:RequestTimeout` than the default 10 s (one request uploads the whole file; at
+  most 2 minutes).
+- **Time zones:** `timeZone` is valid when the host finds it (`TimeZoneInfo.TryFindSystemTimeZoneById`). IANA names
+  work on Windows and in the Linux runtime image of `docker/api.Dockerfile` (checked for task 020; the image carries
+  the time zone data and needs no font for writing a workbook). A host also accepts the names of its own platform
+  (Windows names such as `SE Asia Standard Time`); clients should send IANA names. The API host validates the name
+  and the Workers host converts with it, so both hosts must know the same zones - an export whose zone the Workers
+  host does not know fails with `export_parameters_invalid`.
+- **Package:** `ClosedXML` 0.105.1 (MIT), pinned in `Directory.Packages.props`, referenced by
+  `Omnichannel.Infrastructure` only. It brings `ClosedXML.Parser` 2.0.0, `DocumentFormat.OpenXml` and
+  `DocumentFormat.OpenXml.Framework` 3.1.1, `ExcelNumberFormat` 1.1.0, `RBush.Signed` 4.0.0 and `System.IO.Packaging`
+  8.0.1 (all MIT) and `SixLabors.Fonts` 1.0.0 (Apache-2.0). `SixLabors.Fonts` changed its licence with version 2:
+  do not raise that transitive version without checking it.
+- **Scripted check** (needs the Workers host, the emulator and migration `ReportExports`):
+  `powershell -ExecutionPolicy Bypass -File scripts\smoke\task-020.ps1`. Manual requests: the last section of
+  `src/Omnichannel.Api/Omnichannel.Api.http`.
 
 ### Users and token revocation
 

@@ -183,3 +183,56 @@ Authorization: Bearer {{token}}
 ### Remove the image - 204, also when the product has none
 DELETE {{baseUrl}}/api/products/{{productId}}/image
 Authorization: Bearer {{token}}
+
+### ---- Reports and Excel export (task 020; Manager/Admin; an export is visible to its requester only) ----
+### Every export is built in the background: the answer is 202 with the task, the file follows when the worker is done.
+
+### Orders export: the filters of GET /api/orders (all optional) + a required range (at most 366 days) + a time zone
+### 202 { taskId }, Location /api/reports/exports/{taskId}; 400 on a field; 400 export_too_large; 409 too_many_exports
+# @name ordersExport
+POST {{baseUrl}}/api/reports/orders/export
+Authorization: Bearer {{token}}
+Accept-Language: vi
+Content-Type: application/json
+
+{
+  "channel": "website",
+  "status": "Reserved",
+  "search": "",
+  "from": "2026-09-01T00:00:00+07:00",
+  "to": "2026-09-30T23:59:59+07:00",
+  "timeZone": "Asia/Ho_Chi_Minh"
+}
+
+### Inventory export: the filters of GET /api/inventory + a time zone
+# @name inventoryExport
+POST {{baseUrl}}/api/reports/inventory/export
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "search": "",
+  "lowStockOnly": true,
+  "timeZone": "Asia/Ho_Chi_Minh"
+}
+
+### My exports, newest first (filter: reportType = Orders | Inventory)
+GET {{baseUrl}}/api/reports/exports?reportType=Orders&page=1&pageSize=20
+Authorization: Bearer {{token}}
+
+### One export: status Pending / InProgress / RetryScheduled / Succeeded / Failed / Expired; 404 for anybody else's
+GET {{baseUrl}}/api/reports/exports/{{ordersExport.response.body.taskId}}
+Authorization: Bearer {{token}}
+
+### Its task: attempts, worker, instance, error (the Sync & Processing page shows the same)
+GET {{baseUrl}}/api/processing/tasks/{{ordersExport.response.body.taskId}}
+Authorization: Bearer {{token}}
+
+### A download link for five minutes: { url, expiresAt, fileName }. 409 export_not_ready / export_expired.
+### (url is a credential until it expires - open it in a browser, never paste it anywhere.)
+# @name exportDownload
+GET {{baseUrl}}/api/reports/exports/{{ordersExport.response.body.taskId}}/download
+Authorization: Bearer {{token}}
+
+### The file itself comes from the storage, NOT from the API: no Authorization header.
+GET {{exportDownload.response.body.url}}
