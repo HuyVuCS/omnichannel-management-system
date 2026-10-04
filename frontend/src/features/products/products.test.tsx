@@ -19,6 +19,7 @@ function product(overrides: Partial<Product> & Pick<Product, 'productId' | 'sku'
     isLowStock: false,
     createdAt: '2026-09-30T03:15:00+00:00',
     updatedAt: null,
+    image: null,
     ...overrides,
   };
 }
@@ -91,8 +92,8 @@ describe('products page', () => {
   });
 
   it.each([
-    ['Manager: with the action column', managerUser, 8],
-    ['Staff: without it', staffUser, 7],
+    ['Manager: with the action column', managerUser, 9],
+    ['Staff: without it', staffUser, 8],
   ] as const)('fits the content area of a 1280 px window (%s)', async (_name, user, columnCount) => {
     serveProducts([tea, coffee]);
     renderProducts(user);

@@ -92,6 +92,7 @@
     "stock_limit_exceeded": "The import would take the stock beyond the allowed maximum.",
     "order_conflict": "This order ID was already used on this channel with different content. Use a new number for this order.",
     "order_not_found": "The order does not exist.",
+    "storage_unavailable": "The file storage cannot be reached at the moment. Please try again in a moment.",
     "task_not_found": "The processing task does not exist.",
     "task_not_failed": "The task is not failed any more, so it cannot be retried.",
     "retry_source_missing": "The original message of the task no longer exists, so there is nothing to send again.",
@@ -188,7 +189,8 @@
       "price": "Price",
       "availableStock": "Available",
       "stockStatus": "Stock status",
-      "expiryDate": "Expiry date"
+      "expiryDate": "Expiry date",
+      "image": "Image"
     },
     "stock": {
       "low": "Low stock",
@@ -215,6 +217,26 @@
     },
     "actions": {
       "importStock": "Import stock"
+    },
+    "image": {
+      "label": "Image",
+      "none": "No image",
+      "unavailable": "Image cannot be loaded",
+      "choose": "Choose image",
+      "remove": "Remove image",
+      "hint": "JPEG, PNG or WebP, at most 5 MB.",
+      "createNote": "The image is added after the product has been saved.",
+      "saved": "Image saved.",
+      "removed": "Image removed.",
+      "invalid": {
+        "type": "The file must be a JPEG, PNG or WebP image.",
+        "empty": "The file is empty.",
+        "size": "The file is larger than 5 MB."
+      },
+      "uploadFailed": "The storage did not accept the upload (HTTP {{status}}). Please try again.",
+      "uploadUnreachable": "The storage could not be reached. Check your connection and try again.",
+      "removeConfirmTitle": "Remove the image of this product?",
+      "removeConfirmContent": "The image is deleted and cannot be restored."
     }
   },
   "customers": {

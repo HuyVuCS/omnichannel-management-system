@@ -1,6 +1,20 @@
 import { baseApi } from '@/shared/api/baseApi';
 import type { PagedResult } from '@/shared/api/types';
 import type { SortDirection } from '@/shared/hooks/useListQueryState';
+import { withStableUrl } from './imageLinks';
+import type { UploadTarget } from './imageUpload';
+
+/**
+ * The image of a product. `url` reads it from the object storage without the API's token until `expiresAt`; the API
+ * signs a new one for every response, `updatedAt` identifies the image.
+ */
+export interface ProductImage {
+  url: string;
+  expiresAt: string;
+  contentType: string;
+  sizeBytes: number;
+  updatedAt: string;
+}
 
 export interface Product {
   productId: string;
@@ -17,6 +31,7 @@ export interface Product {
   isLowStock: boolean;
   createdAt: string;
   updatedAt: string | null;
+  image: ProductImage | null;
 }
 
 /** `SKU — name`: the one way a product is named in pickers and summaries. */
@@ -47,6 +62,12 @@ export interface CreateProductRequest {
 
 export type UpdateProductRequest = Omit<CreateProductRequest, 'sku'>;
 
+/** The answer of the presign endpoint: the upload target and the key to confirm with afterwards. */
+export interface PresignedImageUpload extends UploadTarget {
+  objectKey: string;
+  expiresAt: string;
+}
+
 const LIST_TAG = { type: 'Product', id: 'LIST' } as const;
 
 /**
@@ -71,30 +92,68 @@ function compact(params: Record<string, string | number | undefined>) {
   return Object.fromEntries(Object.entries(params).filter(([, value]) => value !== undefined && value !== ''));
 }
 
+/** Every product that enters the cache keeps the image link this client already uses (`withStableUrl`). */
+const stable = (product: Product): Product => ({ ...product, image: withStableUrl(product.productId, product.image) });
+
+/** What a changed image makes stale: the product and the product list - nothing else shows images. */
+const imageChanged = (_result: unknown, error: unknown, { productId }: { productId: string }) =>
+  error ? [] : [LIST_TAG, { type: 'Product' as const, id: productId }];
+
 export const productsApi = baseApi.injectEndpoints({
   endpoints: (build) => ({
     listProducts: build.query<PagedResult<Product>, ProductListArgs>({
       query: (args) => ({ url: 'products', params: compact({ ...args }) }),
+      transformResponse: (page: PagedResult<Product>) => ({ ...page, items: page.items.map(stable) }),
       providesTags: [LIST_TAG],
     }),
     /** One product, e.g. to show the label of a product picker that was opened with an id from the address. */
     getProduct: build.query<Product, string>({
       query: (productId) => `products/${productId}`,
+      transformResponse: stable,
       providesTags: (_result, _error, productId) => [{ type: 'Product', id: productId }],
     }),
     createProduct: build.mutation<Product, CreateProductRequest>({
       query: (body) => ({ url: 'products', method: 'POST', body }),
+      transformResponse: stable,
       invalidatesTags: listsOnSuccess,
     }),
     updateProduct: build.mutation<Product, { productId: string; changes: UpdateProductRequest }>({
       query: ({ productId, changes }) => ({ url: `products/${productId}`, method: 'PUT', body: changes }),
+      transformResponse: stable,
       invalidatesTags: (result, error, { productId }) => [
         ...listsOnSuccess(result, error),
         ...(error ? [] : [{ type: 'Product' as const, id: productId }, CHANNEL_PRODUCT_LIST_TAG, ALERT_LIST_TAG]),
       ],
     }),
+    /**
+     * Step 1 of an image upload: a link for one upload to the storage. Nothing changes on the server, so nothing is
+     * invalidated. The upload itself is not an endpoint of this API (`uploadToStorage`).
+     */
+    presignProductImage: build.mutation<
+      PresignedImageUpload,
+      { productId: string; contentType: string; sizeBytes: number }
+    >({
+      query: ({ productId, ...body }) => ({ url: `products/${productId}/image/presign`, method: 'POST', body }),
+    }),
+    /** Step 3: the uploaded object is checked by the API and becomes the product's image. */
+    confirmProductImage: build.mutation<Product, { productId: string; objectKey: string }>({
+      query: ({ productId, objectKey }) => ({ url: `products/${productId}/image`, method: 'PUT', body: { objectKey } }),
+      transformResponse: stable,
+      invalidatesTags: imageChanged,
+    }),
+    removeProductImage: build.mutation<void, { productId: string }>({
+      query: ({ productId }) => ({ url: `products/${productId}/image`, method: 'DELETE' }),
+      invalidatesTags: imageChanged,
+    }),
   }),
 });
 
-export const { useListProductsQuery, useGetProductQuery, useCreateProductMutation, useUpdateProductMutation } =
-  productsApi;
+export const {
+  useListProductsQuery,
+  useGetProductQuery,
+  useCreateProductMutation,
+  useUpdateProductMutation,
+  usePresignProductImageMutation,
+  useConfirmProductImageMutation,
+  useRemoveProductImageMutation,
+} = productsApi;

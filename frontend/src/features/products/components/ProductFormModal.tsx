@@ -1,4 +1,4 @@
-import { DatePicker, Form, Input, InputNumber, Modal } from 'antd';
+import { DatePicker, Form, Input, InputNumber, Modal, Typography } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useTranslation } from 'react-i18next';
 import { FieldHint } from '@/shared/components/FieldHint';
@@ -10,6 +10,7 @@ import { useFormSubmission } from '@/shared/hooks/useFormSubmission';
 import { useOpenCount } from '@/shared/hooks/useOpenCount';
 import { API_DATE_FORMAT, DATE_FORMAT } from '@/shared/utils/format';
 import { useCreateProductMutation, useUpdateProductMutation, type Product } from '../productsApi';
+import { ProductImageField } from './ProductImageField';
 
 /** What the dialog is open for; null = closed. */
 export type ProductFormState = { kind: 'create' } | { kind: 'edit'; product: Product } | null;
@@ -32,6 +33,9 @@ const CODE_FIELDS = { product_sku_exists: 'sku' };
 /**
  * Create or edit a product. The SKU can only be set on creation (shown upper-cased while typing; the server
  * normalises and validates it). Stock is not edited here: it only changes through stock imports and orders.
+ *
+ * The image belongs to an existing product (its upload needs the product's id): the edit dialog has the image block,
+ * which acts on its own (`ProductImageField`); the create dialog says that the image comes after saving.
  */
 export function ProductFormModal({ state, onClose }: ProductFormModalProps) {
   const { t } = useTranslation();
@@ -90,6 +94,14 @@ export function ProductFormModal({ state, onClose }: ProductFormModalProps) {
         initialValues={initialValues}
         onFinish={(values) => void submit(values)}
       >
+        <Form.Item label={t('products.image.label')}>
+          {editing ? (
+            // A new block per opening: it starts from the image this product has now.
+            <ProductImageField key={`${editing.productId}:${openCount}`} product={editing} />
+          ) : (
+            <Typography.Text type="secondary">{t('products.image.createNote')}</Typography.Text>
+          )}
+        </Form.Item>
         <Form.Item
           name="sku"
           label={t('products.form.sku')}
