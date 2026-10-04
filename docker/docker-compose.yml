@@ -55,8 +55,9 @@ services:
       - mini
       - -dir=/data
       - -bucket=${OBJECT_STORAGE_BUCKET:?OBJECT_STORAGE_BUCKET is required}
-      # Browsers upload and read with presigned links: the origins of the dev server and of `vite preview`.
-      - -s3.allowedOrigins=http://localhost:5173,http://localhost:4173
+      # Browsers upload and read with presigned links: the origins of the dev server and of `vite preview`, under both
+      # names a developer may open them with (an origin is compared as text: localhost is not 127.0.0.1).
+      - -s3.allowedOrigins=http://localhost:5173,http://localhost:4173,http://127.0.0.1:5173,http://127.0.0.1:4173
       - -admin.ui=false
       - -webdav=false
       - -s3.port.iceberg=0
