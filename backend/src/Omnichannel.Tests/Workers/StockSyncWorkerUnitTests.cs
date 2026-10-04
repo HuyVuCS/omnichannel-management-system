@@ -212,7 +212,9 @@ public sealed class StockSyncTopologyTests
                 ("stock.sync.pos", "inventory.changed"),
                 ("stock.sync.marketplace", "inventory.changed"),
                 ("invoice.processing", "invoice.requested"),
-                ("notification.email", "email.requested")
+                ("notification.email", "email.requested"),
+                // Task 020: one more queue; the bindings of the others are what they were.
+                ("report.export", "report.export.requested")
             ],
             RabbitMqTopology.Bindings);
     }

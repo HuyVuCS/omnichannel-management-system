@@ -6,6 +6,7 @@ using Omnichannel.Application.Common.Messaging;
 using Omnichannel.Application.Inventory;
 using Omnichannel.Application.Orders;
 using Omnichannel.Application.Processing;
+using Omnichannel.Application.Reports;
 using Omnichannel.Application.Users;
 
 namespace Omnichannel.Application.SystemEvents;
@@ -40,6 +41,9 @@ public static class SystemEventDetails
             // "reasonCode" is one of MessageRejectionCodes; rows written before task 019 have none.
             [OrderProcessingEvents.MessageRejected] = ["messageId", "reasonCode"],
             [StockSyncEvents.MessageRejected] = ["messageId", "reasonCode", "queue"],
+            [ReportEvents.MessageRejected] = ["messageId", "reasonCode"],
+            // The task is in the event's own column. Not the filters: a search text is whatever the user typed.
+            [ReportEvents.ExportRequested] = ["reportType", "requestedBy"],
             // "errorMessage" is the attempt's message, sanitised when it is stored (doc §5.1).
             [ProcessingEvents.Failed] = ["taskId", "taskType", "attemptNo", "errorCode", "errorMessage", "queue"],
             [ProcessingEvents.RetryRequested] =

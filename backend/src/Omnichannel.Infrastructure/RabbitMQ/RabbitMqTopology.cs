@@ -24,6 +24,9 @@ public static class RabbitMqTopology
     public const string InvoiceProcessingQueue = "invoice.processing";
     public const string EmailNotificationQueue = "notification.email";
 
+    /// <summary>Excel exports built in the background (Report Export Worker).</summary>
+    public const string ReportExportQueue = "report.export";
+
     public const string DeadLetterSuffix = ".dlq";
 
     /// <summary>Broker-side safety net against crash loops; application-level retry is handled by consumers (task 007).</summary>
@@ -38,7 +41,8 @@ public static class RabbitMqTopology
         (StockSyncPosQueue, EventTypes.InventoryChanged),
         (StockSyncMarketplaceQueue, EventTypes.InventoryChanged),
         (InvoiceProcessingQueue, EventTypes.InvoiceRequested),
-        (EmailNotificationQueue, EventTypes.EmailRequested)
+        (EmailNotificationQueue, EventTypes.EmailRequested),
+        (ReportExportQueue, EventTypes.ReportExportRequested)
         // processing.retry is reserved for manual retry (task 008): no binding yet.
     ];
 

@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Data.Common;
 using System.Net;
 using System.Net.Http.Headers;
 using Microsoft.AspNetCore.Builder;
@@ -6,6 +7,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Omnichannel.Application.Auth;
 using Omnichannel.Infrastructure.Identity;
@@ -72,6 +74,9 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
     /// <summary>Everything the API host logged (Serilog), for assertions on what must never be logged.</summary>
     public CapturingLogSink Logs { get; } = new();
 
+    /// <summary>Makes a commit of the API host fail on demand ("the request wrote its rows, then the transaction failed").</summary>
+    public CommitFailureInjection CommitFailures { get; } = new();
+
     public async Task InitializeAsync()
     {
         await _postgres.StartAsync();
@@ -132,6 +137,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         builder.ConfigureServices(services =>
         {
             services.AddSingleton<ILogEventSink>(Logs);
+            services.ConfigureDbContext<OmnichannelDbContext>(options => options.AddInterceptors(CommitFailures));
             services.AddTransient<IStartupFilter, TestRemoteIpStartupFilter>();
         });
     }
@@ -153,6 +159,23 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 
     /// <summary>Id of the shared test user behind <see cref="CreateClientAs"/> (the JWT <c>sub</c>).</summary>
     public Guid UserIdOf(string role) => _roleUsers[role].UserId;
+
+    /// <summary>
+    /// A user of its own in <paramref name="role"/> with a client carrying its token - for what is kept per user (a
+    /// user's exports and their limit), where the shared users would make one test depend on another.
+    /// </summary>
+    public async Task<(HttpClient Client, Guid UserId, string Email)> CreateUserClientAsync(string role)
+    {
+        await using var scope = Services.CreateAsyncScope();
+        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        var email = $"{role.ToLowerInvariant()}.{Guid.NewGuid():N}@integration.test";
+        var user = new ApplicationUser { UserName = email, Email = email, EmailConfirmed = true };
+        EnsureSucceeded(await userManager.CreateAsync(user)); // no password: this user never logs in
+        EnsureSucceeded(await userManager.AddToRoleAsync(user, role));
+
+        var token = Services.GetRequiredService<IAccessTokenIssuer>().Issue(user.Id, email, [role], user.SecurityStamp!);
+        return (CreateClientWithToken(token.Token), user.Id, email);
+    }
 
     public HttpClient CreateClientWithToken(string accessToken)
     {
@@ -201,6 +224,24 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
             next(app);
         };
     }
+}
+
+/// <summary>
+/// Test seam of the API host's DbContext: once armed, the next commit throws instead of committing, so whatever the
+/// request wrote in that transaction is rolled back. Tests of the "api" collection run one after the other, so the next
+/// commit is the one of the request the test sends.
+/// </summary>
+public sealed class CommitFailureInjection : DbTransactionInterceptor
+{
+    private int _armed;
+
+    public void FailNextCommit() => Interlocked.Exchange(ref _armed, 1);
+
+    public override ValueTask<InterceptionResult> TransactionCommittingAsync(
+        DbTransaction transaction, TransactionEventData eventData, InterceptionResult result, CancellationToken cancellationToken = default) =>
+        Interlocked.Exchange(ref _armed, 0) == 1
+            ? throw new InvalidOperationException("injected failure before the commit")
+            : base.TransactionCommittingAsync(transaction, eventData, result, cancellationToken);
 }
 
 /// <summary>Serilog sink collecting the API host's log events in memory.</summary>

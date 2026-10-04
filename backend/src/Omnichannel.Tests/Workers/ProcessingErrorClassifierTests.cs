@@ -1,6 +1,7 @@
 using System.Net.Sockets;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
+using Omnichannel.Application.Common.Exceptions;
 using Omnichannel.Workers.OrderWorker;
 using Omnichannel.Workers.Processing;
 
@@ -17,6 +18,8 @@ public sealed class ProcessingErrorClassifierTests
         { new NpgsqlException("Exception while connecting", new SocketException(10061)), ProcessingErrorClassifier.DatabaseUnavailable },
         { new NpgsqlException("Exception while reading", new TimeoutException()), ProcessingErrorClassifier.Timeout },
         { new TimeoutException("slow"), ProcessingErrorClassifier.Timeout },
+        { new ObjectStorageException("put"), ProcessingErrorClassifier.StorageUnavailable },
+        { new InvalidOperationException("outer", new ObjectStorageException("delete")), ProcessingErrorClassifier.StorageUnavailable },
         { new DbUpdateException("wrapped", Postgres(PostgresErrorCodes.DeadlockDetected)), ProcessingErrorClassifier.Deadlock },
         { new InvalidOperationException("outer", new InvalidOperationException("inner")), ProcessingErrorClassifier.Unexpected },
         { Postgres(PostgresErrorCodes.UniqueViolation), ProcessingErrorClassifier.Unexpected },
@@ -33,6 +36,7 @@ public sealed class ProcessingErrorClassifierTests
     [InlineData(ProcessingErrorClassifier.SerializationFailure, false)]
     [InlineData(ProcessingErrorClassifier.DatabaseUnavailable, false)]
     [InlineData(ProcessingErrorClassifier.Timeout, false)]
+    [InlineData(ProcessingErrorClassifier.StorageUnavailable, false)]
     [InlineData(ProcessingErrorClassifier.Unexpected, false)]
     [InlineData(ProcessingErrorClassifier.DataError, true)]
     [InlineData(ProcessingErrorClassifier.CheckViolation, true)]

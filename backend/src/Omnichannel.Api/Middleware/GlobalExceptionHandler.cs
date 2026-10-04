@@ -33,6 +33,7 @@ public sealed class GlobalExceptionHandler(
             ValidationException validation => CreateValidationProblem(validation),
             NotFoundException notFound => Create(StatusCodes.Status404NotFound, "Resource not found", notFound.Message, notFound.ErrorCode),
             ConflictException conflict => Create(StatusCodes.Status409Conflict, "Conflict", conflict.Message, conflict.ErrorCode),
+            RequestRejectedException rejected => Create(StatusCodes.Status400BadRequest, "Request rejected", rejected.Message, rejected.ErrorCode),
             ObjectStorageException => Create(
                 StatusCodes.Status503ServiceUnavailable,
                 "Storage unavailable",

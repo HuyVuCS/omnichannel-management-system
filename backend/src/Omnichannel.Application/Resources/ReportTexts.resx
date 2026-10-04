@@ -1,0 +1,219 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="SheetOrders" xml:space="preserve">
+    <value>Orders</value>
+    <comment>Sheet name (at most 31 characters, none of : \ / ? * [ ]).</comment>
+  </data>
+  <data name="SheetItems" xml:space="preserve">
+    <value>Items</value>
+    <comment>Sheet name.</comment>
+  </data>
+  <data name="SheetInventory" xml:space="preserve">
+    <value>Inventory</value>
+    <comment>Sheet name.</comment>
+  </data>
+  <data name="SheetInfo" xml:space="preserve">
+    <value>Info</value>
+    <comment>Sheet name.</comment>
+  </data>
+  <data name="ColCreatedAt" xml:space="preserve">
+    <value>Created at ({TimeZone})</value>
+    <comment>Orders sheet; {TimeZone} is the IANA id of the request.</comment>
+  </data>
+  <data name="ColChannel" xml:space="preserve">
+    <value>Channel</value>
+    <comment>Orders and Items sheets: the channel's name.</comment>
+  </data>
+  <data name="ColExternalOrderId" xml:space="preserve">
+    <value>External order ID</value>
+    <comment>Orders and Items sheets.</comment>
+  </data>
+  <data name="ColCustomerName" xml:space="preserve">
+    <value>Customer</value>
+    <comment>Orders sheet.</comment>
+  </data>
+  <data name="ColCustomerPhone" xml:space="preserve">
+    <value>Customer phone</value>
+    <comment>Orders sheet.</comment>
+  </data>
+  <data name="ColStatus" xml:space="preserve">
+    <value>Status</value>
+    <comment>Orders sheet: the label of the order status.</comment>
+  </data>
+  <data name="ColItemCount" xml:space="preserve">
+    <value>Lines</value>
+    <comment>Orders sheet: number of item lines.</comment>
+  </data>
+  <data name="ColTotalAmount" xml:space="preserve">
+    <value>Total amount</value>
+    <comment>Orders sheet.</comment>
+  </data>
+  <data name="ColOrderId" xml:space="preserve">
+    <value>Order ID</value>
+    <comment>Orders and Items sheets: the internal id.</comment>
+  </data>
+  <data name="ColOrderCreatedAt" xml:space="preserve">
+    <value>Order created at ({TimeZone})</value>
+    <comment>Items sheet.</comment>
+  </data>
+  <data name="ColSku" xml:space="preserve">
+    <value>SKU</value>
+    <comment>Items and Inventory sheets.</comment>
+  </data>
+  <data name="ColProductName" xml:space="preserve">
+    <value>Product name</value>
+    <comment>Items and Inventory sheets.</comment>
+  </data>
+  <data name="ColQuantity" xml:space="preserve">
+    <value>Quantity</value>
+    <comment>Items sheet.</comment>
+  </data>
+  <data name="ColUnitPrice" xml:space="preserve">
+    <value>Unit price</value>
+    <comment>Items sheet.</comment>
+  </data>
+  <data name="ColLineTotal" xml:space="preserve">
+    <value>Line total</value>
+    <comment>Items sheet.</comment>
+  </data>
+  <data name="ColPrice" xml:space="preserve">
+    <value>Price</value>
+    <comment>Inventory sheet.</comment>
+  </data>
+  <data name="ColTotalStock" xml:space="preserve">
+    <value>Total</value>
+    <comment>Inventory sheet.</comment>
+  </data>
+  <data name="ColReservedStock" xml:space="preserve">
+    <value>Reserved</value>
+    <comment>Inventory sheet.</comment>
+  </data>
+  <data name="ColAvailableStock" xml:space="preserve">
+    <value>Available</value>
+    <comment>Inventory sheet.</comment>
+  </data>
+  <data name="ColLowStockThreshold" xml:space="preserve">
+    <value>Low-stock threshold</value>
+    <comment>Inventory sheet.</comment>
+  </data>
+  <data name="ColLowStock" xml:space="preserve">
+    <value>Low stock</value>
+    <comment>Inventory sheet: yes / no.</comment>
+  </data>
+  <data name="ColExpiryDate" xml:space="preserve">
+    <value>Expiry date</value>
+    <comment>Inventory sheet.</comment>
+  </data>
+  <data name="ColStockUpdatedAt" xml:space="preserve">
+    <value>Stock updated at ({TimeZone})</value>
+    <comment>Inventory sheet.</comment>
+  </data>
+  <data name="Yes" xml:space="preserve">
+    <value>Yes</value>
+    <comment>Low stock.</comment>
+  </data>
+  <data name="No" xml:space="preserve">
+    <value>No</value>
+    <comment>Low stock.</comment>
+  </data>
+  <data name="StatusPending" xml:space="preserve">
+    <value>Pending</value>
+    <comment>Order status label (as in the UI).</comment>
+  </data>
+  <data name="StatusReserved" xml:space="preserve">
+    <value>Reserved</value>
+    <comment>Order status label.</comment>
+  </data>
+  <data name="StatusInsufficientStock" xml:space="preserve">
+    <value>Insufficient stock</value>
+    <comment>Order status label.</comment>
+  </data>
+  <data name="StatusCancelled" xml:space="preserve">
+    <value>Cancelled</value>
+    <comment>Order status label.</comment>
+  </data>
+  <data name="StatusCompleted" xml:space="preserve">
+    <value>Completed</value>
+    <comment>Order status label.</comment>
+  </data>
+  <data name="InfoReport" xml:space="preserve">
+    <value>Report</value>
+    <comment>Info sheet: first row.</comment>
+  </data>
+  <data name="ReportOrders" xml:space="preserve">
+    <value>Orders</value>
+    <comment>Info sheet: the kind of report.</comment>
+  </data>
+  <data name="ReportInventory" xml:space="preserve">
+    <value>Inventory</value>
+    <comment>Info sheet: the kind of report.</comment>
+  </data>
+  <data name="InfoChannel" xml:space="preserve">
+    <value>Channel</value>
+    <comment>Info sheet: filter.</comment>
+  </data>
+  <data name="InfoStatus" xml:space="preserve">
+    <value>Status</value>
+    <comment>Info sheet: filter.</comment>
+  </data>
+  <data name="InfoCustomer" xml:space="preserve">
+    <value>Customer</value>
+    <comment>Info sheet: filter.</comment>
+  </data>
+  <data name="InfoSearch" xml:space="preserve">
+    <value>Search text</value>
+    <comment>Info sheet: filter.</comment>
+  </data>
+  <data name="InfoFrom" xml:space="preserve">
+    <value>From ({TimeZone})</value>
+    <comment>Info sheet: start of the range.</comment>
+  </data>
+  <data name="InfoTo" xml:space="preserve">
+    <value>To ({TimeZone})</value>
+    <comment>Info sheet: end of the range.</comment>
+  </data>
+  <data name="InfoLowStockOnly" xml:space="preserve">
+    <value>Low stock only</value>
+    <comment>Info sheet: filter.</comment>
+  </data>
+  <data name="InfoAll" xml:space="preserve">
+    <value>(all)</value>
+    <comment>Info sheet: a filter that was not set.</comment>
+  </data>
+  <data name="InfoTimeZone" xml:space="preserve">
+    <value>Time zone</value>
+    <comment>Info sheet.</comment>
+  </data>
+  <data name="InfoGeneratedAt" xml:space="preserve">
+    <value>Generated at ({TimeZone})</value>
+    <comment>Info sheet.</comment>
+  </data>
+  <data name="InfoRequestedBy" xml:space="preserve">
+    <value>Requested by</value>
+    <comment>Info sheet: e-mail of the requester.</comment>
+  </data>
+  <data name="InfoOrderRows" xml:space="preserve">
+    <value>Orders</value>
+    <comment>Info sheet: row count of the Orders sheet.</comment>
+  </data>
+  <data name="InfoItemRows" xml:space="preserve">
+    <value>Item lines</value>
+    <comment>Info sheet: row count of the Items sheet.</comment>
+  </data>
+  <data name="InfoProductRows" xml:space="preserve">
+    <value>Products</value>
+    <comment>Info sheet: row count of the Inventory sheet.</comment>
+  </data>
+</root>

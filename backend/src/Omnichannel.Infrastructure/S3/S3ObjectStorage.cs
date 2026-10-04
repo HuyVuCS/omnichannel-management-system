@@ -96,6 +96,33 @@ internal sealed class S3ObjectStorage : IObjectStorage, IDisposable
         }
     }
 
+    public async Task PutAsync(string key, Stream content, string contentType, string contentDisposition, CancellationToken cancellationToken)
+    {
+        if (!content.CanSeek)
+        {
+            // The one retry of a failed request sends the content again from where it started.
+            throw new ArgumentException("The content must be a seekable stream.", nameof(content));
+        }
+
+        try
+        {
+            var request = new PutObjectRequest
+            {
+                BucketName = _bucket,
+                Key = key,
+                InputStream = content,
+                ContentType = contentType,
+                AutoCloseStream = false
+            };
+            request.Headers.ContentDisposition = contentDisposition;
+            await _client.PutObjectAsync(request, cancellationToken);
+        }
+        catch (Exception exception) when (IsStorageFailure(exception, cancellationToken))
+        {
+            throw Failed("put", exception);
+        }
+    }
+
     public async Task DeleteAsync(string key, CancellationToken cancellationToken)
     {
         try
@@ -153,8 +180,9 @@ internal sealed class S3ObjectStorage : IObjectStorage, IDisposable
 }
 
 /// <summary>
-/// The storage of a host that has none (the Workers host until task 020). Products without an image never reach it;
-/// anything that needs the storage fails loudly instead of answering wrongly.
+/// The storage of a host that has none (one that does not call <c>AddObjectStorage</c>; the API and the Workers host
+/// both do). Products without an image never reach it; anything that needs the storage fails loudly instead of
+/// answering wrongly.
 /// </summary>
 internal sealed class UnconfiguredObjectStorage : IObjectStorage
 {
@@ -165,6 +193,9 @@ internal sealed class UnconfiguredObjectStorage : IObjectStorage
     public Task<StoredObject?> HeadAsync(string key, CancellationToken cancellationToken) => throw NotConfigured();
 
     public Task<byte[]> ReadStartAsync(string key, int count, CancellationToken cancellationToken) => throw NotConfigured();
+
+    public Task PutAsync(string key, Stream content, string contentType, string contentDisposition, CancellationToken cancellationToken) =>
+        throw NotConfigured();
 
     public Task DeleteAsync(string key, CancellationToken cancellationToken) => throw NotConfigured();
 

@@ -184,4 +184,12 @@
     <value>Upload key</value>
     <comment>Product image confirmation.</comment>
   </data>
+  <data name="timeZone" xml:space="preserve">
+    <value>Time zone</value>
+    <comment>Export request.</comment>
+  </data>
+  <data name="reportType" xml:space="preserve">
+    <value>Report</value>
+    <comment>Export list filter.</comment>
+  </data>
 </root>

@@ -124,4 +124,24 @@
     <value>The content of the file is not an image of the type it was uploaded as.</value>
     <comment>Product image confirm: the first bytes are not the signature of the stored content type.</comment>
   </data>
+  <data name="TimeZoneUnknown" xml:space="preserve">
+    <value>'{PropertyName}' must be the name of a time zone, for example Asia/Ho_Chi_Minh.</value>
+    <comment>Export request: the time zone id is not known to the server.</comment>
+  </data>
+  <data name="TooManyExports" xml:space="preserve">
+    <value>You already have {MaxExports} exports waiting or running. Wait until one of them has finished.</value>
+    <comment>Export request, 409 too_many_exports.</comment>
+  </data>
+  <data name="ExportTooLarge" xml:space="preserve">
+    <value>These filters match {RowCount} rows; one export holds at most {MaxRows}. Narrow the filters.</value>
+    <comment>Export request, 400 export_too_large.</comment>
+  </data>
+  <data name="ExportNotReady" xml:space="preserve">
+    <value>This export has no file to download: it has not finished, or it failed.</value>
+    <comment>Export download, 409 export_not_ready.</comment>
+  </data>
+  <data name="ExportExpired" xml:space="preserve">
+    <value>This export has expired and its file was deleted. Request it again.</value>
+    <comment>Export download, 409 export_expired.</comment>
+  </data>
 </root>

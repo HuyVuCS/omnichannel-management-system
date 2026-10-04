@@ -9,8 +9,9 @@ namespace Omnichannel.Application.Common.Messaging;
 public sealed record MessageRejection(string Code, string Reason);
 
 /// <summary>
-/// The <c>reasonCode</c> of <c>order.message_rejected</c> and <c>stock_sync.message_rejected</c>: one code per way a
-/// message can be rejected, shared by both workers because most of their checks are the same. The client translates the
+/// The <c>reasonCode</c> of <c>order.message_rejected</c>, <c>stock_sync.message_rejected</c> and
+/// <c>report_export.message_rejected</c>: one code per way a message can be rejected, shared by the workers because
+/// most of their checks are the same. The client translates the
 /// codes (<c>logs.rejection.*</c>); a new code needs a label there, until then its raw value is shown.
 /// </summary>
 public static class MessageRejectionCodes
@@ -72,7 +73,10 @@ public static class MessageRejectionCodes
     /// <summary>The task the message names does not exist.</summary>
     public const string UnknownTask = "unknown_task";
 
-    /// <summary>The task is not a stock-sync task for the product and channel of the message.</summary>
+    /// <summary>
+    /// The task is not what the queue processes: not a stock-sync task for the product and channel of the message, or
+    /// not an export task with its export row.
+    /// </summary>
     public const string TaskMismatch = "task_mismatch";
 
     /// <summary>The task belongs to another channel than the queue the message arrived on.</summary>

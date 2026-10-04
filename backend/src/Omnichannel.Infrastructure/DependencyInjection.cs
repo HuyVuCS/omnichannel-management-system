@@ -14,6 +14,7 @@ using Omnichannel.Application.Inventory;
 using Omnichannel.Application.Orders;
 using Omnichannel.Application.Processing;
 using Omnichannel.Application.Products;
+using Omnichannel.Application.Reports;
 using Omnichannel.Application.SystemEvents;
 using Omnichannel.Application.Users;
 using Omnichannel.Infrastructure.Identity;
@@ -28,6 +29,7 @@ using Omnichannel.Infrastructure.Persistence.Inventories;
 using Omnichannel.Infrastructure.Persistence.Orders;
 using Omnichannel.Infrastructure.Persistence.Processing;
 using Omnichannel.Infrastructure.Persistence.Products;
+using Omnichannel.Infrastructure.Persistence.Reports;
 using Omnichannel.Infrastructure.Persistence.SystemEvents;
 using Omnichannel.Infrastructure.Realtime;
 using Omnichannel.Infrastructure.S3;
@@ -75,8 +77,8 @@ public static class DependencyInjection
         services.AddScoped<IStockSyncService, StockSyncService>();
         services.AddScoped<ICustomerService, CustomerService>();
         services.AddScoped<IProductService, ProductService>();
-        // Product images need the object storage; a host without one (AddObjectStorage not called) serves products
-        // that have no image and fails loudly on anything else.
+        // Product images and export files need the object storage; a host without one (AddObjectStorage not called)
+        // serves products that have no image and fails loudly on anything else.
         services.TryAddSingleton<IObjectStorage, UnconfiguredObjectStorage>();
         services.AddScoped<ProductImageLinks>();
         services.AddScoped<IProductImageService, ProductImageService>();
@@ -88,6 +90,16 @@ public static class DependencyInjection
         services.AddScoped<IProcessingTaskService, ProcessingTaskService>();
         services.AddScoped<IDashboardService, DashboardService>();
         services.AddScoped<ISystemEventService, SystemEventService>();
+
+        // Exports: requested through the API, built and swept by the Workers host; both read the same limits.
+        services.AddOptions<ReportsOptions>()
+            .Configure<IConfiguration>((options, configuration) =>
+                configuration.GetSection(ReportsOptions.SectionName).Bind(options))
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<ReportsOptions>, ReportsOptionsValidator>();
+        services.AddScoped<IReportExportService, ReportExportService>();
+        services.AddScoped<IReportExportProcessingService, ReportExportProcessingService>();
+        services.AddScoped<ReportExportCleanup>();
 
         return services;
     }

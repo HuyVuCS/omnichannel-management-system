@@ -9,6 +9,7 @@ using Microsoft.Extensions.Hosting;
 using Omnichannel.Infrastructure.Persistence;
 using Omnichannel.Infrastructure.RabbitMQ;
 using Omnichannel.Workers;
+using Omnichannel.Workers.ReportExportWorker;
 using RabbitMQ.Client;
 using Testcontainers.PostgreSql;
 using Testcontainers.RabbitMq;
@@ -101,14 +102,23 @@ public sealed class WorkersFixture : IAsyncLifetime
         BuildWorkersHost(
             _postgres.GetConnectionString(), _rabbit.Hostname, _amqpHostPort, instanceId, overrides, configureServices);
 
-    /// <summary>Workers host with the production registrations against the given database and broker (test credentials).</summary>
+    /// <summary>
+    /// Workers host with the production registrations against the given database and broker (test credentials).
+    /// <para>
+    /// Two things differ from production unless a test asks for them: the object storage is configuration only (valid, at
+    /// an address nothing listens on - a test that stores export files overrides <c>ObjectStorage:*</c> with a started
+    /// emulator), and the retention sweep of exports does not run (<paramref name="retentionSweep"/>): in the background
+    /// it would add statements to tests that count them and expire the exports of other tests.
+    /// </para>
+    /// </summary>
     public static IHost BuildWorkersHost(
         string databaseConnectionString,
         string rabbitHostName,
         int rabbitPort,
         string instanceId,
         IDictionary<string, string?>? overrides = null,
-        Action<IServiceCollection>? configureServices = null)
+        Action<IServiceCollection>? configureServices = null,
+        bool retentionSweep = false)
     {
         var settings = new Dictionary<string, string?>
         {
@@ -127,7 +137,13 @@ public sealed class WorkersFixture : IAsyncLifetime
             ["Worker:InstanceId"] = instanceId,
             ["OutboxPublisher:PollInterval"] = "00:00:00.100",
             ["OutboxPublisher:InitialBackoff"] = "00:00:00.200",
-            ["OutboxPublisher:MaxBackoff"] = "00:00:02"
+            ["OutboxPublisher:MaxBackoff"] = "00:00:02",
+            // Never connected (port 9, "discard"): only the options must be valid for the host to start.
+            ["ObjectStorage:ServiceUrl"] = "http://127.0.0.1:9",
+            ["ObjectStorage:BucketName"] = "not-used",
+            ["ObjectStorage:AccessKeyId"] = "not-used",
+            ["ObjectStorage:SecretAccessKey"] = "not-used",
+            ["ObjectStorage:RequestTimeout"] = "00:00:03"
         };
         foreach (var (key, value) in overrides ?? new Dictionary<string, string?>())
         {
@@ -142,6 +158,11 @@ public sealed class WorkersFixture : IAsyncLifetime
         });
         builder.Configuration.AddInMemoryCollection(settings);
         builder.Services.AddWorkerServices(builder.Configuration);
+        if (!retentionSweep)
+        {
+            builder.Services.RemoveHostedService<ReportExportCleanupService>();
+        }
+
         configureServices?.Invoke(builder.Services);
         return builder.Build();
     }

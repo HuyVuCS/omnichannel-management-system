@@ -124,4 +124,24 @@
     <value>Nội dung tệp không phải là ảnh thuộc loại đã khai báo khi tải lên.</value>
     <comment>Product image confirm: the first bytes are not the signature of the stored content type.</comment>
   </data>
+  <data name="TimeZoneUnknown" xml:space="preserve">
+    <value>'{PropertyName}' phải là tên một múi giờ, ví dụ Asia/Ho_Chi_Minh.</value>
+    <comment>Export request: the time zone id is not known to the server.</comment>
+  </data>
+  <data name="TooManyExports" xml:space="preserve">
+    <value>Bạn đang có {MaxExports} lần xuất tệp đang chờ hoặc đang chạy. Hãy đợi một lần xuất hoàn tất.</value>
+    <comment>Export request, 409 too_many_exports.</comment>
+  </data>
+  <data name="ExportTooLarge" xml:space="preserve">
+    <value>Bộ lọc này khớp {RowCount} dòng; một lần xuất chỉ chứa tối đa {MaxRows} dòng. Hãy thu hẹp bộ lọc.</value>
+    <comment>Export request, 400 export_too_large.</comment>
+  </data>
+  <data name="ExportNotReady" xml:space="preserve">
+    <value>Lần xuất này chưa có tệp để tải: nó chưa hoàn tất hoặc đã thất bại.</value>
+    <comment>Export download, 409 export_not_ready.</comment>
+  </data>
+  <data name="ExportExpired" xml:space="preserve">
+    <value>Lần xuất này đã hết hạn và tệp đã bị xoá. Hãy yêu cầu xuất lại.</value>
+    <comment>Export download, 409 export_expired.</comment>
+  </data>
 </root>

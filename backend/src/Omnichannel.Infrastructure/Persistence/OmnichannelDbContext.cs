@@ -21,6 +21,7 @@ public sealed class OmnichannelDbContext(DbContextOptions<OmnichannelDbContext> 
     public DbSet<ProcessingAttempt> ProcessingAttempts => Set<ProcessingAttempt>();
     public DbSet<SystemEventLog> SystemEventLogs => Set<SystemEventLog>();
     public DbSet<Alert> Alerts => Set<Alert>();
+    public DbSet<ReportExport> ReportExports => Set<ReportExport>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
