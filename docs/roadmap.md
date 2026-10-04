@@ -3,7 +3,7 @@
 Plan from the current state to the complete system (backend + frontend), following the implementation order in
 the architecture document (section 15). Maintained by Cowork; updated after every task review.
 
-Last updated: 2026-10-03 (review 018, task 018b written)
+Last updated: 2026-10-03 (review 018b, task 019 written)
 
 ## Conventions
 - One row = one task file `docs/tasks/NNN-*.md`, written by Cowork shortly before it is needed (not all up front),
@@ -39,14 +39,14 @@ Last updated: 2026-10-03 (review 018, task 018b written)
 | 016b | FE | Channel detail route `/channels/:channelId` with its product mappings (list, search, sort, paging; create, edit, activate/deactivate for Manager/Admin; initial-sync task with live status); channels without stock sync shown as such (review 014); BE: `stockSyncEnabled` on channel responses; Part A (review 016): `127.0.0.1` for local connections, hint flush as a throttle, order outcome invalidates lists only when not live; fix of a pre-existing form-dialog defect (stale values after a full close) | 3.2 | Done |
 | 017 | BE | Alerts: `Alerts` table (Open → Acknowledged → Resolved, dedup key, system resolution, backfill) for low stock (shared predicate), insufficient stock, stock-sync and processing failures; `GET /api/alerts`, `GET /api/alerts/{id}`, acknowledge (Manager/Admin); hints `alert.changed`, `low_stock.created`; `alerts` in the dashboard summary; Part A (review 016b): frontend suite stable under load (smoke runs npm after stopping its hosts, worker count, split slow tests), strict `Assert-Step` | 11 | Done |
 | 018 | FE | Alerts page (list with filters/sort/paging in the address, details per type, acknowledge for Manager/Admin, links to order/task/channel/stock import) + dashboard alert card; `Alert` realtime tag (`alert.changed`, `low_stock.created`, `inventory.changed`); Part A (review 017): form-dialog reset from inside the form (P1), smoke table `OK` column first, BE: deactivating a mapping resolves its stock-sync alert; Part A (review 016b): `currentData` on detail pages bound to a route parameter, stale API errors on optional customer fields, products table at 1280 px | 3.2 | Done |
-| 018b | BE+FE | Logs/Audit: `GET /api/system-events` (Manager/Admin; `user.*` events Admin only; payload by per-type allowlist; paging, filters level / event type / correlation id / order / task / range; user e-mails resolved per page) + Logs/Audit page (Manager/Admin, trace by correlation id); Part A (review 018): finish 018's five-run verification, test guard against requests in flight | 3.2 | Open |
-| 019 | BE+FE | S3 product images: presigned upload `POST /api/products/{id}/image/presign`, private bucket, UI upload | 12 | Planned |
-| 020 | BE | Excel export (ClosedXML) for orders and inventory; background export task + S3 for large files | 12 | Planned |
+| 018b | BE+FE | Logs/Audit: `GET /api/system-events` (Manager/Admin; `user.*` events Admin only; payload by per-type allowlist; paging, filters level / event type / correlation id / order / task / range; user e-mails resolved per page) + Logs/Audit page (Manager/Admin, trace by correlation id); Part A (review 018): finish 018's five-run verification, test guard against requests in flight | 3.2 | Done |
+| 019 | BE+FE | Product images in **S3-compatible** object storage (no AWS; local emulator in dev and tests, chosen by a spike): presigned PUT `POST /api/products/{id}/image/presign`, confirm `PUT /api/products/{id}/image` (size, type, magic bytes), `DELETE /api/products/{id}/image`, image metadata on `Product` (migration), presigned GET in product responses, private bucket; upload / replace / remove in the product dialog, thumbnail column; Part A (review 018b): order-entry live tests end settled + committed latency switch, `reasonCode` of rejected messages | 12 | Open |
+| 020 | BE | Excel export (ClosedXML) for orders and inventory; background export task + object storage for large files | 12 | Planned |
 | 021 | FE | Reports & Excel export page | 3.2 | Planned |
 | 022 | BE | Reconciliation Worker (detect drift, create StockSync tasks, never modify the source of truth); needs readable channel-side stock in the simulator (decide its state) | 13 | Planned |
 | 023 | BE | `POST /api/webhooks/{slug}`: signature verification, rate limiting, reuse of order intake | 11 (API) | Planned |
 | 024 | BE | Invoice Worker + Notification (email) Worker with independent task status | 8.4 | Planned |
-| 025 | Ops | Worker Dockerfiles, full docker-compose, CI pipeline (build, unit + integration tests); a multi-instance check of the stock sync; reverse proxy passes WebSocket upgrades for `/api/hubs/*` (review 016) | 14 | Planned |
+| 025 | Ops | Worker Dockerfiles, full docker-compose, CI pipeline (build, unit + integration tests); a multi-instance check of the stock sync; reverse proxy passes WebSocket upgrades for `/api/hubs/*` (review 016); **free hosting, no AWS** (user, 2026-10-03: Vercel / Railway) and the production object-storage provider; storage URLs signed for the browser-reachable endpoint (review 019 plan) | 14 | Planned |
 | 026 | All | Security and performance hardening review (OWASP, CSP/security headers, revisit httpOnly-cookie auth, login throttling per account+IP, indexes, load test of reserve path, `createdByEmail` lookup index, dashboard-summary indexes (review 015: outbox failed, non-terminal tasks, last stock-sync success per channel), token-in-URL logging at the reverse proxy, accessibility pass) | 14 | Planned |
 | 027 | All | End-to-end smoke tests against the acceptance criteria (doc section 16) | 14, 16 | Planned |
 
@@ -59,8 +59,9 @@ Expect roughly 2–4 extra tasks for review follow-ups that are too large for a 
 | ~~014~~ | ~~Are marketplace/channel APIs real integrations or simulated?~~ | **Decided 2026-10-02 (user): simulated adapters** behind `IChannelStockClient`, in-process in the Workers host; see implementation log "Task 014 plan" |
 | ~~015~~ | ~~How do Workers (separate process) trigger SignalR pushes in the API?~~ | **Decided 2026-10-02 (user): PostgreSQL `LISTEN/NOTIFY`**; see implementation log "Task 015 plan" |
 | ~~017~~ | ~~Where are alerts stored? The ERD has no ALERT table.~~ | **Decided 2026-10-03 (user): new `Alerts` table** (Open → Acknowledged → Resolved), acknowledge Manager/Admin only; see implementation log "Task 017 plan" |
-| 019 | S3 in development | Real AWS bucket with dev credentials · local S3-compatible emulator |
+| ~~019~~ | ~~S3 in development~~ | **Decided 2026-10-03 (user): no AWS (cost)** — S3-compatible storage through the S3 API; a local emulator in development and tests; see implementation log "Task 019 plan" |
 | 024 | Where does "Payment Succeeded" come from? No Payment entity exists. | Out of scope · simulated payment step · payment field on Order |
+| 025 | Hosting and production object storage (user, 2026-10-03: free, no AWS; Vercel or Railway) | Vercel can host only the static frontend; API, Workers, PostgreSQL and RabbitMQ need a container host (e.g. Railway); storage e.g. Railway Storage Buckets or Cloudflare R2 (both S3-compatible). Free tiers and their limits must be checked at that time — five long-running services may not fit a free plan |
 
 ## Acceptance criteria coverage (doc section 16)
 
@@ -78,6 +79,6 @@ Expect roughly 2–4 extra tasks for review follow-ups that are too large for a 
 | Low-stock alert by threshold | 017, 018 |
 | Inventory and processing history | 003, 008, 012, 016, 018b |
 | Excel export | 020, 021 |
-| Product images in S3 | 019 |
+| Product images in S3 (S3-compatible storage, decision of 019) | 019 |
 | API authentication/authorization | 001–004 (ongoing) |
 | Tests for important flows | every task; 027 end to end |
