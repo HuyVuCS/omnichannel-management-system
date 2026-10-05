@@ -658,3 +658,52 @@ system event type `report_export.message_rejected`). Review: `docs/tasks/020-*.r
 | Labels elsewhere | `ReportExport` in `TASK_TYPES` (filter, column, task detail, dashboard); event types `report.export_requested` (report type, requester) and `report_export.message_rejected` (`reasonCode`) on the Logs/Audit page | Raw names since 020 | — |
 | Expired image links (review 019) | A thumbnail whose image fails to load **after its `expiresAt`** asks for one refetch of the product list; requests of one burst are coalesced; a failure before `expiresAt` refetches nothing (no loop) | Failure-driven, no timers; self-healing with one request | — |
 | Development steps (user, 2026-10-05) | Claude Code applies the pending steps of 019/020 first (A0) and the steps of every later task itself; smoke and browser checks run on development | User decision: no manual steps after a task | A step fails or would be destructive (then it stays with the user) |
+
+## Task 021 result (reviewed 2026-10-05)
+
+Reports & Excel export page `/reports` (Manager/Admin): request forms for orders / inventory with the lists' filters,
+the browser's IANA time zone and the UI language; "My exports" with live status (tag `ReportExport`, polling only while
+not live and an export is unfinished) and a download whose link is kept nowhere; "Export to Excel" on the Orders and
+Inventory pages (filters in router location state); labels for `ReportExport` and both export event types. Part A:
+the sweep resolves the alert of an export it expires (one transaction), a retry of an expired export → 409
+`export_expired`, `Expired` by time in the API (`ReportExportExpiry`), `SixLabors.Fonts` pinned at 1.0.0 (transitive
+pinning, 0 resolved-version differences), smoke 020 step 17, expired image links refreshed once. A0: migrations
+`ProductImage` and `ReportExports` applied to development by Claude Code as the migrator. Backend 1300/1300, 0 warnings;
+frontend 452 tests, 5 of 5 full runs green, one full slow run green (third attempt); first-load set 971.00 kB raw
+(+0.86 kB), `ReportsPage` lazy (12.8 kB); smoke 019 50/50, 020 46/46, 021 25/25 on development; production-build
+browser check. Review: `docs/tasks/021-*.review.md`.
+
+| Topic | Decision | Reason | Revisit when |
+| --- | --- | --- | --- |
+| Client copies of server limits (review 021 q3) | Constants next to their use, commented and named in the README beside the server setting (`MAX_IMAGE_BYTES`, `MAX_EXPORT_RANGE_DAYS`); the server stays the authority | Two copies are cheaper than an endpoint with its own authorization, caching and tests | A third copy, or a limit that differs per deployment → read-only `GET /api/config/client-limits` (026) |
+| Placeholder pages (review 021 q2) | Removed in 022 A1: every menu item has a built page; no `ComingSoon` | Dead code since 021 | — |
+| Time zone label (review 021 q4) | The browser's IANA zone as the OS names it (`Asia/Bangkok` and `Asia/Ho_Chi_Minh` are both correct) | It is the zone the file uses | — |
+| Download save check (review 021 q1) | Accepted on evidence (stored `Content-Disposition: attachment`, anchor without `target`); the click is an optional user check | A download in the Browser pane needs the user's OK | 025 provider check |
+| Slow-run discipline (review 021) | Slow runs with the Browser pane closed and the machine idle; a red test is not attributed to load without a second run of that file alone; avoid role-and-name queries over large tables inside `waitFor` (022 A3) | Six reds of 021's second slow run were explained, not investigated | — |
+| Export filter summary | Dates of a stored range shown in the viewer's zone, not the export's `timeZone` | Only the requester sees an export | Exports become shareable |
+
+## Task 022 plan — Reconciliation Worker (2026-10-05)
+
+**Decisions (user, 2026-10-05):** the simulated channels keep their channel-side stock **in a PostgreSQL table**;
+reconciliation runs **periodically only** (no "run now").
+
+| Topic | Decision | Reason | Revisit when |
+| --- | --- | --- | --- |
+| Channel-side state | `IChannelStockClient.ReadAvailableStockAsync` (batch ≤ 100, `null` = no value on the channel), through the same per-channel timeout + circuit breaker as pushes; the simulator stores accepted pushes in `SimulatedChannelStocks` (keyed by channel slug + `id:`/`sku:` external key, no FK, no audit fields, last write wins) and answers reads from it. Alternatives (user chose): in-memory state (lost on restart, differs per Workers instance → false drift), no channel read (compare with the last pushed value — misses drift made on the channel side, deviates from doc §8.5) | Doc §8.5 reads the channel's state; a real adapter implements the same read; persisted state survives restarts and is the same for every instance | A real channel is integrated (the table then stays empty) |
+| No backfill | The table starts empty; the first run after the migration creates one stock-sync task per Active mapping (bounded by `MaxTasksPerRun`) | A channel that never stored a value is drifted; faking "in sync" would hide it | — |
+| Demo drift | Development SKU rule `SIM-LOST-`: push accepted, not stored | Deterministic drift for the smoke and demos, same mechanism as `SIM-PERM-` / `SIM-TEMP-` | — |
+| Trigger | `ReconciliationService` (Workers host) every `Reconciliation:Interval` (15 min; Development 1 min), first round after `min(Interval, 60 s)` | User decision; the API never talks to channels | Operators need an on-demand run |
+| One run at a time | `pg_try_advisory_lock` on a dedicated connection for the run; not acquired → skip | Several Workers instances; PostgreSQL only, no new table or infrastructure | — |
+| Candidates | Active mappings of Active channels with a stock-sync queue, per channel, keyset batches; skipped: pairs with an unfinished `StockSync` task, and pairs whose most recently finished task `Failed` with `channel_rejected`. A final failure with a transient code is **not** skipped | An unfinished task pushes the current value anyway; a rejected pair would fail every round (and the mapping change or a manual retry is the fix); transient final failures are exactly the outages reconciliation must heal (log 014) | Channels reject transiently-looking errors |
+| Drift | Reading `null` or ≠ central `AvailableStock` read before the channel read; races accepted (a false drift costs one push of the current value, a missed one is found next run) | No lock or transaction across an external call | — |
+| Action | Per batch one transaction: new `StockSync` task + directed `stock.sync.requested` (`StockSyncRequests.NewTask`), key `reconcile:{runId}:{channelId}:{productId}`, correlation id `reconciliation-{runId:N}`; at most `MaxTasksPerRun` (500) per run, the rest deferred | Reuses the sync path, its retries, alerts and UI; a run is traceable on Sync & Processing and Logs/Audit | — |
+| Source of truth | A run writes only `ProcessingTasks`, `OutboxEvents` and one `SystemEventLogs` row; never stock, products, mappings, orders, movements, alerts | Doc §8.5: no business rule allows changing the source of truth from channel values | A business rule for channel-side sales appears |
+| Unreadable channel | A failed read ends that channel for the run; the others go on; reported in the event | One failing channel must not stop the others (doc §1.2) | — |
+| Audit | `reconciliation.completed` (Warning) only when a run created a task or could not read a channel; counts and unreadable channels allowlisted; a clean run writes nothing (Serilog line only) | `SystemEventLog` records exceptions, not the normal flow (log 018b) | — |
+| Frontend | Only the Logs/Audit label of the new event (022 C5); two full `npm test` runs + one slow run instead of five (no new page or async behaviour) | The event is how an operator sees drift | — |
+
+### Deviations / additions to the architecture document
+26. `SimulatedChannelStocks` table — state of the simulated external channels, not business data (user decision
+    2026-10-05: no real channel accounts; doc §8.5 needs a readable channel state).
+27. `IChannelStockClient` gains a batch read of the channel's available stock.
+28. System event type `reconciliation.completed`; reconciliation runs carry the correlation id `reconciliation-{runId}`.
