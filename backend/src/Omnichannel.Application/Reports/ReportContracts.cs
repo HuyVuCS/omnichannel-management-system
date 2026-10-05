@@ -28,7 +28,7 @@ public sealed record ExportInventoryRequest(string? Search, bool LowStockOnly, s
 /// <summary>The export was accepted; it is built in the background by the task with this id.</summary>
 public sealed record ExportAcceptedResponse(Guid TaskId);
 
-/// <summary>The status of the export's task, or <see cref="Expired"/> once its file was deleted.</summary>
+/// <summary>The status of the export's task, or <see cref="Expired"/> (<see cref="ReportExportExpiry.StatusOf"/>).</summary>
 public enum ReportExportStatus
 {
     Pending,
@@ -37,8 +37,33 @@ public enum ReportExportStatus
     Succeeded,
     Failed,
 
-    /// <summary>The retention time is over and the file is gone.</summary>
+    /// <summary>The retention time is over: the file is gone, or is not handed out any more.</summary>
     Expired
+}
+
+/// <summary>
+/// When an export is over. The retention time is a promise about personal data, so it holds from <c>ExpiresAt</c> on,
+/// whether or not the retention sweep has deleted the file yet - the same rule the worker fails an export by.
+/// </summary>
+public static class ReportExportExpiry
+{
+    /// <summary>The file is gone, or its retention time is over: no download, no new attempt.</summary>
+    public static bool IsPastRetention(DateTimeOffset? deletedAt, DateTimeOffset expiresAt, DateTimeOffset now) =>
+        deletedAt is not null || expiresAt <= now;
+
+    /// <summary>
+    /// <see cref="ReportExportStatus.Expired"/> once the file was deleted, and for a finished export from its
+    /// <c>ExpiresAt</c> on; the status of the task otherwise. An export that is still waiting or running past its
+    /// <c>ExpiresAt</c> keeps the task's status: the worker fails it as expired.
+    /// </summary>
+    public static ReportExportStatus StatusOf(
+        ProcessingTaskStatus taskStatus, DateTimeOffset? deletedAt, DateTimeOffset expiresAt, DateTimeOffset now)
+    {
+        var finished = taskStatus is ProcessingTaskStatus.Succeeded or ProcessingTaskStatus.Failed;
+        return deletedAt is not null || (finished && expiresAt <= now)
+            ? ReportExportStatus.Expired
+            : Enum.Parse<ReportExportStatus>(taskStatus.ToString());
+    }
 }
 
 /// <param name="Parameters">The normalised request: the filters, <c>timeZone</c> and <c>language</c>.</param>
@@ -172,8 +197,8 @@ public static class ReportErrorCodes
     public const string ExportNotReady = "export_not_ready";
 
     /// <summary>
-    /// The retention time is over: 409 for a download once the file was deleted; at the worker the task fails with it
-    /// instead of building a file nobody could keep.
+    /// The retention time is over: 409 for a download and for a manual retry of the export's task; at the worker the
+    /// task fails with it instead of building a file nobody could keep.
     /// </summary>
     public const string ExportExpired = "export_expired";
 
