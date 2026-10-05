@@ -3,10 +3,9 @@
 This file is an index and a snapshot of what is in flight. The repository documents are the memory; follow the links.
 
 ## 1. Snapshot
-- Written: 2026-10-05 15:50 (+07:00), by Claude Code, right after finishing task 021 (replaces the snapshot taken
-  in the middle of it).
-- Branch `master` (nothing pushed). HEAD: the report commit of task 021 (`task 021: report`), on top of `896d27c`
-  "task 021: Reports & Excel export page …"; this file is committed with or right after it.
+- Written: 2026-10-05 15:40 (+07:00), by Claude Code, after finishing task 021.
+- Branch `master` (nothing pushed). HEAD: `68099d7` "task 021: report" (this file is committed on top of it;
+  before it `896d27c` "task 021: Reports & Excel export page …").
 - Working tree: clean. No API, Workers host or preview server is left running by Claude Code; the development
   PostgreSQL, RabbitMQ and object storage containers are up.
 - Newest migration: **`20261004183420_ReportExports`** — applied to development on 2026-10-05 (with
@@ -90,6 +89,10 @@ Deviations to confirm are listed in the report (nine, none architectural).
   conflict is `NU1109` at restore. → README, *Package*.
 - **A download link is a credential**: fetched by a mutation, followed through a temporary anchor, removed with
   `request.reset()` — the hook's own `reset` does not remove it. → `features/reports/components/ExportsTable.tsx`.
+- **The slow run is sensitive to load**: close the Browser pane first; no role-and-name queries over a large table
+  inside `waitFor`. → report 021, "Slow runs".
+- **A file download in the Browser pane needs the user's OK**: check the anchor and the bytes, say what was not
+  exercised. → report 021, "Blocked / questions".
 - **Every menu page makes requests now**: the request-free page of tests is `/no-such-page`. → Part B tests.
 - **A table next to a scrollbar has 976 px** at 1280 px, not 992. → `LogsPage.tsx`, `ExportsTable.tsx`.
 - **Expired image links**: a thumbnail asks for fresh links only after `expiresAt`, and once until an image has
