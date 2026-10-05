@@ -36,6 +36,21 @@ export const REJECTION_CODES = [
   'task_of_other_channel',
 ] as const;
 
+/**
+ * The error codes of a channel call this client has a label for (`logs.channelErrors.*`; the API's
+ * `ChannelApiErrorCodes`). A code that is not listed is shown as it is.
+ */
+export const CHANNEL_ERROR_CODES = [
+  'channel_timeout',
+  'channel_unavailable',
+  'channel_rate_limited',
+  'channel_rejected',
+  'channel_circuit_open',
+] as const;
+
+/** Between the parts of a summary that is put together from several texts. */
+const PART_SEPARATOR = ' · ';
+
 export interface EventSummary {
   /** One line that says what happened. */
   text: string;
@@ -71,6 +86,15 @@ function shortLines(value: unknown): { requested: unknown; available: unknown }[
   return Array.isArray(value)
     ? value.filter(
         (line): line is { requested: unknown; available: unknown } => typeof line === 'object' && line !== null,
+      )
+    : [];
+}
+
+/** The channels a reconciliation run could not read (`[{ channel, errorCode, pairs }]`). */
+function unreadableChannels(value: unknown): { channel: unknown; errorCode: unknown }[] {
+  return Array.isArray(value)
+    ? value.filter(
+        (entry): entry is { channel: unknown; errorCode: unknown } => typeof entry === 'object' && entry !== null,
       )
     : [];
 }
@@ -159,6 +183,29 @@ export function eventSummary(t: TFunction, event: SystemEvent): EventSummary | n
           reason: label(t, 'logs.rejection', REJECTION_CODES, details.reasonCode),
         }),
       };
+
+    // What the run found and did; the channels it could not read by name, with the reason.
+    case 'reconciliation.completed': {
+      const parts = [
+        t(`${key}.drift`, { drifted: count(details.drifted), checked: count(details.checked) }),
+        t(`${key}.tasks`, { tasksCreated: count(details.tasksCreated) }),
+      ];
+      if (typeof details.deferred === 'number' && details.deferred > 0) {
+        parts.push(t(`${key}.deferred`, { deferred: count(details.deferred) }));
+      }
+
+      const channels = unreadableChannels(details.unreadable).map((entry) =>
+        t(`${key}.channel`, {
+          channel: text(entry.channel),
+          reason: label(t, 'logs.channelErrors', CHANNEL_ERROR_CODES, entry.errorCode),
+        }),
+      );
+      if (channels.length > 0) {
+        parts.push(t(`${key}.unreadable`, { channels: channels.join(t(`${key}.channelSeparator`)) }));
+      }
+
+      return { text: parts.join(PART_SEPARATOR) };
+    }
 
     case 'user.created':
       return { text: t(key, { role: label(t, 'roles', ROLES, details.role) }) };

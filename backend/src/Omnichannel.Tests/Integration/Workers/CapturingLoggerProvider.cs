@@ -5,7 +5,12 @@ using Microsoft.Extensions.Logging;
 namespace Omnichannel.Tests.Integration.Workers;
 
 /// <summary>A captured log entry with the key/value pairs of all active scopes.</summary>
-public sealed record CapturedLog(string Category, LogLevel Level, string Message, IReadOnlyDictionary<string, object?> Scope);
+public sealed record CapturedLog(
+    string Category,
+    LogLevel Level,
+    string Message,
+    IReadOnlyDictionary<string, object?> Scope,
+    Exception? Exception = null);
 
 /// <summary>Collects formatted log messages (and scope values) of a test host so tests can assert on worker behaviour.</summary>
 public sealed class CapturingLoggerProvider : ILoggerProvider
@@ -55,7 +60,7 @@ public sealed class CapturingLoggerProvider : ILoggerProvider
 
         public void Log<TState>(
             LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
-            provider._entries.Enqueue(new CapturedLog(category, logLevel, formatter(state, exception), provider.CurrentScope()));
+            provider._entries.Enqueue(new CapturedLog(category, logLevel, formatter(state, exception), provider.CurrentScope(), exception));
     }
 
     private sealed class ScopeHandle(Action onDispose) : IDisposable

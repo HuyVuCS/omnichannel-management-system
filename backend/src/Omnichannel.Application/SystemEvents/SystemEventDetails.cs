@@ -41,6 +41,12 @@ public static class SystemEventDetails
             // "reasonCode" is one of MessageRejectionCodes; rows written before task 019 have none.
             [OrderProcessingEvents.MessageRejected] = ["messageId", "reasonCode"],
             [StockSyncEvents.MessageRejected] = ["messageId", "reasonCode", "queue"],
+            // Counts of the run; "unreadable" lists the application's own channel names, error codes and counts.
+            [ReconciliationEvents.Completed] =
+            [
+                "runId", "checked", "inSync", "drifted", "tasksCreated", "deferred", "skippedUnfinished", "skippedRejected",
+                "unreadable"
+            ],
             [ReportEvents.MessageRejected] = ["messageId", "reasonCode"],
             // The task is in the event's own column. Not the filters: a search text is whatever the user typed.
             [ReportEvents.ExportRequested] = ["reportType", "requestedBy"],

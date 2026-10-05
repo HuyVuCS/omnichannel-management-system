@@ -41,10 +41,11 @@ public sealed class SystemEventDetailsTests
             new[]
             {
                 typeof(AlertEvents), typeof(InventoryEvents), typeof(OrderProcessingEvents), typeof(OutboxEvents),
-                typeof(ProcessingEvents), typeof(ReportEvents), typeof(StockSyncEvents), typeof(UserEvents)
+                typeof(ProcessingEvents), typeof(ReconciliationEvents), typeof(ReportEvents), typeof(StockSyncEvents),
+                typeof(UserEvents)
             }.Select(t => t.Name),
             EventClasses.Select(t => t.Name).Order(StringComparer.Ordinal));
-        Assert.Equal(16, EventTypeConstants().Count());
+        Assert.Equal(17, EventTypeConstants().Count());
     }
 
     [Fact]
@@ -86,6 +87,25 @@ public sealed class SystemEventDetailsTests
 
         Assert.Equal(["reportType", "requestedBy"], details!.Select(p => p.Key));
         Assert.Equal(requester, SystemEventDetails.ActorIdOf(details));
+    }
+
+    [Fact]
+    public void A_reconciliation_run_shows_its_counts_and_the_channels_it_could_not_read()
+    {
+        Assert.Equal(
+            ["runId", "checked", "inSync", "drifted", "tasksCreated", "deferred", "skippedUnfinished", "skippedRejected", "unreadable"],
+            SystemEventDetails.AllowedFields[ReconciliationEvents.Completed]);
+
+        var details = SystemEventDetails.Filter(
+            ReconciliationEvents.Completed,
+            """{"runId":"r-1","checked":340,"drifted":12,"unreadable":[{"channel":"POS","errorCode":"channel_unavailable","pairs":7}],"secret":"x"}""");
+
+        Assert.NotNull(details);
+        Assert.Equal(["runId", "checked", "drifted", "unreadable"], details.Select(p => p.Key));
+        Assert.True(JsonNode.DeepEquals(
+            JsonNode.Parse("""[{"channel":"POS","errorCode":"channel_unavailable","pairs":7}]"""), details["unreadable"]));
+        // A run is the system's: it names no user.
+        Assert.Null(SystemEventDetails.ActorIdOf(details));
     }
 
     [Fact]

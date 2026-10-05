@@ -114,7 +114,7 @@ dotnet run --project src/Omnichannel.Api --launch-profile http
 
 Run the API in Docker instead: `docker compose -f docker/docker-compose.yml --env-file docker/.env --profile app up -d --build` (port 8080).
 
-### 6. Workers (Outbox Publisher, Order Worker, Stock Sync Worker, Report Export Worker)
+### 6. Workers (Outbox Publisher, Order Worker, Stock Sync Worker, Report Export Worker, Reconciliation)
 
 The Workers host runs these background workers in one process:
 
@@ -125,6 +125,7 @@ The Workers host runs these background workers in one process:
 | Stock Sync Worker | consumes `stock.sync.website`, `stock.sync.pos`, `stock.sync.marketplace`: pushes stock to the channels (section 7) |
 | Report Export Worker | consumes `report.export`: builds the Excel file of an export and stores it in the object storage ("Reports and Excel export") |
 | Export retention sweep | every hour: deletes the files of exports older than 7 days |
+| Reconciliation | every 15 minutes (Development: every minute): compares the central stock with what the channels show and starts a stock sync where they differ (section 8) |
 
 It uses the **runtime** database role and the RabbitMQ user from `docker/.env` (secrets via user-secrets, never appsettings),
 and the keys of the object storage, which `scripts\setup-object-storage.ps1` (section 1) stores in its user-secrets:
@@ -189,7 +190,8 @@ when the product is mapped on it (`/api/channels/{channelId}/products`, see "API
   `BreakDuration` 30 s; only temporary failures and timeouts count). There is no retry inside a call: every retry is an
   attempt in the task's history.
 - **The channels are simulated** (`SimulatedChannelStockClient`; no real channel accounts exist). A push is logged and
-  accepted unless the `ChannelSimulation` section says otherwise. The section is read on every push, so a change of
+  accepted - and its value kept as the channel's stock, which reconciliation reads (section 8) - unless the
+  `ChannelSimulation` section says otherwise. The section is read on every push, so a change of
   `src/Omnichannel.Workers/appsettings.Development.json` applies **without restarting** the Workers host (started with
   `dotnet run` or by the smoke script: the content root is the project folder; a host started from another folder reads
   the copy next to its binaries):
@@ -224,6 +226,72 @@ when the product is mapped on it (`/api/channels/{channelId}/products`, see "API
   migration, section 4; uses a running API / Workers host or starts them, the Workers host in Development).
 - Messages that were in the stock-sync queues before this worker existed are processed like any other: no mapping
   existed, so they are acknowledged without a task.
+- A channel that still shows another value afterwards (a sync that failed for good, a lost update) is found by
+  **reconciliation**: section 8.
+
+### 8. Reconciliation (Reconciliation Worker, channel-side stock)
+
+Stock sync pushes every change, but a channel can still end up showing something else: a sync that ran out of attempts
+during a long outage, an update the channel lost, a value somebody changed on the channel's side. The Workers host
+therefore **compares** the central available stock with what each channel shows, on a timer, and starts a stock sync
+where they differ (architecture doc 8.5). There is no "run now": a run starts by the interval only.
+
+- **What a run does.** For every *Active* mapping of every *Active* channel that has a stock-sync queue (section 7), in
+  batches per channel: read the central `AvailableStock`, ask the channel for its values (one read per batch), and for
+  every pair whose value **differs or is missing** create a new `StockSync` task with a directed
+  `stock.sync.requested` message - the same path as every other stock sync (retries, DLQ, alerts, realtime hints). The
+  task pushes the stock *as it is when the worker runs*, so a change between the comparison and the push costs nothing.
+- **What a run never does.** It never changes the source of truth: it writes `ProcessingTasks`, `OutboxEvents` and at
+  most one `SystemEventLogs` row - never stock, products, mappings, orders, movements or alerts. No business rule says
+  a channel's value may correct the central one. An open `StockSyncFailed` alert of a pair still ends the usual way:
+  by a task of the pair that succeeds (the reconciliation task is one).
+- **Pairs a run skips:**
+  - a pair with an unfinished stock-sync task (`Pending`, `InProgress`, `RetryScheduled`): that task pushes the current
+    stock anyway;
+  - a pair whose most recently finished stock-sync task is `Failed` with `channel_rejected` on its last attempt: a new
+    task would fail the same way in every run. Its alert is open; changing the mapping (which starts a sync) or a manual
+    retry is the fix. A final failure with a temporary code (`channel_circuit_open`, `channel_timeout`,
+    `channel_unavailable`, `channel_rate_limited`, a database error) is **not** skipped - that is exactly the long
+    outage reconciliation recovers from.
+- **A channel that cannot be read** (any `ChannelApiException`; reads use the same timeout and circuit breaker as
+  pushes) is left alone for the rest of the run; the other channels are reconciled.
+- **One run at a time**, whatever the number of Workers instances: a PostgreSQL advisory lock
+  (`pg_try_advisory_lock`) held on a connection of its own for the run; an instance that does not get it skips the round.
+- **Settings** (`Reconciliation` section of the Workers host, checked at start-up):
+
+  | Setting | Default | Meaning |
+  | --- | --- | --- |
+  | `Enabled` | `true` | `false` = this host never runs a reconciliation |
+  | `Interval` | `00:15:00` (Development: `00:01:00`) | pause between two runs, 10 s to 1 day; the first run starts after `min(Interval, 60 s)` |
+  | `BatchSize` | `100` | mappings per step = products per channel read, 1 to 100 |
+  | `MaxTasksPerRun` | `500` | most tasks one run creates; drift beyond it is counted (`deferred`) and found again by the next run |
+
+- **Finding a run again.** Every task, message and event of a run carries the correlation id
+  **`reconciliation-{runId}`** (the run id without dashes). On *Sync & Processing* filter by that correlation id to see
+  the tasks of a run; on *Logs / audit* the event `reconciliation.completed` (Warning) says what the run found - e.g.
+  "12 of 340 products differ - 12 sync tasks created - not readable: POS (channel unavailable)" - and its *Trace* link
+  is the same filter. The event is written **only when a run created a task or could not read a channel**; a run that
+  finds everything in sync writes one log line (`Reconciliation run ...: N checked, ...`) and nothing else.
+- **The simulated channels remember what they accepted.** A real channel holds its own stock values; the simulator
+  keeps them in the table `SimulatedChannelStocks` (channel slug + the product as the channel knows it: `id:` +
+  external product id, otherwise `sku:` + external SKU; no foreign key - it is the channel's data, not this system's).
+  An **accepted** push writes the value (the last write wins), a push that fails, times out or is cancelled does not,
+  and a read answers from the table (no row = the channel has no value). The `ChannelSimulation` modes of section 7
+  apply to reads as well (`TransientError` -> `channel_unavailable`, `PermanentError` -> `channel_rejected`, `Timeout`
+  -> `channel_timeout`); the SKU rules do not. Only the simulator knows the table: with a real channel adapter it
+  stays empty.
+- **The first run after the migration.** The table starts empty (no backfill): until a push reaches it, a simulated
+  channel holds no value for a mapping, and that is drift. The first run therefore creates one stock-sync task per
+  Active mapping (at most `MaxTasksPerRun`; pairs skipped as above excepted). After those tasks ran, the channels
+  hold the central values and the runs are quiet.
+- **Seeing drift in development.** `SkuRules` (on in `appsettings.Development.json`) knows one more external-SKU
+  prefix: **`SIM-LOST-`** - the push is accepted and logged ("accepted, not stored"), but the channel keeps nothing.
+  Map a product on a channel with an external SKU such as `SIM-LOST-1`: every run (every minute in Development)
+  creates a stock-sync task for it, which succeeds and changes nothing - permanent drift. Change the external SKU
+  (or deactivate the mapping) to end it.
+- **Scripted check**: `powershell -ExecutionPolicy Bypass -File scripts\smoke\task-022.ps1` (needs the
+  `SimulatedChannelStocks` migration, section 4; uses a running API / Workers host or starts them, the Workers host in
+  Development; takes about six minutes: it waits for runs of the timer).
 
 ## Frontend
 
@@ -432,6 +500,9 @@ npm run dev     # http://localhost:5173 - needs the API on http://localhost:5080
     it is now.
   - `ReportExport` is a task type like the others on the Sync & Processing page and the dashboard; the Logs page
     names `report.export_requested` (report, requester) and `report_export.message_rejected` (reason code).
+  - A reconciliation run (section 8) is `reconciliation.completed` on the Logs page: "N of M products differ", the
+    sync tasks it created, what was left for the next run, and the channels it could not read by name with the label
+    of the error code (`CHANNEL_ERROR_CODES` / `logs.channelErrors.*`; a code without a label as it is).
   - Scripted check: `scripts\smoke\task-021.ps1`.
 - Channels: the list says for every channel whether stock is pushed to it at all (`stockSyncEnabled`, "API
   conventions"). The channel detail shows the channel, a link to its stock-sync tasks, and the products mapped on it
@@ -629,6 +700,7 @@ page; nothing in the API writes, changes or deletes an event.
   | `stock_sync.message_rejected` | Error | `messageId`, `reasonCode`, `queue` |
   | `report_export.message_rejected` | Error | `messageId`, `reasonCode` |
   | `report.export_requested` | Information | `reportType`, `requestedBy` (the task is the event's `taskId`; never the filters of the export) |
+  | `reconciliation.completed` | Warning | `runId`, `checked`, `inSync`, `drifted`, `tasksCreated`, `deferred`, `skippedUnfinished`, `skippedRejected`, `unreadable` (a list of `{ channel, errorCode, pairs }`: the channel's name, why it could not be read, how many of its pairs were left) - section 8 |
   | `processing.failed` | Error | `taskId`, `taskType`, `attemptNo`, `errorCode`, `errorMessage` (the attempt's sanitised message), `queue` |
   | `processing.retry_requested` | Information | `taskId`, `taskType`, `requestedBy`, `previousMessageId`, `newMessageId`, `attemptBudgetStart` |
   | `outbox.publish_failed` | Error | `outboxEventId`, `eventType`, `publishAttempts` |
@@ -680,7 +752,7 @@ page; nothing in the API writes, changes or deletes an event.
   order; `GET /api/processing/tasks?correlationId=…` its tasks.
 - **Adding an event type:**
   1. a constant in the `…Events` class of its feature in `Omnichannel.Application` (`InventoryEvents`,
-     `OrderProcessingEvents`, `ProcessingEvents`, `StockSyncEvents`, `ReportEvents`, `OutboxEvents`, `AlertEvents`,
+     `OrderProcessingEvents`, `ProcessingEvents`, `StockSyncEvents`, `ReconciliationEvents`, `ReportEvents`, `OutboxEvents`, `AlertEvents`,
      `UserEvents`; a new
      class must be public, static and named `…Events`), used by the code that writes the event;
   2. an entry in `SystemEventDetails.AllowedFields` with the fields that are safe to show: the application's own ids,
