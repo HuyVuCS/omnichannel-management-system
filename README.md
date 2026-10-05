@@ -241,6 +241,13 @@ where they differ (architecture doc 8.5). There is no "run now": a run starts by
   every pair whose value **differs or is missing** create a new `StockSync` task with a directed
   `stock.sync.requested` message - the same path as every other stock sync (retries, DLQ, alerts, realtime hints). The
   task pushes the stock *as it is when the worker runs*, so a change between the comparison and the push costs nothing.
+- **Failed syncs are repeated, also when nothing differs.** A pair whose most recently finished stock-sync task is
+  `Failed` with a temporary code (anything but `channel_rejected`) gets one task **even when the channel already shows
+  the central value** - the push landed before the failure was recorded, or the stock came back to the pushed value.
+  Without it the pair's `StockSyncFailed` alert would stay open for good: only a task of the pair that succeeds ends
+  it. These tasks are counted as `failedRetried` (in the run's log line, its event and on the Logs page: "N failed
+  syncs repeated"), they are part of `tasksCreated`, and they count toward `MaxTasksPerRun` - within a batch after the
+  pairs that really differ.
 - **What a run never does.** It never changes the source of truth: it writes `ProcessingTasks`, `OutboxEvents` and at
   most one `SystemEventLogs` row - never stock, products, mappings, orders, movements or alerts. No business rule says
   a channel's value may correct the central one. An open `StockSyncFailed` alert of a pair still ends the usual way:
@@ -253,8 +260,12 @@ where they differ (architecture doc 8.5). There is no "run now": a run starts by
     retry is the fix. A final failure with a temporary code (`channel_circuit_open`, `channel_timeout`,
     `channel_unavailable`, `channel_rate_limited`, a database error) is **not** skipped - that is exactly the long
     outage reconciliation recovers from.
-- **A channel that cannot be read** (any `ChannelApiException`; reads use the same timeout and circuit breaker as
-  pushes) is left alone for the rest of the run; the other channels are reconciled.
+- **A channel that cannot be read** is left alone for the rest of the run; the other channels are reconciled. An
+  answer of the channel (a `ChannelApiException`; reads use the same timeout and circuit breaker as pushes) is a
+  Warning with the channel's error code. **Anything else a read throws** - a defect of the channel's adapter, a typing
+  error in its configuration - ends that channel the same way with the code **`unexpected`** and is logged as an
+  **Error with the exception**: one broken channel never stops the reconciliation of the others. Only two things end a
+  whole run: the host stopping, and a failure of the run's own database work (the next round starts over).
 - **One run at a time**, whatever the number of Workers instances: a PostgreSQL advisory lock
   (`pg_try_advisory_lock`) held on a connection of its own for the run; an instance that does not get it skips the round.
 - **Settings** (`Reconciliation` section of the Workers host, checked at start-up):
@@ -264,14 +275,15 @@ where they differ (architecture doc 8.5). There is no "run now": a run starts by
   | `Enabled` | `true` | `false` = this host never runs a reconciliation |
   | `Interval` | `00:15:00` (Development: `00:01:00`) | pause between two runs, 10 s to 1 day; the first run starts after `min(Interval, 60 s)` |
   | `BatchSize` | `100` | mappings per step = products per channel read, 1 to 100 |
-  | `MaxTasksPerRun` | `500` | most tasks one run creates; drift beyond it is counted (`deferred`) and found again by the next run |
+  | `MaxTasksPerRun` | `500` | most tasks one run creates (for drift and for repeated failed syncs); what is beyond it is counted (`deferred`) and found again by the next run |
 
 - **Finding a run again.** Every task, message and event of a run carries the correlation id
   **`reconciliation-{runId}`** (the run id without dashes). On *Sync & Processing* filter by that correlation id to see
   the tasks of a run; on *Logs / audit* the event `reconciliation.completed` (Warning) says what the run found - e.g.
   "12 of 340 products differ - 12 sync tasks created - not readable: POS (channel unavailable)" - and its *Trace* link
   is the same filter. The event is written **only when a run created a task or could not read a channel**; a run that
-  finds everything in sync writes one log line (`Reconciliation run ...: N checked, ...`) and nothing else.
+  finds everything in sync and no failed sync to repeat writes one log line (`Reconciliation run ...: N checked, ...`)
+  and nothing else.
 - **The simulated channels remember what they accepted.** A real channel holds its own stock values; the simulator
   keeps them in the table `SimulatedChannelStocks` (channel slug + the product as the channel knows it: `id:` +
   external product id, otherwise `sku:` + external SKU; no foreign key - it is the channel's data, not this system's).
@@ -501,7 +513,8 @@ npm run dev     # http://localhost:5173 - needs the API on http://localhost:5080
   - `ReportExport` is a task type like the others on the Sync & Processing page and the dashboard; the Logs page
     names `report.export_requested` (report, requester) and `report_export.message_rejected` (reason code).
   - A reconciliation run (section 8) is `reconciliation.completed` on the Logs page: "N of M products differ", the
-    sync tasks it created, what was left for the next run, and the channels it could not read by name with the label
+    sync tasks it created, "N failed syncs repeated" when it repeated any (`failedRetried` > 0), what was left for the
+    next run, and the channels it could not read by name with the label
     of the error code (`CHANNEL_ERROR_CODES` / `logs.channelErrors.*`; a code without a label as it is).
   - Scripted check: `scripts\smoke\task-021.ps1`.
 - Channels: the list says for every channel whether stock is pushed to it at all (`stockSyncEnabled`, "API
@@ -700,7 +713,7 @@ page; nothing in the API writes, changes or deletes an event.
   | `stock_sync.message_rejected` | Error | `messageId`, `reasonCode`, `queue` |
   | `report_export.message_rejected` | Error | `messageId`, `reasonCode` |
   | `report.export_requested` | Information | `reportType`, `requestedBy` (the task is the event's `taskId`; never the filters of the export) |
-  | `reconciliation.completed` | Warning | `runId`, `checked`, `inSync`, `drifted`, `tasksCreated`, `deferred`, `skippedUnfinished`, `skippedRejected`, `unreadable` (a list of `{ channel, errorCode, pairs }`: the channel's name, why it could not be read, how many of its pairs were left) - section 8 |
+  | `reconciliation.completed` | Warning | `runId`, `checked`, `inSync`, `drifted`, `tasksCreated`, `deferred`, `failedRetried` (of the tasks created, the ones for pairs in sync whose last sync had failed), `skippedUnfinished`, `skippedRejected`, `unreadable` (a list of `{ channel, errorCode, pairs }`: the channel's name, why it could not be read - a channel error code or `unexpected` -, how many of its pairs were left) - section 8 |
   | `processing.failed` | Error | `taskId`, `taskType`, `attemptNo`, `errorCode`, `errorMessage` (the attempt's sanitised message), `queue` |
   | `processing.retry_requested` | Information | `taskId`, `taskType`, `requestedBy`, `previousMessageId`, `newMessageId`, `attemptBudgetStart` |
   | `outbox.publish_failed` | Error | `outboxEventId`, `eventType`, `publishAttempts` |

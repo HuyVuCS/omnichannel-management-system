@@ -219,13 +219,17 @@ export const reconciliationEvent = systemEvent({
     drifted: 12,
     tasksCreated: 12,
     deferred: 0,
+    failedRetried: 0,
     skippedUnfinished: 3,
     skippedRejected: 1,
     unreadable: [],
   },
 });
 
-/** A run that reached its cap and could not read two channels: one with a code this client knows, one without. */
+/**
+ * A run that reached its cap, repeated three failed syncs of products that do not differ, and could not read two
+ * channels: one with a code this client knows, one without.
+ */
 export const reconciliationWithTroubleEvent = systemEvent({
   ...reconciliationEvent,
   logId: 132,
@@ -233,7 +237,8 @@ export const reconciliationWithTroubleEvent = systemEvent({
     ...reconciliationEvent.details,
     drifted: 620,
     tasksCreated: 500,
-    deferred: 120,
+    deferred: 123,
+    failedRetried: 3,
     unreadable: [
       { channel: 'POS', errorCode: 'channel_unavailable', pairs: 40 },
       { channel: 'Website', errorCode: 'tls_handshake_failed', pairs: 7 },

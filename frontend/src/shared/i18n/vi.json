@@ -842,6 +842,7 @@
       "reconciliation_completed": {
         "drift": "{{drifted}}/{{checked}} sản phẩm lệch tồn",
         "tasks": "đã tạo {{tasksCreated}} tác vụ đồng bộ",
+        "failedRetried": "chạy lại {{failedRetried}} đồng bộ đã lỗi",
         "deferred": "còn {{deferred}} để lượt sau",
         "unreadable": "không đọc được: {{channels}}",
         "channel": "{{channel}} ({{reason}})",

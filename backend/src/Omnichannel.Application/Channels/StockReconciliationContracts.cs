@@ -1,3 +1,4 @@
+using Omnichannel.Application.Processing;
 using Omnichannel.Domain.Enums;
 
 namespace Omnichannel.Application.Channels;
@@ -59,8 +60,8 @@ public static class ReconciliationEvents
 {
     /// <summary>
     /// A run that created a stock-sync task or could not read a channel (Warning, the run's correlation id); a run that
-    /// finds everything in sync writes no event. Payload: <c>{runId, checked, inSync, drifted, tasksCreated, deferred,
-    /// skippedUnfinished, skippedRejected, unreadable: [{channel, errorCode, pairs}]}</c>.
+    /// finds everything in sync and no failed sync to repeat writes no event. Payload: <c>{runId, checked, inSync, drifted,
+    /// tasksCreated, deferred, failedRetried, skippedUnfinished, skippedRejected, unreadable: [{channel, errorCode, pairs}]}</c>.
     /// </summary>
     public const string Completed = "reconciliation.completed";
 }
@@ -124,22 +125,45 @@ public static class StockReconciliationRules
     /// </summary>
     public static bool IsDrift(int? channelStock, int centralStock) => channelStock != centralStock;
 
-    /// <summary>How many of <paramref name="drifted"/> pairs still get a task when <paramref name="tasksCreated"/> exist already.</summary>
-    public static int TasksAllowed(int drifted, int tasksCreated, int maxTasksPerRun) =>
-        Math.Clamp(maxTasksPerRun - tasksCreated, 0, drifted);
+    /// <summary>
+    /// The pair's most recently finished stock-sync task failed for good with a transient code (anything but a rejection
+    /// by the channel). Such a pair gets one task <b>even when the channel already shows the central value</b> - the push
+    /// landed before the failure was recorded, or the stock came back to the pushed value: its <c>StockSyncFailed</c>
+    /// alert ends only with a task of the pair that succeeds, and nothing else would create one.
+    /// </summary>
+    /// <param name="lastFinishedStatus">Status of the pair's most recently finished stock-sync task; null when none finished yet.</param>
+    /// <param name="lastErrorCode">Error code of that task's last attempt.</param>
+    public static bool RepeatsFailedSync(ProcessingTaskStatus? lastFinishedStatus, string? lastErrorCode) =>
+        lastFinishedStatus == ProcessingTaskStatus.Failed
+        && !string.Equals(lastErrorCode, ChannelApiErrorCodes.Rejected, StringComparison.Ordinal);
+
+    /// <summary>How many of <paramref name="wanted"/> pairs still get a task when <paramref name="tasksCreated"/> exist already.</summary>
+    public static int TasksAllowed(int wanted, int tasksCreated, int maxTasksPerRun) =>
+        Math.Clamp(maxTasksPerRun - tasksCreated, 0, wanted);
 }
 
 /// <summary>A channel a run could not read.</summary>
 /// <param name="Channel">The channel's name.</param>
-/// <param name="ErrorCode">One of <see cref="ChannelApiErrorCodes"/>: why the read failed.</param>
+/// <param name="ErrorCode">
+/// Why the read failed: one of <see cref="ChannelApiErrorCodes"/>, or <see cref="AttemptErrorCodes.Unexpected"/> for a
+/// failure that is no answer of the channel (a defect of its adapter or its configuration).
+/// </param>
 /// <param name="Pairs">Mapped products of the channel the run did not compare because of it.</param>
 public sealed record UnreadableChannel(string Channel, string ErrorCode, int Pairs);
 
 /// <summary>What one reconciliation run did.</summary>
 /// <param name="Ran">False = another instance holds the run lock; nothing was looked at.</param>
 /// <param name="Checked">Mapped products whose channel value was read (<paramref name="InSync"/> + <paramref name="Drifted"/>).</param>
-/// <param name="Drifted">Of those, the ones whose channel value differs (<paramref name="TasksCreated"/> + <paramref name="Deferred"/>).</param>
-/// <param name="Deferred">Drifted products left for the next run because of <see cref="ReconciliationOptions.MaxTasksPerRun"/>.</param>
+/// <param name="Drifted">Of those, the ones whose channel value differs.</param>
+/// <param name="TasksCreated">Every stock-sync task of the run: for drifted pairs, and <paramref name="FailedRetried"/>.</param>
+/// <param name="Deferred">
+/// Pairs that got no task because of <see cref="ReconciliationOptions.MaxTasksPerRun"/> (drifted, or in sync with a failed
+/// sync to repeat); the next run finds them again.
+/// </param>
+/// <param name="FailedRetried">
+/// Of the tasks created, the ones for pairs that are in sync but whose newest finished sync failed with a transient code
+/// (<see cref="StockReconciliationRules.RepeatsFailedSync"/>).
+/// </param>
 public sealed record ReconciliationRunResult(
     Guid RunId,
     bool Ran,
@@ -148,11 +172,12 @@ public sealed record ReconciliationRunResult(
     int Drifted,
     int TasksCreated,
     int Deferred,
+    int FailedRetried,
     int SkippedUnfinished,
     int SkippedRejected,
     IReadOnlyList<UnreadableChannel> Unreadable)
 {
-    public static ReconciliationRunResult NotRun(Guid runId) => new(runId, false, 0, 0, 0, 0, 0, 0, 0, []);
+    public static ReconciliationRunResult NotRun(Guid runId) => new(runId, false, 0, 0, 0, 0, 0, 0, 0, 0, []);
 
     /// <summary>The run has something an operator should see: it started a sync or could not look at a channel.</summary>
     public bool IsNoteworthy => TasksCreated > 0 || Unreadable.Count > 0;

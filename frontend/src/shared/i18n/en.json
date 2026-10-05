@@ -842,6 +842,7 @@
       "reconciliation_completed": {
         "drift": "{{drifted}} of {{checked}} products differ",
         "tasks": "{{tasksCreated}} sync tasks created",
+        "failedRetried": "{{failedRetried}} failed syncs repeated",
         "deferred": "{{deferred}} left for the next run",
         "unreadable": "not readable: {{channels}}",
         "channel": "{{channel}} ({{reason}})",

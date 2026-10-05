@@ -348,8 +348,8 @@ public sealed class SystemEventEndpointsTests(ApiFactory factory)
         {
             // The counts of a run and the channels it could not read; nothing else it might ever carry.
             ReconciliationEvents.Completed,
-            """{"runId":"01a10000-0000-7000-8000-000000000008","checked":340,"inSync":328,"drifted":12,"tasksCreated":10,"deferred":2,"skippedUnfinished":3,"skippedRejected":1,"unreadable":[{"channel":"POS","errorCode":"channel_unavailable","pairs":7}],"connection":"dropped"}""",
-            """{"runId":"01a10000-0000-7000-8000-000000000008","checked":340,"inSync":328,"drifted":12,"tasksCreated":10,"deferred":2,"skippedUnfinished":3,"skippedRejected":1,"unreadable":[{"channel":"POS","errorCode":"channel_unavailable","pairs":7}]}"""
+            """{"runId":"01a10000-0000-7000-8000-000000000008","checked":340,"inSync":328,"drifted":12,"tasksCreated":11,"deferred":2,"failedRetried":1,"skippedUnfinished":3,"skippedRejected":1,"unreadable":[{"channel":"POS","errorCode":"channel_unavailable","pairs":7}],"connection":"dropped"}""",
+            """{"runId":"01a10000-0000-7000-8000-000000000008","checked":340,"inSync":328,"drifted":12,"tasksCreated":11,"deferred":2,"failedRetried":1,"skippedUnfinished":3,"skippedRejected":1,"unreadable":[{"channel":"POS","errorCode":"channel_unavailable","pairs":7}]}"""
         },
         {
             ReportEvents.MessageRejected,
