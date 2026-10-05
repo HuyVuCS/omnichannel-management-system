@@ -123,10 +123,6 @@
       "reload": "Reload"
     }
   },
-  "comingSoon": {
-    "title": "Not available yet",
-    "description": "This page is coming in task {{task}}."
-  },
   "users": {
     "title": "Users",
     "create": "New user",

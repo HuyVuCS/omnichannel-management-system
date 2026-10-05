@@ -88,6 +88,20 @@ dotnet ef database update -p src/Omnichannel.Infrastructure -s src/Omnichannel.A
 
 Review the generated migration before applying it (check constraints, the generated `AvailableStock` column, unique indexes, seed rows for 3 channels and 3 roles).
 
+Two ways to apply a new migration on development:
+
+- **By hand:** the command above.
+- **By Claude Code:** after a task is verified, Claude Code runs the same command itself as the migrator, under the
+  guardrails of ["Development steps" in `docs/tasks/README.md`](docs/tasks/README.md#development-steps): the development
+  database only, additive migrations only (`dotnet ef migrations list` must show exactly the task's migrations as
+  pending; anything that drops, renames, narrows or rewrites is left to the user), and the connection is never printed.
+  It reads the connection from the **user-level** environment variable `OMNICHANNEL_MIGRATOR_CONNECTION`, set once by
+  the user (then restart the editor / Claude app so it is inherited):
+
+  ```powershell
+  [Environment]::SetEnvironmentVariable("OMNICHANNEL_MIGRATOR_CONNECTION", "Host=127.0.0.1;Port=5432;Database=omnichannel;Username=omnichannel_migrator;Password=<OMNI_MIGRATOR_PASSWORD>", "User")
+  ```
+
 ### 5. Run
 
 ```powershell
@@ -281,8 +295,10 @@ npm run dev     # http://localhost:5173 - needs the API on http://localhost:5080
   (`/inventory/import`, Manager/Admin, reached from the inventory and product lists, no menu item), Inventory movements
   (`/inventory/movements`), Products, Customers, Channels, Channel detail (`/channels/{id}`, reached from the channel
   name in the list, no menu item), Sync & Processing (`/processing`), Task detail (`/processing/tasks/{id}`, no menu
-  item), Alerts (`/alerts`), Logs / audit (`/logs`, Manager/Admin), Users. The remaining menu item (Reports: task 021)
-  shows a "coming in task NNN" placeholder.
+  item), Alerts (`/alerts`), Logs / audit (`/logs`, Manager/Admin), Reports & Excel export (`/reports`,
+  Manager/Admin), Users. Every menu item has a page: the router's page table is typed by the menu's paths
+  (`NavigationPath`), so a menu item without a page - or a page for a path that is no menu item - fails
+  `npm run typecheck`. A future page is added together with its route; there is no placeholder page.
 - **Realtime** (`src/features/realtime`): after sign-in the application opens one SignalR connection to
   `/api/hubs/notifications` (section "Realtime hints and dashboard summary"). The client library
   (`@microsoft/signalr`) is behind a small interface (`hub.ts`) and loaded with a dynamic `import()`, so the login page
@@ -355,6 +371,16 @@ npm run dev     # http://localhost:5173 - needs the API on http://localhost:5080
     waits until no request is on its way and no query or mutation is pending. An invalidation waits for pending
     requests and then refetches (the resync after every hub connect does), so "the page is rendered" is not "nothing
     more will be asked".
+  - **Pattern to avoid: a role-and-name query over a large table inside `waitFor`** (or a `findByRole` /
+    `findAllByRole` with `name`, which is the same loop). Every poll computes the accessible name of every candidate
+    element in the document; on a table of twenty rows one poll can take hundreds of milliseconds, under load or in the
+    slow run longer than the interval - the answer the test waits for is then not rendered before the wait gives up.
+    Wait on something narrow instead: a text (`findByText`), a query `within` the one row or dialog (`rowOf`,
+    `findDialog`), or a plain DOM query on a stable attribute (`document.querySelectorAll('img[src="…"]')`), and make
+    the role-and-name assertions once, after the wait.
+  - **Conditions of a slow run:** the Browser pane closed and the machine otherwise idle (no API or Workers host, no
+    backend build or test, no dev or preview server). A test that is red in such a run is **not** attributed to load
+    without a second run of that file alone (`npm run test:slow -- <file>`); both results go into the task's report.
 - Product images (`features/products`): the list has a thumbnail column (40 x 40, cropped, lazy, `alt` = the product
   name; a placeholder when there is no image or it cannot be loaded) for every role. The edit dialog (Manager/Admin)
   has the image block: preview, "choose image", "remove image" (with a confirmation). Both act at once, not on "Save".

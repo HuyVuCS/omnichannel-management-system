@@ -123,10 +123,6 @@
       "reload": "Tải lại trang"
     }
   },
-  "comingSoon": {
-    "title": "Chưa có",
-    "description": "Trang này sẽ có ở task {{task}}."
-  },
   "users": {
     "title": "Người dùng",
     "create": "Thêm người dùng",
