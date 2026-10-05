@@ -731,3 +731,30 @@ development. Doc deviations 26–28 confirmed. Review: `docs/tasks/022-*.review.
 | Event contents | `unreadable[].channel` = channel name (snapshot); the run reads on after the cap to count `deferred` exactly | The Logs line needs no lookup; every run reads every pair anyway | — |
 | Trusting unfinished tasks | A pair with a non-terminal stock-sync task is skipped; a task that can never end blocks its pair | Accepted for now | 026: detection of stale non-terminal tasks |
 | Reconciliation in tests | Each reconciliation test uses its own database; test hosts run with `Reconciliation:Enabled=false` unless a test asks for it | A run looks at every mapping | — |
+
+## Task 023 plan — webhooks (2026-10-05)
+
+**Decision (user, 2026-10-05):** a webhook carries the **channel's own identifiers**: items by external product id /
+external SKU (resolved through the channel's Active mappings), the customer by the channel's external customer id
+(resolved through a new `ChannelCustomers` mapping; a customer is created on first sight). The normalised order then
+goes through the existing order intake (doc §8.1 "Normalize → Common Order DTO"). Alternatives: the order-entry body
+with our GUIDs (no normalisation, mappings unused); channel product ids with our customer GUID (a channel cannot know it).
+
+| Topic | Decision | Reason | Revisit when |
+| --- | --- | --- | --- |
+| Authentication | `POST /api/webhooks/{slug}` is anonymous to JWT; the caller proves itself with **HMAC-SHA256** over `"{timestamp}.{raw body}"` with the channel's secret: headers `X-Webhook-Timestamp` (Unix seconds) and `X-Webhook-Signature: v1=<hex>` (several comma-separated `v1=` values allowed); constant-time comparison; timestamp within ±5 min of the API clock | Doc §6 "verify signature/secret"; the scheme of common webhook providers; the timestamp bounds replays, the order idempotency makes a replay inside the window a duplicate | A real channel prescribes its own scheme (then one verifier per channel kind) |
+| Secrets | Per channel slug in configuration (`Webhooks:Channels:{slug}:Secrets`, one or two for rotation, ≥ 32 characters), from user-secrets / environment only; never logged; a slug without a secret has no webhook (404 like an unknown channel). Key helper `scripts/setup-webhook-secrets.ps1` | Doc §6 secrets in environment/secret manager; no secret in the database; rotation without downtime | Channels are created at runtime and need webhooks (then a secret store) |
+| Identity of a webhook | After a valid signature the request acts as `webhook:{slug}` (audit fields, `CreatedBy` of task and outbox row), with **no role**: it can reach nothing but this endpoint | Audit must say who wrote; a webhook is not staff | — |
+| Rate limit | Fixed window per (client IP, slug), 120 per minute, 429; applied before anything else; body limit 64 KiB (413) | Doc §6 rate limit for public/webhook endpoints; IP alone would let one sender exhaust every channel | Behind a proxy: ForwardedHeaders (025) |
+| Body | `{ externalOrderId, customer { externalCustomerId, name, phone?, email? }, items [ { externalProductId? \| externalSku?, quantity } ] }`; exactly one identifier per item; same limits as the order intake (128-character order id, ≤ 100 items, quantity 1–10,000) | A channel speaks in its own ids and words; our limits stay one set | — |
+| Item resolution | The key rule of the simulator: an item names a mapping by its external product id, or — for a mapping without one — by its external SKU; the mapping and its channel must be Active; anything else is a 400 on the item | One rule for "how a channel knows a product" (`SimulatedChannelStock.ExternalKeyOf`); unique since 023 A3 | — |
+| Customer resolution | `ChannelCustomers` (`ChannelId`, `ExternalCustomerId` unique per channel → `CustomerId`); first sight creates the customer (name, phone, email from the payload) and the mapping in one short transaction before the intake (race: unique index → re-read); later webhooks never change the customer | Deterministic and idempotent; no matching by phone (optional, not unique, free format); our edits are not overwritten | Channels send customer updates |
+| Order of steps | rate limit → body size → channel + secret → signature + timestamp → JSON + validation → items → customer → intake. A customer created for an order the intake then refuses (409) stays | Nothing is read from the body before it is authenticated; the customer is real either way | — |
+| Responses | 202 with the intake's `SubmitOrderResponse` (duplicate included); 400 (camelCase keys, localised), 401 `webhook_signature_invalid` / `webhook_timestamp_invalid`, 404 `channel_not_found`, 409 `order_conflict`, 413, 429 | One contract with the order intake; distinct 401 codes help an integrator and reveal nothing | — |
+| Audit and logs | No new system event; an accepted webhook is traced by its task (actor, correlation id from `X-Correlation-Id` when valid); a rejected one is a Warning log (slug, reason code, client IP) — never the body, signature or secret | The task already is the audit of an accepted order; rejections are unauthenticated noise | Operators need webhook failures on the dashboard |
+| Frontend | None for webhooks (023 changes only the mapping dialog and the Logs line of Part A) | The Order Entry page stays the demo input; `scripts/send-webhook.ps1` signs and sends a webhook for demos | — |
+
+### Deviations / additions to the architecture document
+29. Webhook contract: HMAC-SHA256 signature headers, timestamp window, channel-shaped body (doc §11 names only the route).
+30. `ChannelCustomers` table (the ERD has no customer mapping per channel).
+31. Webhook secrets per channel in configuration; the webhook acts as `webhook:{slug}` without a role.
