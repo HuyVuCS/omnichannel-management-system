@@ -74,13 +74,14 @@ public sealed class ReconciliationService(
             }
 
             logger.LogInformation(
-                "Reconciliation run {RunId}: {Checked} checked, {InSync} in sync, {Drifted} drifted, {TasksCreated} sync tasks created, {Deferred} deferred, {SkippedUnfinished} skipped (sync unfinished), {SkippedRejected} skipped (rejected by the channel), {Unreadable} channels not readable; {DurationMs} ms",
+                "Reconciliation run {RunId}: {Checked} checked, {InSync} in sync, {Drifted} drifted, {TasksCreated} sync tasks created, {Deferred} deferred, {FailedRetried} failed syncs repeated, {SkippedUnfinished} skipped (sync unfinished), {SkippedRejected} skipped (rejected by the channel), {Unreadable} channels not readable; {DurationMs} ms",
                 result.RunId,
                 result.Checked,
                 result.InSync,
                 result.Drifted,
                 result.TasksCreated,
                 result.Deferred,
+                result.FailedRetried,
                 result.SkippedUnfinished,
                 result.SkippedRejected,
                 result.Unreadable.Count,

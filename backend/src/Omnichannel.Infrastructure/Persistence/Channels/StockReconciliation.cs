@@ -4,6 +4,7 @@ using Microsoft.Extensions.Options;
 using Npgsql;
 using Omnichannel.Application.Channels;
 using Omnichannel.Application.Common.Messaging;
+using Omnichannel.Application.Processing;
 using Omnichannel.Domain.Entities;
 using Omnichannel.Domain.Enums;
 using Omnichannel.Infrastructure.RabbitMQ;
@@ -13,7 +14,8 @@ namespace Omnichannel.Infrastructure.Persistence.Channels;
 /// <summary>
 /// One reconciliation run (doc §8.5): for every Active mapping of every Active channel that is synced, the central
 /// available stock is compared with what the channel shows; where they differ, a new stock-sync task pushes the current
-/// stock (the path of every other stock sync: retries, DLQ, alerts, realtime hints).
+/// stock (the path of every other stock sync: retries, DLQ, alerts, realtime hints). A pair that is in sync but whose
+/// newest finished sync failed with a transient code gets one task as well, so that its alert can end.
 /// <para>
 /// <b>A run never changes the source of truth.</b> It writes <c>ProcessingTasks</c>, <c>OutboxEvents</c> and at most one
 /// <c>SystemEventLogs</c> row - never stock, products, mappings, orders, movements or alerts: no business rule says
@@ -110,7 +112,7 @@ public sealed class StockReconciliation(
     {
         var settings = options.Value;
         var correlationId = ReconciliationIds.CorrelationIdOf(runId);
-        var (checkedPairs, inSync, drifted, tasksCreated, deferred, skippedUnfinished, skippedRejected) = (0, 0, 0, 0, 0, 0, 0);
+        var (checkedPairs, inSync, drifted, tasksCreated, deferred, failedRetried, skippedUnfinished, skippedRejected) = (0, 0, 0, 0, 0, 0, 0, 0);
         var unreadable = new List<UnreadableChannel>();
 
         foreach (var channel in await SyncedChannelsAsync(cancellationToken))
@@ -165,6 +167,16 @@ public sealed class StockReconciliation(
                             "Reconciliation run {RunId}: channel {Channel} could not be read ({ErrorCode}): {ErrorMessage}; its products are left for the next run",
                             runId, channel.Slug, exception.ErrorCode, exception.Message);
                     }
+                    catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+                    {
+                        // No answer of the channel but a defect (its adapter, its configuration): it ends this channel
+                        // like any failed read - never the run, the other channels have nothing to do with it.
+                        readError = AttemptErrorCodes.Unexpected;
+                        logger.LogError(
+                            exception,
+                            "Reconciliation run {RunId}: reading channel {Channel} failed unexpectedly; its products are left for the next run",
+                            runId, channel.Slug);
+                    }
                 }
 
                 if (channelStock is null)
@@ -174,20 +186,34 @@ public sealed class StockReconciliation(
                 }
                 else
                 {
-                    var differing = compared
-                        .Where(c => StockReconciliationRules.IsDrift(channelStock.GetValueOrDefault(c.ProductId), c.AvailableStock))
-                        .ToList();
-                    var allowed = StockReconciliationRules.TasksAllowed(differing.Count, tasksCreated, settings.MaxTasksPerRun);
+                    var differing = new List<Candidate>();
+                    var failedInSync = new List<Candidate>();
+                    foreach (var candidate in compared)
+                    {
+                        if (StockReconciliationRules.IsDrift(channelStock.GetValueOrDefault(candidate.ProductId), candidate.AvailableStock))
+                        {
+                            differing.Add(candidate);
+                        }
+                        else if (StockReconciliationRules.RepeatsFailedSync(candidate.LastFinished, candidate.LastErrorCode))
+                        {
+                            failedInSync.Add(candidate);
+                        }
+                    }
+
+                    // Drift first: under the cap a wrong value on the channel matters more than an alert that is still open.
+                    var wanted = differing.Count + failedInSync.Count;
+                    var allowed = StockReconciliationRules.TasksAllowed(wanted, tasksCreated, settings.MaxTasksPerRun);
                     if (allowed > 0)
                     {
-                        await CreateTasksAsync(runId, correlationId, channel, differing.Take(allowed), cancellationToken);
+                        await CreateTasksAsync(runId, correlationId, channel, differing.Concat(failedInSync).Take(allowed), cancellationToken);
                     }
 
                     checkedPairs += compared.Count;
                     inSync += compared.Count - differing.Count;
                     drifted += differing.Count;
                     tasksCreated += allowed;
-                    deferred += differing.Count - allowed;
+                    failedRetried += Math.Max(0, allowed - differing.Count);
+                    deferred += wanted - allowed;
                 }
 
                 if (page.Count < settings.BatchSize)
@@ -203,7 +229,7 @@ public sealed class StockReconciliation(
         }
 
         var result = new ReconciliationRunResult(
-            runId, Ran: true, checkedPairs, inSync, drifted, tasksCreated, deferred, skippedUnfinished, skippedRejected, unreadable);
+            runId, Ran: true, checkedPairs, inSync, drifted, tasksCreated, deferred, failedRetried, skippedUnfinished, skippedRejected, unreadable);
         if (result.IsNoteworthy)
         {
             await RecordAsync(result, correlationId, workerName, cancellationToken);
@@ -288,6 +314,7 @@ public sealed class StockReconciliation(
                 drifted = result.Drifted,
                 tasksCreated = result.TasksCreated,
                 deferred = result.Deferred,
+                failedRetried = result.FailedRetried,
                 skippedUnfinished = result.SkippedUnfinished,
                 skippedRejected = result.SkippedRejected,
                 unreadable = result.Unreadable.Select(u => new { channel = u.Channel, errorCode = u.ErrorCode, pairs = u.Pairs })

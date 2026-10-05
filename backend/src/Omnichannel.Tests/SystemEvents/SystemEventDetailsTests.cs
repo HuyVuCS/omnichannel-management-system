@@ -93,7 +93,10 @@ public sealed class SystemEventDetailsTests
     public void A_reconciliation_run_shows_its_counts_and_the_channels_it_could_not_read()
     {
         Assert.Equal(
-            ["runId", "checked", "inSync", "drifted", "tasksCreated", "deferred", "skippedUnfinished", "skippedRejected", "unreadable"],
+            [
+                "runId", "checked", "inSync", "drifted", "tasksCreated", "deferred", "failedRetried", "skippedUnfinished",
+                "skippedRejected", "unreadable"
+            ],
             SystemEventDetails.AllowedFields[ReconciliationEvents.Completed]);
 
         var details = SystemEventDetails.Filter(

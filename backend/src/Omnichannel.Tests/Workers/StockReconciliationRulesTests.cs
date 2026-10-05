@@ -1,8 +1,10 @@
 using Omnichannel.Api.Middleware;
 using Omnichannel.Application.Channels;
+using Omnichannel.Application.Processing;
 using Omnichannel.Domain.Entities;
 using Omnichannel.Domain.Enums;
 using Omnichannel.Infrastructure.Persistence.Channels;
+using Omnichannel.Workers.Processing;
 using Omnichannel.Workers.ReconciliationWorker;
 
 namespace Omnichannel.Tests.Workers;
@@ -72,6 +74,57 @@ public sealed class StockReconciliationRulesTests
         Assert.Equal(ReconciliationSkip.None, StockReconciliationRules.SkipOf(false, lastFinished, lastErrorCode));
     }
 
+    // ---- failed syncs that are repeated (task 023 A2) ---------------------------------------------------------
+
+    [Theory]
+    [InlineData(ChannelApiErrorCodes.CircuitOpen)]
+    [InlineData(ChannelApiErrorCodes.Timeout)]
+    [InlineData(ChannelApiErrorCodes.Unavailable)]
+    [InlineData(ChannelApiErrorCodes.RateLimited)]
+    [InlineData(ProcessingErrorClassifier.DatabaseUnavailable)]
+    [InlineData(ProcessingErrorClassifier.Unexpected)]
+    [InlineData(null)]
+    public void A_final_failure_with_any_code_but_a_rejection_is_repeated(string? lastErrorCode)
+    {
+        Assert.True(StockReconciliationRules.RepeatsFailedSync(ProcessingTaskStatus.Failed, lastErrorCode));
+    }
+
+    [Theory]
+    // A rejection would be rejected again.
+    [InlineData(ProcessingTaskStatus.Failed, ChannelApiErrorCodes.Rejected, false)]
+    // Nothing failed, whatever an earlier attempt of the task said.
+    [InlineData(ProcessingTaskStatus.Succeeded, null, false)]
+    [InlineData(ProcessingTaskStatus.Succeeded, ChannelApiErrorCodes.CircuitOpen, false)]
+    [InlineData(null, null, false)]
+    [InlineData(null, ChannelApiErrorCodes.CircuitOpen, false)]
+    public void Nothing_else_is_repeated(ProcessingTaskStatus? lastFinished, string? lastErrorCode, bool repeated)
+    {
+        Assert.Equal(repeated, StockReconciliationRules.RepeatsFailedSync(lastFinished, lastErrorCode));
+    }
+
+    [Fact]
+    public void A_pair_is_never_both_skipped_as_rejected_and_repeated()
+    {
+        foreach (var status in new ProcessingTaskStatus?[] { null, ProcessingTaskStatus.Succeeded, ProcessingTaskStatus.Failed })
+        {
+            foreach (var code in new[] { null, ChannelApiErrorCodes.Rejected, ChannelApiErrorCodes.CircuitOpen })
+            {
+                var skipped = StockReconciliationRules.SkipOf(false, status, code) == ReconciliationSkip.RejectedByChannel;
+                Assert.False(skipped && StockReconciliationRules.RepeatsFailedSync(status, code));
+            }
+        }
+    }
+
+    [Fact]
+    public void An_unexpected_read_failure_has_the_code_of_the_classifier()
+    {
+        // One constant (task 023 A1): what a run reports for a read that is no channel answer is the workers' code for
+        // unknown failures.
+        Assert.Equal("unexpected", AttemptErrorCodes.Unexpected);
+        Assert.Equal(AttemptErrorCodes.Unexpected, ProcessingErrorClassifier.Unexpected);
+        Assert.Equal(AttemptErrorCodes.Unexpected, ProcessingErrorClassifier.Classify(new InvalidOperationException("x")).ErrorCode);
+    }
+
     // ---- cap --------------------------------------------------------------------------------------------------
 
     [Theory]
@@ -81,9 +134,9 @@ public sealed class StockReconciliationRulesTests
     [InlineData(10, 500, 500, 0)] // the cap is reached
     [InlineData(0, 3, 500, 0)]
     [InlineData(4, 0, 1, 1)]
-    public void A_run_creates_tasks_only_up_to_its_cap(int drifted, int tasksCreated, int maxTasksPerRun, int allowed)
+    public void A_run_creates_tasks_only_up_to_its_cap(int wanted, int tasksCreated, int maxTasksPerRun, int allowed)
     {
-        Assert.Equal(allowed, StockReconciliationRules.TasksAllowed(drifted, tasksCreated, maxTasksPerRun));
+        Assert.Equal(allowed, StockReconciliationRules.TasksAllowed(wanted, tasksCreated, maxTasksPerRun));
     }
 
     // ---- ids --------------------------------------------------------------------------------------------------
@@ -192,10 +245,12 @@ public sealed class StockReconciliationRulesTests
     [Fact]
     public void A_run_is_noteworthy_when_it_created_a_task_or_could_not_read_a_channel()
     {
-        var clean = new ReconciliationRunResult(Guid.NewGuid(), true, 10, 10, 0, 0, 0, 2, 1, []);
+        var clean = new ReconciliationRunResult(Guid.NewGuid(), true, 10, 10, 0, 0, 0, 0, 2, 1, []);
 
         Assert.False(clean.IsNoteworthy);
         Assert.True((clean with { Drifted = 1, TasksCreated = 1 }).IsNoteworthy);
+        // A repeated failed sync is a created task (nothing drifted).
+        Assert.True((clean with { TasksCreated = 1, FailedRetried = 1 }).IsNoteworthy);
         Assert.True((clean with { Unreadable = [new UnreadableChannel("POS", ChannelApiErrorCodes.Unavailable, 4)] }).IsNoteworthy);
         // Skipped pairs alone are nothing new: their own task or alert already says so.
         Assert.False((clean with { SkippedUnfinished = 50, SkippedRejected = 50 }).IsNoteworthy);

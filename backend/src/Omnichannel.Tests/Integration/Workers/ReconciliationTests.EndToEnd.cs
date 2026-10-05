@@ -136,6 +136,77 @@ public sealed partial class ReconciliationTests
     }
 
     [Fact]
+    public async Task The_alert_of_a_failed_sync_whose_push_landed_is_resolved_by_the_task_the_next_run_repeats()
+    {
+        // Task 023 A2. The pair's sync runs out of attempts on the open circuit of pos; afterwards the channel shows the
+        // central value all the same (the push landed, or the stock came back): no drift, and an alert nothing would end.
+        var product = await ProductAsync(stock: 6);
+        var posId = await ChannelIdAsync(Pos);
+        var mapping = await ServicesAsync(services => services.GetRequiredService<IChannelService>().CreateProductAsync(
+            posId, new CreateChannelProductRequest(product.ProductId, null, $"POS-{product.Sku}"), CancellationToken.None));
+        var key = SimulatedChannelStock.ExternalKeyOf(null, $"POS-{product.Sku}");
+
+        var down = await StartWorkersAsync(
+            "reconciliation-repeat-outage",
+            new Dictionary<string, string?>
+            {
+                [$"ChannelSimulation:Channels:{Pos}:Mode"] = "TransientError",
+                // Two failed calls open the breaker; the third attempt is refused by it and is the last one.
+                ["StockSyncWorker:MaxAttempts"] = "3",
+                ["StockSyncWorker:CircuitBreaker:MinimumThroughput"] = "2",
+                ["StockSyncWorker:CircuitBreaker:BreakDuration"] = "00:05:00"
+            });
+        try
+        {
+            var failed = await WaitForTaskAsync(mapping.SyncTaskId!.Value, ProcessingTaskStatus.Failed);
+            Assert.Equal(
+                [ChannelApiErrorCodes.Unavailable, ChannelApiErrorCodes.Unavailable, ChannelApiErrorCodes.CircuitOpen],
+                failed.Attempts.OrderBy(a => a.AttemptNo).Select(a => a.ErrorCode));
+            var open = await AlertAsync(posId, product.ProductId);
+            Assert.Equal((AlertStatus.Open, ChannelApiErrorCodes.CircuitOpen), (open.Status, open.ErrorCode));
+        }
+        finally
+        {
+            await StopAsync(down);
+        }
+
+        var up = await StartWorkersAsync("reconciliation-repeat-recovery");
+        try
+        {
+            await up.Services.GetRequiredService<ISimulatedChannelStockStore>().SaveAsync(Pos, key, 6, "landed-before-the-failure", CancellationToken.None);
+
+            var first = await RunOnAsync(up);
+
+            // In sync, and one task all the same.
+            Assert.Equal((true, 1, 1, 0, 1, 0, 0, 0), Counts(first));
+            Assert.Equal(1, first.FailedRetried);
+            var repeat = Assert.Single(await ReconciliationTasksAsync());
+            await WaitForTaskAsync(repeat.TaskId, ProcessingTaskStatus.Succeeded);
+
+            // Its success ends the alert, as the success of every stock sync of the pair does - the run wrote none.
+            var resolved = await Eventually.WaitAsync(
+                () => AlertAsync(posId, product.ProductId), alert => alert.Status == AlertStatus.Resolved, Timeout, "stock-sync alert resolved");
+            Assert.NotNull(resolved.ResolvedAt);
+            var row = Assert.Single(await SimulatedRowsAsync());
+            Assert.Equal((6, $"{repeat.TaskId}:1:1"), (row.AvailableStock, row.LastRequestId));
+
+            // Nothing is left to repeat: the newest finished sync of the pair succeeded.
+            var second = await RunOnAsync(up);
+
+            Assert.Equal((true, 1, 1, 0, 0, 0, 0, 0), Counts(second));
+            Assert.Equal(0, second.FailedRetried);
+            Assert.False(second.IsNoteworthy);
+            Assert.Single(await ReconciliationTasksAsync());
+            Assert.Single(await EventsAsync());
+            Assert.Equal(ProcessingTaskStatus.Failed, (await WaitForTaskAsync(mapping.SyncTaskId!.Value, ProcessingTaskStatus.Failed)).Status);
+        }
+        finally
+        {
+            await StopAsync(up);
+        }
+    }
+
+    [Fact]
     public async Task A_channel_that_loses_its_updates_gets_a_task_in_every_run()
     {
         var product = await ProductAsync(stock: 4);
@@ -174,6 +245,12 @@ public sealed partial class ReconciliationTests
     {
         var product = await ProductAsync(stock: 2);
         await MapAsync(Pos, product);
+        // A second pair that is in sync, with a failed sync the run repeats (task 023 A2): a number of its own in the line.
+        var repeated = await ProductAsync(stock: 5);
+        var repeatedMapping = await MapAsync(Pos, repeated);
+        await TaskAsync(Pos, repeated, ProcessingTaskStatus.Failed, ChannelApiErrorCodes.Timeout);
+        await _tools.Services.GetRequiredService<ISimulatedChannelStockStore>().SaveAsync(
+            Pos, SimulatedChannelStock.ExternalKeyOf(repeatedMapping.ExternalProductId, repeatedMapping.ExternalSku), 5, "seeded", CancellationToken.None);
         var logs = new CapturingLoggerProvider();
         var host = await StartWorkersAsync(
             "reconciliation-service",
@@ -182,12 +259,15 @@ public sealed partial class ReconciliationTests
         try
         {
             // No test code starts the run: the background service does, ten seconds after start-up.
-            var task = await Eventually.WaitAsync(
-                async () => (await ReconciliationTasksAsync()).SingleOrDefault(),
-                found => found?.Status == ProcessingTaskStatus.Succeeded,
+            var tasks = await Eventually.WaitAsync(
+                ReconciliationTasksAsync,
+                found => found.Count == 2 && found.All(t => t.Status == ProcessingTaskStatus.Succeeded),
                 Timeout,
-                "a reconciliation task created by the background service and pushed");
-            Assert.Equal((await ChannelIdAsync(Pos), product.ProductId), (task!.ChannelId!.Value, task.ProductId!.Value));
+                "two reconciliation tasks created by the background service and pushed");
+            var posId = await ChannelIdAsync(Pos);
+            Assert.All(tasks, t => Assert.Equal(posId, t.ChannelId));
+            var task = tasks.Single(t => t.ProductId == product.ProductId);
+            Assert.Equal(task.CorrelationId, tasks.Single(t => t.ProductId == repeated.ProductId).CorrelationId);
 
             var line = await Eventually.WaitAsync(
                 () => Task.FromResult(logs.Entries.FirstOrDefault(e =>
@@ -197,14 +277,14 @@ public sealed partial class ReconciliationTests
                 found => found is not null,
                 Timeout,
                 "the log line of the run");
-            Assert.Contains("1 checked, 0 in sync, 1 drifted, 1 sync tasks created, 0 deferred", line!.Message);
+            Assert.Contains("2 checked, 1 in sync, 1 drifted, 2 sync tasks created, 0 deferred, 1 failed syncs repeated, 0 skipped", line!.Message);
             Assert.Equal(ReconciliationService.WorkerName, line.Scope["WorkerName"]);
             Assert.Equal("reconciliation-service", line.Scope["WorkerInstanceId"]);
             Assert.Equal(task.CorrelationId, line.Scope["CorrelationId"]);
 
             var written = Assert.Single(await EventsAsync());
             Assert.Equal((ReconciliationService.WorkerName, task.CorrelationId), (written.WorkerName, written.CorrelationId));
-            Assert.Equal(2, Assert.Single(await SimulatedRowsAsync()).AvailableStock);
+            Assert.Equal([2, 5], (await SimulatedRowsAsync()).Select(row => row.AvailableStock).Order());
         }
         finally
         {
@@ -247,11 +327,10 @@ public sealed partial class ReconciliationTests
     /// <summary>The Workers against this test's database, with the simulated channels (no double); orders are not part of it.</summary>
     private async Task<IHost> StartWorkersAsync(string instanceId, IDictionary<string, string?>? settings = null, CapturingLoggerProvider? logs = null)
     {
-        // The breaker has its own unit tests; here it must not interfere with a channel that is down on purpose.
-        var overrides = new Dictionary<string, string?>(settings ?? new Dictionary<string, string?>())
-        {
-            ["StockSyncWorker:CircuitBreaker:MinimumThroughput"] = "1000"
-        };
+        // The breaker has its own unit tests; here it must not interfere with a channel that is down on purpose -
+        // unless a test asks for it.
+        var overrides = new Dictionary<string, string?>(settings ?? new Dictionary<string, string?>());
+        overrides.TryAdd("StockSyncWorker:CircuitBreaker:MinimumThroughput", "1000");
         var host = fixture.CreateHost(
             instanceId,
             overrides,

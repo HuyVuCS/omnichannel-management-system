@@ -190,6 +190,11 @@ export function eventSummary(t: TFunction, event: SystemEvent): EventSummary | n
         t(`${key}.drift`, { drifted: count(details.drifted), checked: count(details.checked) }),
         t(`${key}.tasks`, { tasksCreated: count(details.tasksCreated) }),
       ];
+      // Of those tasks, the ones for products that do not differ: their last sync had failed and is repeated.
+      if (typeof details.failedRetried === 'number' && details.failedRetried > 0) {
+        parts.push(t(`${key}.failedRetried`, { failedRetried: count(details.failedRetried) }));
+      }
+
       if (typeof details.deferred === 'number' && details.deferred > 0) {
         parts.push(t(`${key}.deferred`, { deferred: count(details.deferred) }));
       }

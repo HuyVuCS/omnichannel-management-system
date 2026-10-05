@@ -544,22 +544,37 @@ describe('logs: rows', () => {
       eventType: 'reconciliation.completed',
       details: { checked: 5, drifted: 0, tasksCreated: 0, unreadable: [{ channel: 'POS' }, 'junk'] },
     });
+    // Nothing differs, and one task all the same: a failed sync that is repeated (and a count that is none).
+    const repeated = systemEvent({
+      logId: 127,
+      level: 'Warning',
+      eventType: 'reconciliation.completed',
+      details: { checked: 8, drifted: 0, tasksCreated: 1, deferred: 0, failedRetried: 1, unreadable: [] },
+    });
+    const junkCount = systemEvent({
+      logId: 126,
+      level: 'Warning',
+      eventType: 'reconciliation.completed',
+      details: { checked: 8, drifted: 1, tasksCreated: 1, failedRetried: '2' },
+    });
     const empty = systemEvent({ logId: 129, level: 'Warning', eventType: 'reconciliation.completed', details: {} });
-    serveSystemEvents([reconciliationWithTroubleEvent, reconciliationEvent, sparse, empty]);
+    serveSystemEvents([reconciliationWithTroubleEvent, reconciliationEvent, sparse, empty, repeated, junkCount]);
     const { user } = renderLogs();
     await screen.findByText('12/1.340 sản phẩm lệch tồn · đã tạo 12 tác vụ đồng bộ');
 
-    expect(columnTexts('Sự kiện')).toEqual(Array.from({ length: 4 }, () => 'Đối soát tồn kho'));
-    expect(columnTexts('Mức độ')).toEqual(Array.from({ length: 4 }, () => 'Cảnh báo'));
+    expect(columnTexts('Sự kiện')).toEqual(Array.from({ length: 6 }, () => 'Đối soát tồn kho'));
+    expect(columnTexts('Mức độ')).toEqual(Array.from({ length: 6 }, () => 'Cảnh báo'));
     expect(columnTexts('Nội dung')).toEqual([
-      // Drift beyond the cap is said, and every channel that could not be read by name: with the label of its error
-      // code, or the code as it is when this client has no label for it.
-      '620/1.340 sản phẩm lệch tồn · đã tạo 500 tác vụ đồng bộ · còn 120 để lượt sau · ' +
+      // Failed syncs that were repeated and drift beyond the cap are said, and every channel that could not be read
+      // by name: with the label of its error code, or the code as it is when this client has no label for it.
+      '620/1.340 sản phẩm lệch tồn · đã tạo 500 tác vụ đồng bộ · chạy lại 3 đồng bộ đã lỗi · còn 123 để lượt sau · ' +
         'không đọc được: POS (kênh không khả dụng), Website (tls_handshake_failed)',
-      // Nothing deferred, every channel read: neither part is there.
+      // Nothing repeated, nothing deferred, every channel read: none of the parts is there.
       '12/1.340 sản phẩm lệch tồn · đã tạo 12 tác vụ đồng bộ',
       '0/5 sản phẩm lệch tồn · đã tạo 0 tác vụ đồng bộ · không đọc được: POS (—)',
       '—/— sản phẩm lệch tồn · đã tạo — tác vụ đồng bộ',
+      '0/8 sản phẩm lệch tồn · đã tạo 1 tác vụ đồng bộ · chạy lại 1 đồng bộ đã lỗi',
+      '1/8 sản phẩm lệch tồn · đã tạo 1 tác vụ đồng bộ',
     ]);
     // The run is found again by its correlation id: its tasks on Sync & Processing, its event here.
     expect(within(cellOf(reconciliationEvent, 'Liên kết')).getByRole('link', { name: 'Luồng' })).toHaveAttribute(
@@ -570,13 +585,15 @@ describe('logs: rows', () => {
     await switchLanguage(user, 'EN');
     await screen.findByText('12 of 1.340 products differ · 12 sync tasks created');
 
-    expect(columnTexts('Event')).toEqual(Array.from({ length: 4 }, () => 'Stock reconciliation'));
+    expect(columnTexts('Event')).toEqual(Array.from({ length: 6 }, () => 'Stock reconciliation'));
     expect(columnTexts('Summary')).toEqual([
-      '620 of 1.340 products differ · 500 sync tasks created · 120 left for the next run · ' +
+      '620 of 1.340 products differ · 500 sync tasks created · 3 failed syncs repeated · 123 left for the next run · ' +
         'not readable: POS (channel unavailable), Website (tls_handshake_failed)',
       '12 of 1.340 products differ · 12 sync tasks created',
       '0 of 5 products differ · 0 sync tasks created · not readable: POS (—)',
       '— of — products differ · — sync tasks created',
+      '0 of 8 products differ · 1 sync tasks created · 1 failed syncs repeated',
+      '1 of 8 products differ · 1 sync tasks created',
     ]);
   });
 

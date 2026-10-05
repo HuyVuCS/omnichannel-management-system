@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 using Npgsql;
 using Omnichannel.Application.Channels;
 using Omnichannel.Application.Common.Exceptions;
+using Omnichannel.Application.Processing;
 
 namespace Omnichannel.Workers.Processing;
 
@@ -30,7 +31,7 @@ public static partial class ProcessingErrorClassifier
     public const string SerializationFailure = "serialization_failure";
     public const string DatabaseUnavailable = "db_unavailable";
     public const string Timeout = "timeout";
-    public const string Unexpected = "unexpected";
+    public const string Unexpected = AttemptErrorCodes.Unexpected;
 
     /// <summary>The object storage did not answer or refused; its exception names the operation and nothing of the storage.</summary>
     public const string StorageUnavailable = ObjectStorageException.ErrorCode;

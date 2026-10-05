@@ -2,9 +2,11 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Omnichannel.Application.Channels;
 using Omnichannel.Application.Common.Messaging;
 using Omnichannel.Application.Inventory;
+using Omnichannel.Application.Processing;
 using Omnichannel.Application.Products;
 using Omnichannel.Domain.Entities;
 using Omnichannel.Domain.Enums;
@@ -82,6 +84,7 @@ public sealed partial class ReconciliationTests(WorkersFixture fixture) : IAsync
         var result = await RunAsync();
 
         Assert.Equal((true, 4, 1, 3, 3, 0, 0, 0), Counts(result));
+        Assert.Equal(0, result.FailedRetried);
         var correlationId = ReconciliationIds.CorrelationIdOf(result.RunId);
 
         // One task per drifted pair - nothing for the pair in sync - as every other stock-sync task: Pending, no order,
@@ -129,9 +132,10 @@ public sealed partial class ReconciliationTests(WorkersFixture fixture) : IAsync
             payload.RootElement.EnumerateObject().Select(p => p.Name).Order());
         Assert.Equal(result.RunId, payload.RootElement.GetProperty("runId").GetGuid());
         Assert.Equal(
-            (4, 1, 3, 3, 0, 0, 0),
+            (4, 1, 3, 3, 0, 0, 0, 0),
             (Number(payload, "checked"), Number(payload, "inSync"), Number(payload, "drifted"), Number(payload, "tasksCreated"),
-                Number(payload, "deferred"), Number(payload, "skippedUnfinished"), Number(payload, "skippedRejected")));
+                Number(payload, "deferred"), Number(payload, "failedRetried"), Number(payload, "skippedUnfinished"),
+                Number(payload, "skippedRejected")));
         Assert.Equal(0, payload.RootElement.GetProperty("unreadable").GetArrayLength());
 
         // The channel was asked with the ids of the mapping, and nothing was pushed by the run itself.
@@ -262,6 +266,146 @@ public sealed partial class ReconciliationTests(WorkersFixture fixture) : IAsync
         // A new task: the failed one stays as it is (its history, its DLQ copy).
         Assert.DoesNotContain(created, t => t.TaskId == failed.TaskId);
         Assert.Equal(ProcessingTaskStatus.Failed, (await DbAsync(db => db.ProcessingTasks.AsNoTracking().SingleAsync(t => t.TaskId == failed.TaskId))).Status);
+        // They differ: tasks for drift, not repeated failures.
+        Assert.Equal(0, result.FailedRetried);
+    }
+
+    // ---- failed syncs of pairs that are in sync (task 023 A2) -----------------------------------------------------
+
+    [Theory]
+    [InlineData(ChannelApiErrorCodes.CircuitOpen)]
+    [InlineData(ChannelApiErrorCodes.Timeout)]
+    [InlineData(ChannelApiErrorCodes.Unavailable)]
+    [InlineData(ChannelApiErrorCodes.RateLimited)]
+    [InlineData("db_unavailable")]
+    public async Task A_pair_in_sync_whose_newest_sync_failed_with_a_transient_code_gets_one_task(string errorCode)
+    {
+        // The push landed before the failure was recorded (or the stock came back to the pushed value): the channel
+        // shows the central value, and the pair's alert would stay open for good.
+        var product = await MappedAsync(Pos, centralStock: 7, channelStock: 7);
+        await TaskAsync(Pos, product, ProcessingTaskStatus.Succeeded);
+        var failed = await TaskAsync(Pos, product, ProcessingTaskStatus.Failed, errorCode);
+        // The control next to it: in sync and nothing failed.
+        var fine = await MappedAsync(Pos, centralStock: 7, channelStock: 7);
+        await TaskAsync(Pos, fine, ProcessingTaskStatus.Succeeded);
+
+        var result = await RunAsync();
+
+        // Both are in sync - no drift - and one task was created all the same.
+        Assert.Equal((true, 2, 2, 0, 1, 0, 0, 0), Counts(result));
+        Assert.Equal(1, result.FailedRetried);
+        Assert.True(result.IsNoteworthy);
+        var created = Assert.Single(await ReconciliationTasksAsync());
+        Assert.Equal(
+            (await ChannelIdAsync(Pos), product.ProductId, ProcessingTaskStatus.Pending, ReconciliationIds.CorrelationIdOf(result.RunId)),
+            (created.ChannelId!.Value, created.ProductId!.Value, created.Status, created.CorrelationId));
+        Assert.NotEqual(failed.TaskId, created.TaskId);
+        Assert.Equal(RabbitMqTopology.StockSyncPosQueue, (await DbAsync(db => db.OutboxEvents.AsNoTracking().SingleAsync())).RoutingKey);
+
+        // It is a created task: the run writes its event, with the counter.
+        using var payload = JsonDocument.Parse(Assert.Single(await EventsAsync()).Payload!);
+        Assert.Equal(
+            (2, 2, 0, 1, 0, 1),
+            (Number(payload, "checked"), Number(payload, "inSync"), Number(payload, "drifted"), Number(payload, "tasksCreated"),
+                Number(payload, "deferred"), Number(payload, "failedRetried")));
+        // The run opened or closed no alert, and pushed nothing itself.
+        Assert.Equal(0, await DbAsync(db => db.Alerts.CountAsync()));
+        Assert.Empty(_channel.Pushes);
+
+        // The task is unfinished now: the next run leaves the pair to it.
+        var next = await RunAsync();
+        Assert.Equal((true, 1, 1, 0, 0, 0, 1, 0), Counts(next));
+        Assert.Equal(0, next.FailedRetried);
+        Assert.Single(await ReconciliationTasksAsync());
+    }
+
+    [Fact]
+    public async Task A_pair_in_sync_whose_newest_sync_was_rejected_or_succeeded_gets_no_task()
+    {
+        // Rejected by the channel: skipped as before, in sync or not (the channel is not even asked).
+        var rejected = await MappedAsync(Website, centralStock: 7, channelStock: 7);
+        await TaskAsync(Website, rejected, ProcessingTaskStatus.Failed, ChannelApiErrorCodes.Rejected);
+        // A failure that is not the newest finished sync: a later task succeeded, nothing is open.
+        var recovered = await MappedAsync(Website, centralStock: 7, channelStock: 7);
+        await TaskAsync(Website, recovered, ProcessingTaskStatus.Failed, ChannelApiErrorCodes.CircuitOpen);
+        await TaskAsync(Website, recovered, ProcessingTaskStatus.Succeeded);
+        // Failed on another channel only.
+        var elsewhere = await MappedAsync(Website, centralStock: 7, channelStock: 7);
+        await MapAsync(Pos, elsewhere);
+        _channel.SetStock(Pos, elsewhere.ProductId, 7);
+        await TaskAsync(Pos, elsewhere, ProcessingTaskStatus.Failed, ChannelApiErrorCodes.Rejected);
+        // No sync has ever finished.
+        await MappedAsync(Website, centralStock: 7, channelStock: 7);
+
+        var result = await RunAsync();
+
+        Assert.Equal((true, 3, 3, 0, 0, 0, 0, 2), Counts(result));
+        Assert.Equal(0, result.FailedRetried);
+        Assert.False(result.IsNoteworthy);
+        Assert.Empty(await ReconciliationTasksAsync());
+        Assert.Empty(await EventsAsync());
+        Assert.DoesNotContain(_channel.Reads.SelectMany(r => r.Items), i => i.ProductId == rejected.ProductId);
+    }
+
+    [Fact]
+    public async Task Repeated_failed_syncs_count_toward_the_cap_after_the_drifted_pairs_of_their_batch()
+    {
+        // pos is looked at before website (by slug). On pos: two pairs in sync with a failed sync. On website, in one
+        // batch: two of those and two drifted pairs.
+        var repeatOnPos = new List<Product>();
+        for (var n = 0; n < 2; n++)
+        {
+            repeatOnPos.Add(await MappedAsync(Pos, centralStock: 3, channelStock: 3));
+            await TaskAsync(Pos, repeatOnPos[n], ProcessingTaskStatus.Failed, ChannelApiErrorCodes.CircuitOpen);
+        }
+
+        var repeatOnWebsite = new List<Product>();
+        var driftedOnWebsite = new List<Product>();
+        for (var n = 0; n < 2; n++)
+        {
+            repeatOnWebsite.Add(await MappedAsync(Website, centralStock: 3, channelStock: 3));
+            await TaskAsync(Website, repeatOnWebsite[n], ProcessingTaskStatus.Failed, ChannelApiErrorCodes.Timeout);
+            driftedOnWebsite.Add(await MappedAsync(Website, centralStock: 3, channelStock: null));
+        }
+
+        // Room for five of the six: the two of pos, then the drifted pairs of website before its repeats.
+        var first = await RunAsync(maxTasksPerRun: 5);
+
+        Assert.Equal((true, 6, 4, 2, 5, 1, 0, 0), Counts(first));
+        Assert.Equal(3, first.FailedRetried);
+        var tasks = await ReconciliationTasksAsync();
+        Assert.Equal(5, tasks.Count);
+        Assert.All(repeatOnPos.Concat(driftedOnWebsite), p => Assert.Single(tasks, t => t.ProductId == p.ProductId));
+        var left = Assert.Single(repeatOnWebsite, p => tasks.All(t => t.ProductId != p.ProductId));
+        using (var payload = JsonDocument.Parse(Assert.Single(await EventsAsync()).Payload!))
+        {
+            Assert.Equal((5, 1, 3), (Number(payload, "tasksCreated"), Number(payload, "deferred"), Number(payload, "failedRetried")));
+        }
+
+        // The one that was left is found again by the next run.
+        var capped = await RunAsync(maxTasksPerRun: 1);
+        Assert.Equal((true, 1, 1, 0, 1, 0, 5, 0), Counts(capped));
+        Assert.Equal(1, capped.FailedRetried);
+        Assert.Equal(left.ProductId, (await ReconciliationTasksAsync()).Single(t => t.CorrelationId == ReconciliationIds.CorrelationIdOf(capped.RunId)).ProductId);
+    }
+
+    [Fact]
+    public async Task A_cap_reached_by_repeated_failed_syncs_defers_the_drift_of_a_later_channel()
+    {
+        // They are tasks like any other: what the repeats of pos used up is not there for the website any more.
+        for (var n = 0; n < 2; n++)
+        {
+            var repeat = await MappedAsync(Pos, centralStock: 3, channelStock: 3);
+            await TaskAsync(Pos, repeat, ProcessingTaskStatus.Failed, ChannelApiErrorCodes.Unavailable);
+        }
+
+        var drifted = await MappedAsync(Website, centralStock: 3, channelStock: null);
+
+        var result = await RunAsync(maxTasksPerRun: 2);
+
+        Assert.Equal((true, 3, 2, 1, 2, 1, 0, 0), Counts(result));
+        Assert.Equal(2, result.FailedRetried);
+        Assert.DoesNotContain(await ReconciliationTasksAsync(), t => t.ProductId == drifted.ProductId);
     }
 
     // ---- which mappings are looked at -----------------------------------------------------------------------------
@@ -352,6 +496,106 @@ public sealed partial class ReconciliationTests(WorkersFixture fixture) : IAsync
             (posName, ChannelApiErrorCodes.Unavailable, 4),
             (unreadable.GetProperty("channel").GetString(), unreadable.GetProperty("errorCode").GetString(), unreadable.GetProperty("pairs").GetInt32()));
         Assert.Equal((2, 1), (Number(payload, "checked"), Number(payload, "tasksCreated")));
+    }
+
+    [Fact]
+    public async Task A_read_that_fails_with_something_that_is_no_channel_answer_ends_only_its_channel()
+    {
+        // Task 023 A1: a defect of one channel's adapter (or a typo in its configuration) is not the other channels' problem.
+        for (var n = 0; n < 3; n++)
+        {
+            await MappedAsync(Pos, centralStock: 3, channelStock: null);
+        }
+
+        var onWebsite = await MappedAsync(Website, centralStock: 3, channelStock: null);
+        var onMarketplace = await MappedAsync(Marketplace, centralStock: 3, channelStock: 3);
+        var bug = new InvalidOperationException("adapter bug (test)");
+        _channel.ReadBehaviour = (query, _) => query.ChannelSlug == Pos
+            ? throw bug
+            : Task.FromResult<IReadOnlyList<ChannelStockReading>>(
+                query.Items.Select(i => new ChannelStockReading(i.ProductId, i.ProductId == onMarketplace.ProductId ? 3 : null)).ToList());
+        var logs = new CapturingLoggerProvider();
+
+        var result = await RunAsync(batchSize: 2, logs: logs);
+
+        // pos (looked at between digital-platform and website) is left after its first read; the others are reconciled.
+        Assert.Equal((true, 2, 1, 1, 1, 0, 0, 0), Counts(result));
+        var posName = await DbAsync(db => db.Channels.AsNoTracking().Where(c => c.Slug == Pos).Select(c => c.Name).SingleAsync());
+        Assert.Equal([new UnreadableChannel(posName, AttemptErrorCodes.Unexpected, 3)], result.Unreadable);
+        Assert.Equal("unexpected", result.Unreadable[0].ErrorCode);
+        Assert.Single(_channel.ReadsOf(Pos));
+        Assert.Equal(onWebsite.ProductId, Assert.Single(await ReconciliationTasksAsync()).ProductId);
+
+        using var payload = JsonDocument.Parse(Assert.Single(await EventsAsync()).Payload!);
+        var unreadable = Assert.Single(payload.RootElement.GetProperty("unreadable").EnumerateArray());
+        Assert.Equal(
+            (posName, "unexpected", 3),
+            (unreadable.GetProperty("channel").GetString(), unreadable.GetProperty("errorCode").GetString(), unreadable.GetProperty("pairs").GetInt32()));
+
+        // One Error that carries the exception - it is a defect to fix, unlike an answer of a channel.
+        var error = Assert.Single(logs.Entries, e => e.Category == typeof(StockReconciliation).FullName && e.Level >= LogLevel.Warning);
+        Assert.Equal(LogLevel.Error, error.Level);
+        Assert.Same(bug, error.Exception);
+        Assert.Contains(Pos, error.Message);
+    }
+
+    [Fact]
+    public async Task A_channel_answer_that_fails_a_read_is_a_warning_without_the_exception()
+    {
+        await MappedAsync(Pos, centralStock: 3, channelStock: null);
+        _channel.ReadBehaviour = (_, _) => throw new ChannelApiException(ChannelApiErrorCodes.Unavailable, "pos is down (test)", isTransient: true);
+        var logs = new CapturingLoggerProvider();
+
+        var result = await RunAsync(logs: logs);
+
+        Assert.Equal(ChannelApiErrorCodes.Unavailable, Assert.Single(result.Unreadable).ErrorCode);
+        var warning = Assert.Single(logs.Entries, e => e.Category == typeof(StockReconciliation).FullName && e.Level >= LogLevel.Warning);
+        Assert.Equal((LogLevel.Warning, (Exception?)null), (warning.Level, warning.Exception));
+    }
+
+    [Fact]
+    public async Task A_cancelled_read_while_the_host_keeps_running_ends_only_its_channel()
+    {
+        // An adapter that gives up by itself (its own timeout, a cancelled inner call) is a failed read like any other:
+        // only the host's shutdown ends a run.
+        await MappedAsync(Pos, centralStock: 3, channelStock: null);
+        var onWebsite = await MappedAsync(Website, centralStock: 3, channelStock: null);
+        _channel.ReadBehaviour = (query, _) => query.ChannelSlug == Pos
+            ? throw new OperationCanceledException("the adapter gave up (test)")
+            : Task.FromResult<IReadOnlyList<ChannelStockReading>>(query.Items.Select(i => new ChannelStockReading(i.ProductId, null)).ToList());
+
+        var result = await RunAsync();
+
+        Assert.Equal((true, 1, 0, 1, 1, 0, 0, 0), Counts(result));
+        Assert.Equal(AttemptErrorCodes.Unexpected, Assert.Single(result.Unreadable).ErrorCode);
+        Assert.Equal(onWebsite.ProductId, Assert.Single(await ReconciliationTasksAsync()).ProductId);
+    }
+
+    [Fact]
+    public async Task A_host_that_stops_during_a_read_ends_the_run_without_an_event()
+    {
+        // pos is read first of the two; the website must not be asked any more.
+        await MappedAsync(Pos, centralStock: 3, channelStock: null);
+        await MappedAsync(Website, centralStock: 3, channelStock: null);
+        using var stopping = new CancellationTokenSource();
+        _channel.ReadBehaviour = async (_, token) =>
+        {
+            await stopping.CancelAsync();
+            token.ThrowIfCancellationRequested();
+            throw new InvalidOperationException("the read was not cancelled (test)");
+        };
+        var logs = new CapturingLoggerProvider();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => RunAsync(logs: logs, cancellationToken: stopping.Token));
+
+        // Not an unreadable channel: nothing was written, nothing was logged as an error, the other channel was not asked.
+        Assert.Equal((0, 0, 0), await WrittenAsync());
+        Assert.Equal([Pos], _channel.Reads.Select(r => r.ChannelSlug));
+        Assert.DoesNotContain(logs.Entries, e => e.Category == typeof(StockReconciliation).FullName && e.Level >= LogLevel.Warning);
+
+        // The lock went with the run.
+        _channel.ReadBehaviour = null;
+        Assert.Equal((true, 2, 0, 2, 2, 0, 0, 0), Counts(await RunAsync()));
     }
 
     [Fact]
@@ -536,27 +780,43 @@ public sealed partial class ReconciliationTests(WorkersFixture fixture) : IAsync
     }
 
     [Fact]
-    public async Task A_run_that_fails_releases_its_lock_and_keeps_the_batches_it_committed()
+    public async Task A_run_whose_own_database_work_fails_ends_releases_its_lock_and_keeps_the_batches_it_committed()
     {
         for (var n = 0; n < 4; n++)
         {
             await MappedAsync(Website, centralStock: 3, channelStock: null);
         }
 
-        // The second read fails with something that is no channel answer.
+        // The second batch cannot be written: while it is read, a task takes the key the run is about to use for the
+        // batch's first pair. That is a failure of the run's own statement - not of a read - and ends the run.
+        var runId = Guid.CreateVersion7();
+        var websiteId = await ChannelIdAsync(Website);
         var reads = 0;
-        _channel.ReadBehaviour = (query, _) => Interlocked.Increment(ref reads) == 2
-            ? throw new InvalidOperationException("adapter bug (test)")
-            : Task.FromResult<IReadOnlyList<ChannelStockReading>>(query.Items.Select(i => new ChannelStockReading(i.ProductId, null)).ToList());
+        _channel.ReadBehaviour = async (query, _) =>
+        {
+            if (Interlocked.Increment(ref reads) == 2)
+            {
+                var productId = query.Items[0].ProductId;
+                await DbAsync(async db =>
+                {
+                    db.ProcessingTasks.Add(ProcessingTask.ForStockSync(
+                        websiteId, productId, "seed", null, ReconciliationIds.IdempotencyKeyOf(runId, websiteId, productId)));
+                    return await db.SaveChangesAsync();
+                });
+            }
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => RunAsync(batchSize: 2));
+            return query.Items.Select(i => new ChannelStockReading(i.ProductId, null)).ToList();
+        };
 
-        // The first batch is whole (two tasks, two messages), the run has no event, and nothing is half written.
-        Assert.Equal((2, 2, 0), await WrittenAsync());
+        await Assert.ThrowsAsync<DbUpdateException>(() => RunAsync(batchSize: 2, runId: runId));
+
+        // The first batch is whole (two tasks, two messages) next to the task of this test; the run has no event, and
+        // nothing of the second batch is half written.
+        Assert.Equal((3, 2, 0), await WrittenAsync());
 
         _channel.ReadBehaviour = null;
         var next = await RunAsync(batchSize: 2);
-        Assert.Equal((true, 2, 0, 2, 2, 0, 2, 0), Counts(next));
+        Assert.Equal((true, 1, 0, 1, 1, 0, 3, 0), Counts(next));
     }
 
     [Fact]
@@ -599,6 +859,8 @@ public sealed partial class ReconciliationTests(WorkersFixture fixture) : IAsync
         int? batchSize = null,
         int? maxTasksPerRun = null,
         TimeSpan? channelCallTimeout = null,
+        Guid? runId = null,
+        CapturingLoggerProvider? logs = null,
         CancellationToken cancellationToken = default)
     {
         var settings = new Dictionary<string, string?>();
@@ -607,15 +869,25 @@ public sealed partial class ReconciliationTests(WorkersFixture fixture) : IAsync
         if (channelCallTimeout is not null) settings["StockSyncWorker:ChannelCallTimeout"] = channelCallTimeout.Value.ToString("c");
 
         using var host = fixture.CreateHost(
-            "reconciliation-run", settings, services => services.UseChannelAdapter(_channel), databaseConnectionString: _database);
-        return await RunOnAsync(host, cancellationToken);
+            "reconciliation-run",
+            settings,
+            services =>
+            {
+                services.UseChannelAdapter(_channel);
+                if (logs is not null)
+                {
+                    services.AddSingleton<ILoggerProvider>(logs);
+                }
+            },
+            databaseConnectionString: _database);
+        return await RunOnAsync(host, runId, cancellationToken);
     }
 
-    private static async Task<ReconciliationRunResult> RunOnAsync(IHost host, CancellationToken cancellationToken = default)
+    private static async Task<ReconciliationRunResult> RunOnAsync(IHost host, Guid? runId = null, CancellationToken cancellationToken = default)
     {
         await using var scope = host.Services.CreateAsyncScope();
         return await scope.ServiceProvider.GetRequiredService<StockReconciliation>()
-            .RunAsync(Guid.CreateVersion7(), ReconciliationService.WorkerName, cancellationToken);
+            .RunAsync(runId ?? Guid.CreateVersion7(), ReconciliationService.WorkerName, cancellationToken);
     }
 
     private async Task<T> DbAsync<T>(Func<OmnichannelDbContext, Task<T>> action)
