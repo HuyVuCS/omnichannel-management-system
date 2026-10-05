@@ -11,11 +11,10 @@ import { ORDER_DETAIL_ROUTE, ORDER_ENTRY_PATH, ORDERS_PATH } from '@/features/or
 import { PROCESSING_PATH, PROCESSING_TASK_ROUTE } from '@/features/processing/paths';
 import { REPORTS_PATH } from '@/features/reports/paths';
 import { RouteErrorPage } from '@/pages/RouteErrorPage';
-import { ComingSoon } from '@/shared/components/ComingSoon';
 import { PageLoading } from '@/shared/components/PageLoading';
 import { AppLayout } from './AppLayout';
 import { lazyPage } from './lazyPage';
-import { navigationItems } from './navigation';
+import { navigationItems, type NavigationPath } from './navigation';
 
 // Route-level code splitting: each page is its own chunk, loaded when its route is first opened. The shell (layout,
 // guards, providers) stays in the main chunk. Inside the layout the Suspense boundary is in AppLayout. A chunk that
@@ -64,8 +63,11 @@ const ProcessingTaskPage = lazyPage(() =>
 );
 const ReportsPage = lazyPage(() => import('@/features/reports/ReportsPage').then((m) => ({ default: m.ReportsPage })));
 
-/** Pages that exist; every other menu item renders a placeholder until its task builds it. */
-const builtPages: Record<string, RouteObject['element']> = {
+/**
+ * The page of every menu item except the dashboard (the index route). The key type is the menu's own paths, so a menu
+ * item without a page - or a page for a path that is no menu item - does not compile.
+ */
+const menuPages: Record<Exclude<NavigationPath, '/'>, RouteObject['element']> = {
   [ORDER_ENTRY_PATH]: <OrderEntryPage />,
   [ORDERS_PATH]: <OrdersPage />,
   [INVENTORY_PATH]: <InventoryPage />,
@@ -81,18 +83,17 @@ const builtPages: Record<string, RouteObject['element']> = {
 };
 
 /**
- * One route per menu item, from the same list as the menu: the page if it is built, otherwise a localised
- * placeholder; wrapped in RequireRole when the item is restricted to roles (same roles as the menu).
+ * One route per menu item, from the same list as the menu; wrapped in RequireRole when the item is restricted to
+ * roles (same roles as the menu).
  */
-const pageRoutes: RouteObject[] = navigationItems
-  .filter((item) => item.path !== '/')
-  .map((item) => {
-    const page = builtPages[item.path] ?? <ComingSoon titleKey={item.labelKey} task={item.plannedTask ?? ''} />;
-    return {
-      path: item.path,
-      element: item.roles ? <RequireRole roles={item.roles}>{page}</RequireRole> : page,
-    };
-  });
+const pageRoutes: RouteObject[] = navigationItems.flatMap((item) => {
+  if (item.path === '/') {
+    return [];
+  }
+
+  const page = menuPages[item.path];
+  return [{ path: item.path, element: item.roles ? <RequireRole roles={item.roles}>{page}</RequireRole> : page }];
+});
 
 /**
  * Pages without a menu item: reached from another page. The menu highlights the item whose path is their parent

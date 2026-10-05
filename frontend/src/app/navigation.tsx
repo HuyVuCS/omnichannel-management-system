@@ -18,7 +18,7 @@ import type { Role } from '@/features/auth/session';
 import { LOGS_PATH, LOGS_ROLES } from '@/features/logs/paths';
 import { REPORTS_PATH, REPORTS_ROLES } from '@/features/reports/paths';
 
-export interface NavigationItem {
+interface NavigationEntry {
   /** Route path; also the menu key. */
   path: string;
   /** Translation key of the menu label and page title. */
@@ -26,12 +26,9 @@ export interface NavigationItem {
   icon: ReactNode;
   /** Only these roles see the item and may open the page; everyone when omitted. */
   roles?: readonly Role[];
-  /** Roadmap task that builds the page; until then the route renders a placeholder. */
-  plannedTask?: string;
 }
 
-/** Every page of the dashboard (architecture doc §3.2), in menu order. The single source for menu and routes. */
-export const navigationItems: readonly NavigationItem[] = [
+const items = [
   { path: '/', labelKey: 'nav.dashboard', icon: <DashboardOutlined /> },
   { path: '/order-entry', labelKey: 'nav.orderEntry', icon: <FormOutlined /> },
   { path: '/orders', labelKey: 'nav.orders', icon: <ShoppingCartOutlined /> },
@@ -45,7 +42,17 @@ export const navigationItems: readonly NavigationItem[] = [
   { path: LOGS_PATH, labelKey: 'nav.logs', icon: <FileSearchOutlined />, roles: LOGS_ROLES },
   { path: REPORTS_PATH, labelKey: 'nav.reports', icon: <BarChartOutlined />, roles: REPORTS_ROLES },
   { path: '/users', labelKey: 'nav.users', icon: <UserOutlined />, roles: ['Admin'] },
-];
+] as const satisfies readonly NavigationEntry[];
+
+/** The path of a menu item. The router needs a page for each one: a menu item without a page fails the typecheck. */
+export type NavigationPath = (typeof items)[number]['path'];
+
+export interface NavigationItem extends NavigationEntry {
+  path: NavigationPath;
+}
+
+/** Every page of the dashboard (architecture doc §3.2), in menu order. The single source for menu and routes. */
+export const navigationItems: readonly NavigationItem[] = items;
 
 /** The menu item a location belongs to: the longest item path that is the location or a parent of it. */
 export function activeNavigationPath(pathname: string): string | undefined {
