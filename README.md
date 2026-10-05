@@ -368,6 +368,45 @@ npm run dev     # http://localhost:5173 - needs the API on http://localhost:5080
   per product and image version (`imageLinks.ts`, applied in `transformResponse`) until 60 s before it expires - a
   refetch does not change `src`, a new image or a link about to expire does. Tests answer uploads on a fixed storage
   origin (`src/test/storage.ts`).
+  A page left open for longer than a link lives (15 minutes): a thumbnail whose image fails to load **after its
+  `expiresAt`** asks for fresh links - the list page fetches its list again once, however many rows fail in the same
+  burst; the preview of the edit dialog asks for its one product. A failure before `expiresAt` (the storage is down,
+  the object is broken) asks for nothing, and after asking a thumbnail does not ask again until an image has loaded:
+  a link that keeps failing can never become a chain of requests (`ProductThumbnail`, `linkHasExpired`).
+- Reports & Excel export (`features/reports`, `/reports`, Manager and Admin; Staff have no menu item and get the
+  no-access page): a request card with one form per report and the table "My exports". Nothing is decided in the
+  client - roles, limits and the retention time are the API's ("Reports and Excel export" below).
+  - **Request:** *Orders* has the filters of the orders list (channel, status, customer, search) and a required range
+    of local days (default: the last 30 days up to today; sent as the instants of the first day's start and the last
+    day's end). *Inventory* has search and "low stock only". The range is checked against `MAX_EXPORT_RANGE_DAYS` (366)
+    before a request is sent - a copy of `Reports:MaxRangeDays` that only saves a request: **a deployment that changes
+    the server's limit changes this constant too.** The file's times are written in the browser's time zone
+    (`Intl.DateTimeFormat().resolvedOptions().timeZone`, `UTC` when the browser does not say) and its texts in the UI
+    language (`Accept-Language`); both are shown on the form, neither is chosen there.
+  - **Answers:** 202 -> a message, the table is fetched again, the form keeps its values. A validation error goes to
+    its field (`from` / `to` to the range); `export_too_large`, `too_many_exports` and a validation error of something
+    that is no field (`timeZone`) are shown above the form, the two codes in the client's own words (`errors.*`).
+  - **"Export to Excel" on the Orders and Inventory pages** (Manager and Admin) opens the Reports page with the
+    list's filters in the form. They travel in the router's **location state**, not in the address (the address of the
+    Reports page belongs to its table); every value is checked again, and nothing is requested before the user
+    submits.
+  - **My exports:** page, page size, sort direction and the report filter live in the address. A row shows when the
+    export was asked for, the report, its filters as one line (the range as local days, the channel and the customer
+    by name - one request per customer, however many rows name it), status (`Expired` grey), rows, size and "kept
+    until". `Succeeded` -> *Download*; `Failed` -> the label of the error code (unknown codes as they are) and a
+    button to the task detail, where the attempts and the retry are; nothing for unfinished and expired exports.
+  - **Live status:** the cache tag `ReportExport`. A `processing.task.changed` hint with `taskType: ReportExport`
+    makes that export and the export lists stale (tasks of other types do not), and the tag is part of the resync
+    after every hub (re)connect. While the connection is **not** live and an export on the page is not finished, the
+    list is asked for every 5 s (not while the tab is hidden); otherwise nothing polls.
+  - **Download:** `GET …/download` is a *mutation* (never cached); the link is followed at once through a temporary
+    `<a rel="noreferrer">` (the storage serves the file as an attachment, so the browser saves it and the page stays)
+    and the answer is removed from the store (`request.reset()`). The link is a credential for five minutes: it is in
+    no address, store, message or log. 409 `export_expired` / `export_not_ready` and 404 -> a message and the list as
+    it is now.
+  - `ReportExport` is a task type like the others on the Sync & Processing page and the dashboard; the Logs page
+    names `report.export_requested` (report, requester) and `report_export.message_rejected` (reason code).
+  - Scripted check: `scripts\smoke\task-021.ps1`.
 - Channels: the list says for every channel whether stock is pushed to it at all (`stockSyncEnabled`, "API
   conventions"). The channel detail shows the channel, a link to its stock-sync tasks, and the products mapped on it
   (search, sort by SKU / created, paging - all in the address). Manager and Admin map a product and change a mapping
@@ -823,8 +862,8 @@ GET /api/reports/exports/{taskId}/download ─► { url (presigned GET, 5 min), 
   host cannot read (`export_parameters_invalid`, e.g. a time zone the Workers host does not know). The key of the
   file depends on the task alone, so a redelivery after the upload and before the commit stores the same object again -
   no orphan. A host that stops while it builds leaves the message for redelivery.
-- **Reading a failed export on the Sync & Processing page:** filter the task type `ReportExport` (shown under its raw
-  name until task 021), open the task: its attempts show worker, instance, error code and the sanitised message; the
+- **Reading a failed export on the Sync & Processing page:** filter the task type `ReportExport` ("Excel export"),
+  open the task (the Reports page links a failed export to it): its attempts show worker, instance, error code and the sanitised message; the
   alert of the failure is on the Alerts page (`ProcessingFailed`). "Retry" there
   (`POST /api/processing/tasks/{id}/retry`) republishes the request with a fresh attempt budget; when it succeeds the
   alert resolves. The same task id is the export's id, so `GET /api/reports/exports/{taskId}` shows `Failed` with its
@@ -846,7 +885,7 @@ GET /api/reports/exports/{taskId}/download ─► { url (presigned GET, 5 min), 
   | --- | --- | --- | --- |
   | `MaxRows` | `100000` | 1 - 1,000,000 | Rows of one export (orders + item lines, or products), checked at the request and by the worker |
   | `MaxUnfinishedPerUser` | `3` | 1 - 100 | Waiting or running exports per user |
-  | `MaxRangeDays` | `366` | 1 - 3660 | Longest range of an orders export |
+  | `MaxRangeDays` | `366` | 1 - 3660 | Longest range of an orders export. The Reports page checks the range early against the constant `MAX_EXPORT_RANGE_DAYS` (`frontend/src/features/reports/exportRequest.ts`): **raising** this setting needs that constant raised too; a lower setting needs nothing (the API answers 400 on the range) |
   | `DownloadLinkLifetime` | `00:05:00` | 1 s - 7 days | Validity of a download link |
   | `Retention` | `7.00:00:00` | 1 min - 366 days | How long a file is kept |
   | `CleanupInterval` | `01:00:00` | 1 s - 1 day | Pause between two sweeps |
@@ -874,8 +913,12 @@ GET /api/reports/exports/{taskId}/download ─► { url (presigned GET, 5 min), 
   `Directory.Packages.props`): a package that needs 2.0 or later fails the restore with `NU1109` instead of raising
   it silently. Do not raise the pin without a licence decision. Transitive pinning holds for every version in that
   file: a package that only comes in through another one never resolves above the version listed there.
+- **Reports page:** the UI for all of this is `/reports` (Manager and Admin) - request forms, "My exports" with live
+  status, download; "Export to Excel" on the Orders and Inventory pages opens it with the list's filters. Details:
+  "Frontend", *Reports & Excel export*. The client always sends the browser's IANA time zone and the UI language.
 - **Scripted check** (needs the Workers host, the emulator and migration `ReportExports`):
-  `powershell -ExecutionPolicy Bypass -File scripts\smoke\task-020.ps1`. Manual requests: the last section of
+  `powershell -ExecutionPolicy Bypass -File scripts\smoke\task-020.ps1` (the API) and `scripts\smoke\task-021.ps1`
+  (what the Reports page asks for, then the frontend build and tests). Manual requests: the last section of
   `src/Omnichannel.Api/Omnichannel.Api.http`.
 
 ### Users and token revocation

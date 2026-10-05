@@ -141,13 +141,11 @@ describe('route guards', () => {
     await settled();
   });
 
-  it('renders a localised placeholder for pages of later tasks and a 404 page for unknown addresses', async () => {
-    const { router } = renderApp({ route: '/reports', session: sessionOf(staffUser) });
+  it('renders a localised 404 page for unknown addresses, inside the shell', async () => {
+    renderApp({ route: '/no-such-page', session: sessionOf(staffUser) });
 
-    expect(await screen.findByText('Trang này sẽ có ở task 021.')).toBeInTheDocument();
-
-    await router.navigate('/no-such-page');
     expect(await screen.findByText('Không tìm thấy trang')).toBeInTheDocument();
+    expect(screen.getByTestId('app-sider')).toBeInTheDocument();
   });
 });
 
@@ -197,15 +195,16 @@ describe('session end', () => {
     vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ['setTimeout', 'clearTimeout', 'Date'] });
     try {
       const session = sessionOf(staffUser, 30 * 60 * 1000);
-      const { location } = renderApp({ route: '/reports', session });
-      expect(await screen.findByText('Trang này sẽ có ở task 021.')).toBeInTheDocument();
+      // An address without a page: the shell without any request of its own.
+      const { location } = renderApp({ route: '/no-such-page', session });
+      expect(await screen.findByText('Không tìm thấy trang')).toBeInTheDocument();
 
       // One minute before the token expires the user is still signed in ...
       const remaining = Date.parse(session.expiresAt) - Date.now();
       act(() => {
         vi.advanceTimersByTime(remaining - 60 * 1000);
       });
-      expect(location()).toBe('/reports');
+      expect(location()).toBe('/no-such-page');
       expect(storedSession()).not.toBeNull();
 
       // ... and at the moment it expires the session ends.
@@ -213,7 +212,7 @@ describe('session end', () => {
         vi.advanceTimersByTime(60 * 1000);
       });
       expect(storedSession()).toBeNull();
-      await waitFor(() => expect(location()).toBe('/login?returnUrl=%2Freports'));
+      await waitFor(() => expect(location()).toBe('/login?returnUrl=%2Fno-such-page'));
       // The session check of the first render may still be on its way: the clock was jumped, the answer was not.
       await settled();
     } finally {
@@ -222,7 +221,7 @@ describe('session end', () => {
   });
 
   it('goes to the plain login page on logout', async () => {
-    const { user, location } = renderApp({ route: '/reports', session: sessionOf(staffUser) });
+    const { user, location } = renderApp({ route: '/no-such-page', session: sessionOf(staffUser) });
 
     await user.click(await screen.findByRole('button', { name: 'Đăng xuất' }));
 

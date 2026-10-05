@@ -6,6 +6,7 @@ import type { PagedResult } from '@/shared/api/types';
 import { COFFEE_ID, serveProductCatalog, teaProduct, TEA_ID } from '@/test/catalog';
 import { columnTexts, expectLanguageSwitchChangesTextOnly, rowOf, settled } from '@/test/interactions';
 import { renderApp } from '@/test/renderApp';
+import { serveExportRequests, serveExports } from '@/test/reports';
 import { adminUser, api, managerUser, server, sessionOf, staffUser } from '@/test/server';
 import type { InventoryItem } from './inventoryApi';
 
@@ -236,5 +237,39 @@ describe('inventory page: language switch', () => {
     expect(columnTexts('Cập nhật lúc')).toEqual(['30/09/2026 10:15', '01/10/2026 08:05']);
     expect(location()).toBe('/inventory?page=2&sortBy=name&sortDir=desc&search=tr&lowStockOnly=true');
     expect(screen.getByRole('switch')).toBeChecked();
+  });
+});
+
+describe('inventory page: export to Excel', () => {
+  const exportButton = () => screen.queryByRole('button', { name: /Xuất Excel/ });
+
+  it('takes a Manager to the Reports page with the inventory form filled in; nothing is requested', async () => {
+    serveInventory([tea], 1);
+    serveExports();
+    const sent = serveExportRequests();
+    server.use(http.get(api('/channels'), () => HttpResponse.json([])));
+    const { user, location, store } = renderInventory(managerUser, '/inventory?search=TEA&lowStockOnly=true&page=2');
+    await screen.findByText('TEA-01');
+
+    await user.click(exportButton()!);
+
+    await screen.findByRole('heading', { name: 'Báo cáo & xuất Excel' });
+    expect(location()).toBe('/reports');
+    expect(screen.getByRole('radio', { name: 'Tồn kho' })).toBeChecked();
+    const form = within(screen.getByTestId('inventory-export-form'));
+    expect(screen.getByTestId('inventory-export-form')).toBeVisible();
+    expect(form.getByLabelText('Tìm sản phẩm')).toHaveValue('TEA');
+    expect(form.getByRole('switch')).toBeChecked();
+    await settled(store);
+    expect(sent.requests).toHaveLength(0);
+  });
+
+  it('is not offered to Staff', async () => {
+    serveInventory([tea], 1);
+    renderInventory(staffUser);
+    await screen.findByText('TEA-01');
+
+    expect(exportButton()).not.toBeInTheDocument();
+    await settled();
   });
 });

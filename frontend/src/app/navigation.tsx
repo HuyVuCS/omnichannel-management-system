@@ -16,6 +16,7 @@ import {
 import type { ReactNode } from 'react';
 import type { Role } from '@/features/auth/session';
 import { LOGS_PATH, LOGS_ROLES } from '@/features/logs/paths';
+import { REPORTS_PATH, REPORTS_ROLES } from '@/features/reports/paths';
 
 export interface NavigationItem {
   /** Route path; also the menu key. */
@@ -42,7 +43,7 @@ export const navigationItems: readonly NavigationItem[] = [
   { path: '/processing', labelKey: 'nav.processing', icon: <SyncOutlined /> },
   { path: '/alerts', labelKey: 'nav.alerts', icon: <BellOutlined /> },
   { path: LOGS_PATH, labelKey: 'nav.logs', icon: <FileSearchOutlined />, roles: LOGS_ROLES },
-  { path: '/reports', labelKey: 'nav.reports', icon: <BarChartOutlined />, plannedTask: '021' },
+  { path: REPORTS_PATH, labelKey: 'nav.reports', icon: <BarChartOutlined />, roles: REPORTS_ROLES },
   { path: '/users', labelKey: 'nav.users', icon: <UserOutlined />, roles: ['Admin'] },
 ];
 

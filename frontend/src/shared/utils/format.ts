@@ -24,6 +24,15 @@ export function formatNumber(value: number): string {
   return numberFormat.format(value);
 }
 
+const sizeFormat = new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 1 });
+const KIB = 1024;
+const MIB = 1024 * 1024;
+
+/** The size of a file in KB below one megabyte, in MB from there on, with one decimal: `4300` → `4,2 KB`. */
+export function formatFileSize(bytes: number): string {
+  return bytes >= MIB ? `${sizeFormat.format(bytes / MIB)} MB` : `${sizeFormat.format(bytes / KIB)} KB`;
+}
+
 /** ISO 8601 (as the API sends it, UTC) → local `DD/MM/YYYY HH:mm`; empty for missing or invalid values. */
 export function formatDateTime(value: string | null | undefined): string {
   if (!value) {

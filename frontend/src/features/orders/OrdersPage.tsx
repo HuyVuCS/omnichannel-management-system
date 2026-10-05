@@ -1,15 +1,18 @@
-import { EyeOutlined, ReloadOutlined } from '@ant-design/icons';
+import { EyeOutlined, FileExcelOutlined, ReloadOutlined } from '@ant-design/icons';
 import { Alert, Button, DatePicker, Input, Select, Space, Table, theme, Tooltip, type TableProps } from 'antd';
 import dayjs from 'dayjs';
 import { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useLocation, useNavigate } from 'react-router';
+import { useHasAnyRole } from '@/features/auth/useHasAnyRole';
 import { useListChannelsQuery } from '@/features/channels/channelsApi';
 import { CustomerSelect } from '@/features/customers/components/CustomerSelect';
+import { exportPrefillState, REPORTS_PATH, REPORTS_ROLES } from '@/features/reports/paths';
 import { problemMessages } from '@/shared/api/problemDetails';
 import {
   DATE_RANGE_WIDTH,
   FILTER_WIDTH,
+  PAGE_ACTION_WIDTH,
   PRODUCT_SELECT_WIDTH,
   SEARCH_WIDTH,
   SECONDARY_ACTION_WIDTH,
@@ -57,6 +60,7 @@ export function OrdersPage() {
   const { token } = theme.useToken();
   const navigate = useNavigate();
   const location = useLocation();
+  const canExport = useHasAnyRole(REPORTS_ROLES);
   const list = useListQueryState({
     sortFields: ORDER_SORT_FIELDS,
     defaultSortField: 'createdAt',
@@ -214,14 +218,40 @@ export function OrdersPage() {
       <PageHeader
         title={t('orders.title')}
         extra={
-          <Button
-            icon={<ReloadOutlined />}
-            loading={isFetching}
-            onClick={() => void refetch()}
-            style={{ width: SECONDARY_ACTION_WIDTH }}
-          >
-            {t('common.refresh')}
-          </Button>
+          <Space>
+            <Button
+              icon={<ReloadOutlined />}
+              loading={isFetching}
+              onClick={() => void refetch()}
+              style={{ width: SECONDARY_ACTION_WIDTH }}
+            >
+              {t('common.refresh')}
+            </Button>
+            {/* Hidden for roles that may not export; the API enforces the same rule. */}
+            {canExport && (
+              <Button
+                icon={<FileExcelOutlined />}
+                // To the Reports page with the filters of this list (not its paging or sort): the form there is filled
+                // in, and nothing is requested before the user submits it.
+                onClick={() =>
+                  void navigate(REPORTS_PATH, {
+                    state: exportPrefillState({
+                      reportType: 'Orders',
+                      channel,
+                      status,
+                      customerId,
+                      search: list.search,
+                      from: range.from,
+                      to: range.to,
+                    }),
+                  })
+                }
+                style={{ width: PAGE_ACTION_WIDTH }}
+              >
+                {t('reports.exportToExcel')}
+              </Button>
+            )}
+          </Space>
         }
       />
       <Space wrap style={{ marginBottom: 16 }}>

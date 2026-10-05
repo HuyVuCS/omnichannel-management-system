@@ -90,10 +90,42 @@ describe('hints → cache tags', () => {
     expect(tagsForEvent({ type: 'processing.task.changed', all: true })).toEqual([
       'ProcessingTask',
       'Order',
+      'ReportExport',
       'DashboardSummary',
     ]);
-    // A task event that names no task cannot be narrowed down either.
-    expect(tagsForEvent({ type: 'processing.task.changed' })).toEqual(['ProcessingTask', 'Order', 'DashboardSummary']);
+    // A task event that names no task cannot be narrowed down either - also not to "no export".
+    expect(tagsForEvent({ type: 'processing.task.changed' })).toEqual([
+      'ProcessingTask',
+      'Order',
+      'ReportExport',
+      'DashboardSummary',
+    ]);
+    expect(tagsForEvent({ type: 'processing.task.changed', taskType: 'ReportExport' })).toEqual([
+      'ProcessingTask',
+      'Order',
+      'ReportExport',
+      'DashboardSummary',
+    ]);
+  });
+
+  it('a changed export task makes that export and the export lists stale as well; other task types leave exports alone', () => {
+    expect(
+      tagsForEvent({ type: 'processing.task.changed', taskId: TASK, taskType: 'ReportExport', status: 'Succeeded' }),
+    ).toEqual([
+      { type: 'ProcessingTask', id: TASK },
+      { type: 'ProcessingTask', id: 'LIST' },
+      { type: 'ReportExport', id: TASK },
+      { type: 'ReportExport', id: 'LIST' },
+      'DashboardSummary',
+    ]);
+
+    for (const taskType of ['OrderProcessing', 'StockSync', 'Invoice', 'Email', 'reportexport', undefined]) {
+      const tags = tagsForEvent({ type: 'processing.task.changed', taskId: TASK, taskType });
+      expect(
+        tags.filter((tag) => (typeof tag === 'string' ? tag : tag.type) === 'ReportExport'),
+        String(taskType),
+      ).toEqual([]);
+    }
   });
 
   it('ignores event types it does not know', () => {
@@ -108,6 +140,7 @@ describe('hints → cache tags', () => {
       'InventoryMovement',
       'Product',
       'ProcessingTask',
+      'ReportExport',
       'Alert',
       'DashboardSummary',
     ]);

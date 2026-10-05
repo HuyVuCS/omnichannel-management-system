@@ -7,6 +7,7 @@ export const REALTIME_TAG_TYPES = [
   'InventoryMovement',
   'Product',
   'ProcessingTask',
+  'ReportExport',
   'Alert',
   'DashboardSummary',
 ] as const;
@@ -15,8 +16,11 @@ export type RealtimeTagType = (typeof REALTIME_TAG_TYPES)[number];
 /** A bare type = every cache entry of that type; with an id = the entries that provide exactly this tag. */
 export type RealtimeTag = RealtimeTagType | { type: RealtimeTagType; id: string };
 
-/** The id every list of a type provides (`ordersApi`, `productsApi`, `processingApi`, `alertsApi`). */
+/** The id every list of a type provides (`ordersApi`, `productsApi`, `processingApi`, `alertsApi`, `reportsApi`). */
 const LIST = 'LIST';
+
+/** The task type of an export. The id of such a task is the id of its export (`reportsApi`). */
+const REPORT_EXPORT_TASK = 'ReportExport';
 
 /**
  * Everything realtime keeps fresh. Invalidated after every (re)connect and on `resync: true`: hints sent while there
@@ -46,8 +50,8 @@ export function tagsForEvent(event: HintEvent): RealtimeTag[] {
 
     case 'processing.task.changed':
       if (event.all || typeof event.taskId !== 'string') {
-        // Which orders the tasks belong to is not known either.
-        return ['ProcessingTask', 'Order', 'DashboardSummary'];
+        // Which orders the tasks belong to is not known either - nor whether exports are among them.
+        return ['ProcessingTask', 'Order', 'ReportExport', 'DashboardSummary'];
       }
 
       return [
@@ -55,6 +59,13 @@ export function tagsForEvent(event: HintEvent): RealtimeTag[] {
         { type: 'ProcessingTask', id: LIST },
         // The order detail shows the tasks of its order.
         ...(typeof event.orderId === 'string' ? [{ type: 'Order' as const, id: event.orderId }] : []),
+        // An export shows the status of its task; tasks of other types leave the exports alone.
+        ...(event.taskType === REPORT_EXPORT_TASK
+          ? [
+              { type: 'ReportExport' as const, id: event.taskId },
+              { type: 'ReportExport' as const, id: LIST },
+            ]
+          : []),
         'DashboardSummary',
       ];
 

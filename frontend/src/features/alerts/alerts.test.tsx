@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 import type { AuthUser } from '@/features/auth/session';
@@ -437,14 +437,15 @@ describe('alerts list', () => {
 
   it('asks again on "Refresh" and whenever the page is opened', async () => {
     const { requests } = serveList();
-    const { user } = renderAlerts();
+    const { user, router } = renderAlerts();
     await loaded();
 
     await user.click(screen.getByRole('button', { name: /Làm mới/ }));
     await waitFor(() => expect(requests).toHaveLength(2));
 
-    await user.click(screen.getByRole('link', { name: 'Báo cáo' }));
-    await screen.findByText('Trang này sẽ có ở task 021.');
+    // Away, to an address without a page (the shell without any request of its own), and back through the menu.
+    await act(() => router.navigate('/no-such-page'));
+    await screen.findByText('Không tìm thấy trang');
     await user.click(screen.getByRole('link', { name: 'Cảnh báo' }));
     await loaded();
     await waitFor(() => expect(requests).toHaveLength(3));
@@ -627,8 +628,9 @@ describe('alerts list: realtime', () => {
     const { requests } = serveList();
     const summaries = serveSummary();
     const hub = fakeHub({ autoAccept: true });
-    renderApp({ route: '/reports', session: sessionOf(staffUser), createHub: hub.create });
-    await screen.findByText('Trang này sẽ có ở task 021.');
+    // An address without a page: the shell without any request of its own.
+    renderApp({ route: '/no-such-page', session: sessionOf(staffUser), createHub: hub.create });
+    await screen.findByText('Không tìm thấy trang');
     await waitFor(() => expect(screen.getByTestId('connection-indicator')).toHaveTextContent('Trực tiếp'));
     await pause(FLUSH_WINDOW_MS + 300);
 

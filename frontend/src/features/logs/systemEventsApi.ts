@@ -21,6 +21,8 @@ export const EVENT_TYPES = [
   'processing.retry_requested',
   'outbox.publish_failed',
   'alert.acknowledged',
+  'report.export_requested',
+  'report_export.message_rejected',
   'user.created',
   'user.role_changed',
   'user.locked',

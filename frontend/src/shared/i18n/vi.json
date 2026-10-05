@@ -100,7 +100,11 @@
     "external_product_id_taken": "Mã sản phẩm trên kênh này đang thuộc về một sản phẩm khác của kênh.",
     "channel_product_not_found": "Liên kết sản phẩm không còn tồn tại.",
     "alert_not_found": "Cảnh báo không còn tồn tại.",
-    "alert_resolved": "Cảnh báo đã được hệ thống giải quyết nên không thể ghi nhận."
+    "alert_resolved": "Cảnh báo đã được hệ thống giải quyết nên không thể ghi nhận.",
+    "export_too_large": "Tệp xuất sẽ có nhiều dòng hơn mức cho phép. Hãy thu hẹp bộ lọc rồi thử lại.",
+    "too_many_exports": "Bạn đang có số lần xuất tệp đang chờ hoặc đang chạy ở mức tối đa. Hãy đợi một lần xuất hoàn tất.",
+    "export_expired": "Lần xuất này đã hết hạn và tệp đã bị xoá. Hãy yêu cầu xuất lại.",
+    "export_not_ready": "Lần xuất này chưa có tệp để tải: nó chưa hoàn tất hoặc đã thất bại."
   },
   "pages": {
     "notFound": {
@@ -662,7 +666,8 @@
       "OrderProcessing": "Xử lý đơn hàng",
       "StockSync": "Đồng bộ tồn kho",
       "Invoice": "Hoá đơn",
-      "Email": "E-mail"
+      "Email": "E-mail",
+      "ReportExport": "Xuất Excel"
     },
     "taskStatuses": {
       "Pending": "Đang chờ",
@@ -785,7 +790,9 @@
       "user_role_changed": "Đổi vai trò",
       "user_locked": "Khoá người dùng",
       "user_unlocked": "Mở khoá người dùng",
-      "user_password_reset": "Đặt lại mật khẩu"
+      "user_password_reset": "Đặt lại mật khẩu",
+      "report_export_requested": "Yêu cầu xuất tệp",
+      "report_export_message_rejected": "Thông điệp xuất tệp bị từ chối"
     },
     "rejection": {
       "invalid_json": "không phải JSON hợp lệ",
@@ -825,7 +832,69 @@
       "user_role_changed": "Vai trò: {{from}} → {{to}}",
       "user_locked": "Tài khoản bị khoá",
       "user_unlocked": "Tài khoản được mở khoá",
-      "user_password_reset": "Đã đặt mật khẩu tạm thời"
+      "user_password_reset": "Đã đặt mật khẩu tạm thời",
+      "report_export_requested": "Báo cáo: {{reportType}}",
+      "report_export_message_rejected": "Thông điệp {{messageId}} bị từ chối: {{reason}}"
+    }
+  },
+  "reports": {
+    "title": "Báo cáo & xuất Excel",
+    "exportToExcel": "Xuất Excel",
+    "types": {
+      "Orders": "Đơn hàng",
+      "Inventory": "Tồn kho"
+    },
+    "statuses": {
+      "Expired": "Đã hết hạn"
+    },
+    "request": {
+      "title": "Yêu cầu xuất tệp",
+      "type": "Báo cáo",
+      "submit": "Yêu cầu xuất",
+      "accepted": "Đã yêu cầu xuất tệp - tệp sẽ xuất hiện bên dưới khi sẵn sàng."
+    },
+    "form": {
+      "range": "Đơn tạo trong khoảng",
+      "rangeTooLong": "Khoảng ngày không được dài hơn {{days}} ngày.",
+      "channel": "Kênh bán",
+      "status": "Trạng thái đơn",
+      "customer": "Khách hàng",
+      "orderSearch": "Tìm đơn hàng",
+      "productSearch": "Tìm sản phẩm",
+      "timeZone": "Múi giờ trong tệp",
+      "language": "Ngôn ngữ của tệp",
+      "languageValue": "Tiếng Việt - ngôn ngữ đang hiển thị"
+    },
+    "exports": {
+      "title": "Tệp xuất của tôi",
+      "filterType": "Báo cáo"
+    },
+    "columns": {
+      "createdAt": "Yêu cầu lúc",
+      "reportType": "Báo cáo",
+      "filters": "Bộ lọc",
+      "status": "Trạng thái",
+      "rowCount": "Số dòng",
+      "size": "Dung lượng",
+      "expiresAt": "Lưu đến"
+    },
+    "filters": {
+      "channel": "Kênh: {{name}}",
+      "status": "Trạng thái: {{status}}",
+      "customer": "Khách hàng: {{name}}",
+      "search": "Tìm: {{text}}",
+      "lowStockOnly": "Chỉ hàng sắp hết",
+      "allProducts": "Tất cả sản phẩm"
+    },
+    "actions": {
+      "download": "Tải về",
+      "openTask": "Mở tác vụ"
+    },
+    "errorCodes": {
+      "export_too_large": "Quá nhiều dòng",
+      "export_expired": "Hết hạn trước khi tạo xong",
+      "export_parameters_invalid": "Không đọc được yêu cầu",
+      "storage_unavailable": "Không kết nối được kho tệp"
     }
   },
   "dashboard": {

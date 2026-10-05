@@ -31,8 +31,9 @@ describe('route-level code splitting', () => {
 
   it('loads the chunk of a page when the user navigates to it through the menu', async () => {
     server.use(http.get(api('/channels'), () => HttpResponse.json([])));
-    const { user, location } = renderApp({ route: '/reports', session: sessionOf(staffUser) });
-    expect(await screen.findByText('Trang này sẽ có ở task 021.')).toBeInTheDocument();
+    // An address without a page: the shell, and no page chunk of the menu loaded yet.
+    const { user, location } = renderApp({ route: '/no-such-page', session: sessionOf(staffUser) });
+    expect(await screen.findByText('Không tìm thấy trang')).toBeInTheDocument();
     const sider = screen.getByTestId('app-sider');
 
     await user.click(screen.getByRole('link', { name: 'Kênh bán' }));
