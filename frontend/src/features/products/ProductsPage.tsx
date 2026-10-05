@@ -1,6 +1,6 @@
 import { EditOutlined, ImportOutlined, PlusOutlined } from '@ant-design/icons';
 import { Button, Input, Space, Table, Tooltip, type TableProps } from 'antd';
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router';
 import { useHasAnyRole } from '@/features/auth/useHasAnyRole';
@@ -44,7 +44,7 @@ export function ProductsPage() {
   const navigate = useNavigate();
   const canWrite = useHasAnyRole(WRITE_ROLES);
   const list = useListQueryState({ sortFields: PRODUCT_SORT_FIELDS, defaultSortField: 'sku' });
-  const { data, isFetching } = useListProductsQuery({
+  const { data, isFetching, refetch } = useListProductsQuery({
     page: list.page,
     pageSize: list.pageSize,
     search: list.search,
@@ -52,6 +52,21 @@ export function ProductsPage() {
     sortDir: list.sortDir,
   });
   const [formState, setFormState] = useState<ProductFormState>(null);
+
+  // A page left open for longer than an image link lives: its thumbnails fail one after the other when they are next
+  // loaded. The first one that says so fetches the list again (every response carries fresh links); the others of the
+  // same burst find that request on its way.
+  const refreshingLinks = useRef(false);
+  const refreshExpiredLinks = useCallback(() => {
+    if (refreshingLinks.current) {
+      return;
+    }
+
+    refreshingLinks.current = true;
+    void refetch().finally(() => {
+      refreshingLinks.current = false;
+    });
+  }, [refetch]);
 
   const { sortOrder } = list;
   const columns = useMemo<TableProps<Product>['columns']>(
@@ -61,7 +76,9 @@ export function ProductsPage() {
         title: t('products.columns.image'),
         width: WIDTHS.image,
         // Every role that reads products sees their images.
-        render: (_: unknown, product) => <ProductThumbnail image={product.image} name={product.name} />,
+        render: (_: unknown, product) => (
+          <ProductThumbnail image={product.image} name={product.name} onLinkExpired={refreshExpiredLinks} />
+        ),
       },
       {
         key: 'sku',
@@ -162,7 +179,7 @@ export function ProductsPage() {
           ]
         : []),
     ],
-    [canWrite, navigate, sortOrder, t],
+    [canWrite, navigate, refreshExpiredLinks, sortOrder, t],
   );
 
   return (

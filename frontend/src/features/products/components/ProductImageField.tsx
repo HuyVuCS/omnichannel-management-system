@@ -8,6 +8,7 @@ import { SECONDARY_ACTION_WIDTH } from '@/shared/components/layout';
 import { IMAGE_CONTENT_TYPES, imageFileProblem, StorageUploadError, uploadToStorage } from '../imageUpload';
 import {
   useConfirmProductImageMutation,
+  useLazyGetProductQuery,
   usePresignProductImageMutation,
   useRemoveProductImageMutation,
   type Product,
@@ -38,6 +39,7 @@ export function ProductImageField({ product }: { product: Product }) {
   const [presign] = usePresignProductImageMutation();
   const [confirm] = useConfirmProductImageMutation();
   const [remove] = useRemoveProductImageMutation();
+  const [fetchProduct] = useLazyGetProductQuery();
   // The dialog keeps the product of the row it was opened with; what this block did since is here.
   const [image, setImage] = useState(product.image);
   const [busy, setBusy] = useState<'upload' | 'remove' | null>(null);
@@ -110,11 +112,24 @@ export function ProductImageField({ product }: { product: Product }) {
     });
   };
 
+  // The preview shows the link the dialog was opened with. When that link has expired by the time the image is
+  // loaded, this one product is asked for again and its fresh link shown - unless the block has another image by then.
+  const refreshExpiredLink = () => {
+    const expired = image;
+    void fetchProduct(productId)
+      .unwrap()
+      .then(
+        (fresh) => setImage((current) => (current?.url === expired?.url ? fresh.image : current)),
+        // Nothing to show instead: the placeholder stays; network errors and 5xx are reported globally.
+        () => undefined,
+      );
+  };
+
   const errorText = error === null ? null : 'key' in error ? t(error.key, error.values) : error.messages.join(' ');
 
   return (
     <Flex gap={16} align="flex-start" data-testid="product-image-field">
-      <ProductThumbnail image={image} name={product.name} size={PREVIEW_SIZE} />
+      <ProductThumbnail image={image} name={product.name} size={PREVIEW_SIZE} onLinkExpired={refreshExpiredLink} />
       <Flex vertical gap={8} style={{ flex: 1, minWidth: 0 }}>
         <Flex gap={8}>
           <Button

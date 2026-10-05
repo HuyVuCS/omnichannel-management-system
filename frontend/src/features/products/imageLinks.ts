@@ -31,6 +31,15 @@ export function withStableUrl(
   return image;
 }
 
+/**
+ * True once a link is past its `expiresAt`: the storage refuses it from then on, and the API signs a usable one with
+ * its next response. An image that fails to load before that failed for another reason (the storage is down, the
+ * object is broken) - asking the API again would bring a link that fails the same way.
+ */
+export function linkHasExpired(image: Pick<ProductImage, 'expiresAt'>, now: number = Date.now()): boolean {
+  return Date.parse(image.expiresAt) <= now;
+}
+
 /** Forgets every link (the session ended: the next user starts with the links of their own responses). */
 export function forgetImageLinks(): void {
   linksInUse.clear();
