@@ -98,6 +98,7 @@
     "retry_source_missing": "Không còn thông điệp gốc của tác vụ để gửi lại.",
     "channel_product_exists": "Sản phẩm này đã được gắn trên kênh này.",
     "external_product_id_taken": "Mã sản phẩm trên kênh này đang thuộc về một sản phẩm khác của kênh.",
+    "external_sku_taken": "SKU trên kênh này đang thuộc về một sản phẩm khác của kênh.",
     "channel_product_not_found": "Liên kết sản phẩm không còn tồn tại.",
     "alert_not_found": "Cảnh báo không còn tồn tại.",
     "alert_resolved": "Cảnh báo đã được hệ thống giải quyết nên không thể ghi nhận.",

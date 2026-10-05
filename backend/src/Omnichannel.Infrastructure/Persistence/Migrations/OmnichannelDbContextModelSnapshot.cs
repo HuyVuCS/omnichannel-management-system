@@ -334,6 +334,11 @@ namespace Omnichannel.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("IX_ChannelProducts_ChannelId_ExternalProductId")
                         .HasFilter("\"ExternalProductId\" IS NOT NULL");
 
+                    b.HasIndex("ChannelId", "ExternalSku")
+                        .IsUnique()
+                        .HasDatabaseName("IX_ChannelProducts_ChannelId_ExternalSku")
+                        .HasFilter("\"ExternalProductId\" IS NULL");
+
                     b.HasIndex("ChannelId", "ProductId")
                         .IsUnique()
                         .HasDatabaseName("IX_ChannelProducts_ChannelId_ProductId");

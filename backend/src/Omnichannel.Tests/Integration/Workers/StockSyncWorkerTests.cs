@@ -36,6 +36,12 @@ public sealed partial class StockSyncWorkerTests(WorkersFixture fixture) : IAsyn
 
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(60);
 
+    // A mapping without an external product id is known to its channel by its external SKU, which is unique per channel
+    // (task 023 A3): every test gets SKUs of its own in the database all these tests share.
+    private readonly string _tag = Guid.NewGuid().ToString("N")[..10];
+
+    private string Sku(string name) => $"{name}-{_tag}";
+
     public Task InitializeAsync() => fixture.PurgeQueuesAsync();
 
     public Task DisposeAsync() => Task.CompletedTask;
@@ -46,8 +52,8 @@ public sealed partial class StockSyncWorkerTests(WorkersFixture fixture) : IAsyn
     public async Task Stock_change_is_pushed_to_every_channel_that_sells_the_product_and_to_no_other()
     {
         var product = await SeedProductAsync();
-        var onWebsite = await MapAsync(Website, product.ProductId, externalProductId: "WEB-100", externalSku: "WEB-SKU");
-        var onPos = await MapAsync(Pos, product.ProductId, externalSku: "POS-SKU");
+        var onWebsite = await MapAsync(Website, product.ProductId, externalProductId: "WEB-100", externalSku: Sku("WEB-SKU"));
+        var onPos = await MapAsync(Pos, product.ProductId, externalSku: Sku("POS-SKU"));
         var import = await ImportAsync(product.ProductId, 7);
         var change = await OutboxOfMovementAsync(import.Items[0].MovementId);
         var channel = new RecordingChannelClient();
@@ -93,8 +99,8 @@ public sealed partial class StockSyncWorkerTests(WorkersFixture fixture) : IAsyn
             Assert.Equal((7, product.Sku, 1), (p.AvailableStock, p.Sku, p.AttemptNo));
             Assert.Equal($"{p.TaskId}:1:1", p.RequestId);
         });
-        Assert.All(pushes.Where(p => p.ChannelSlug == Website), p => Assert.Equal(("WEB-100", "WEB-SKU"), (p.ExternalProductId, p.ExternalSku)));
-        Assert.All(pushes.Where(p => p.ChannelSlug == Pos), p => Assert.Equal(((string?)null, "POS-SKU"), (p.ExternalProductId, p.ExternalSku)));
+        Assert.All(pushes.Where(p => p.ChannelSlug == Website), p => Assert.Equal(("WEB-100", Sku("WEB-SKU")), (p.ExternalProductId, p.ExternalSku)));
+        Assert.All(pushes.Where(p => p.ChannelSlug == Pos), p => Assert.Equal(((string?)null, Sku("POS-SKU")), (p.ExternalProductId, p.ExternalSku)));
         Assert.Equal([Pos, Pos, Website, Website], pushes.Select(p => p.ChannelSlug).Order());
         Assert.Equal(tasks.Select(t => t.TaskId).Order(), pushes.Select(p => p.TaskId).Order());
 
@@ -108,8 +114,8 @@ public sealed partial class StockSyncWorkerTests(WorkersFixture fixture) : IAsyn
     {
         var unmapped = await SeedProductAsync();
         var deactivated = await SeedProductAsync();
-        var mapping = await MapAsync(Website, deactivated.ProductId, externalSku: "OFF");
-        await UpdateMappingAsync(Website, mapping.ChannelProductId, new UpdateChannelProductRequest(null, "OFF", ChannelProductStatus.Inactive));
+        var mapping = await MapAsync(Website, deactivated.ProductId, externalSku: Sku("OFF"));
+        await UpdateMappingAsync(Website, mapping.ChannelProductId, new UpdateChannelProductRequest(null, Sku("OFF"), ChannelProductStatus.Inactive));
         await ImportAsync(unmapped.ProductId, 3);
         await ImportAsync(deactivated.ProductId, 3);
         var channel = new RecordingChannelClient();
@@ -135,7 +141,7 @@ public sealed partial class StockSyncWorkerTests(WorkersFixture fixture) : IAsyn
     public async Task Same_inventory_change_delivered_twice_creates_one_task_and_one_push()
     {
         var product = await SeedProductAsync();
-        var mapping = await MapAsync(Website, product.ProductId, externalSku: "WEB");
+        var mapping = await MapAsync(Website, product.ProductId, externalSku: Sku("WEB"));
         var import = await ImportAsync(product.ProductId, 5);
         var change = await OutboxOfMovementAsync(import.Items[0].MovementId);
         var channel = new RecordingChannelClient();
@@ -175,7 +181,7 @@ public sealed partial class StockSyncWorkerTests(WorkersFixture fixture) : IAsyn
     public async Task Concurrent_deliveries_of_one_change_resolve_to_one_task()
     {
         var product = await SeedProductAsync();
-        await MapAsync(Website, product.ProductId, externalSku: "WEB");
+        await MapAsync(Website, product.ProductId, externalSku: Sku("WEB"));
         var websiteId = await ChannelIdAsync(Website);
         using var host = fixture.CreateHost("stock-sync-resolve");
 
@@ -238,7 +244,7 @@ public sealed partial class StockSyncWorkerTests(WorkersFixture fixture) : IAsyn
     public async Task Current_stock_is_pushed_not_the_snapshot_of_the_message()
     {
         var product = await SeedProductAsync();
-        await MapAsync(Website, product.ProductId, externalSku: "WEB");
+        await MapAsync(Website, product.ProductId, externalSku: Sku("WEB"));
         await ImportAsync(product.ProductId, 5);
         var websiteId = await ChannelIdAsync(Website);
 
@@ -268,7 +274,7 @@ public sealed partial class StockSyncWorkerTests(WorkersFixture fixture) : IAsyn
     {
         var product = await SeedProductAsync();
         await ImportAsync(product.ProductId, 5);
-        var mapping = await MapAsync(Website, product.ProductId, externalSku: "WEB");
+        var mapping = await MapAsync(Website, product.ProductId, externalSku: Sku("WEB"));
         var imported = 0;
         var channel = new RecordingChannelClient();
         channel.Behaviour = async (update, _) =>
@@ -297,7 +303,7 @@ public sealed partial class StockSyncWorkerTests(WorkersFixture fixture) : IAsyn
     {
         var product = await SeedProductAsync();
         await ImportAsync(product.ProductId, 5);
-        var mapping = await MapAsync(Website, product.ProductId, externalSku: "WEB");
+        var mapping = await MapAsync(Website, product.ProductId, externalSku: Sku("WEB"));
         var channel = new RecordingChannelClient();
         // The stock changes during every push of the initial sync.
         channel.Behaviour = async (update, _) =>
@@ -328,7 +334,7 @@ public sealed partial class StockSyncWorkerTests(WorkersFixture fixture) : IAsyn
     public async Task Transient_channel_failure_is_retried_with_delay_and_then_succeeds()
     {
         var product = await SeedProductAsync();
-        var mapping = await MapAsync(Website, product.ProductId, externalSku: "WEB");
+        var mapping = await MapAsync(Website, product.ProductId, externalSku: Sku("WEB"));
         var taskId = mapping.SyncTaskId!.Value;
         var calls = 0;
         var channel = new RecordingChannelClient
@@ -365,8 +371,8 @@ public sealed partial class StockSyncWorkerTests(WorkersFixture fixture) : IAsyn
     public async Task Rejection_by_one_channel_fails_its_task_at_once_and_leaves_the_other_channel_alone()
     {
         var product = await SeedProductAsync();
-        var onWebsite = await MapAsync(Website, product.ProductId, externalSku: "WEB");
-        var onPos = await MapAsync(Pos, product.ProductId, externalSku: "POS");
+        var onWebsite = await MapAsync(Website, product.ProductId, externalSku: Sku("WEB"));
+        var onPos = await MapAsync(Pos, product.ProductId, externalSku: Sku("POS"));
         var import = await ImportAsync(product.ProductId, 4);
         var change = await OutboxOfMovementAsync(import.Items[0].MovementId);
         var websiteId = await ChannelIdAsync(Website);
@@ -432,7 +438,7 @@ public sealed partial class StockSyncWorkerTests(WorkersFixture fixture) : IAsyn
     public async Task Channel_that_stays_unavailable_fails_the_task_after_max_attempts_and_the_message_goes_to_the_dlq()
     {
         var product = await SeedProductAsync();
-        var mapping = await MapAsync(Pos, product.ProductId, externalSku: "POS");
+        var mapping = await MapAsync(Pos, product.ProductId, externalSku: Sku("POS"));
         var taskId = mapping.SyncTaskId!.Value;
         var channel = new RecordingChannelClient
         {
@@ -471,7 +477,7 @@ public sealed partial class StockSyncWorkerTests(WorkersFixture fixture) : IAsyn
     public async Task Channel_that_does_not_answer_times_out_and_is_retried()
     {
         var product = await SeedProductAsync();
-        var mapping = await MapAsync(Website, product.ProductId, externalSku: "WEB");
+        var mapping = await MapAsync(Website, product.ProductId, externalSku: Sku("WEB"));
         var taskId = mapping.SyncTaskId!.Value;
         var calls = 0;
         var channel = new RecordingChannelClient
@@ -500,7 +506,7 @@ public sealed partial class StockSyncWorkerTests(WorkersFixture fixture) : IAsyn
     public async Task Manual_retry_reaches_only_the_queue_of_the_task_channel_and_gets_a_fresh_attempt_budget()
     {
         var product = await SeedProductAsync();
-        var mapping = await MapAsync(Website, product.ProductId, externalSku: "WEB");
+        var mapping = await MapAsync(Website, product.ProductId, externalSku: Sku("WEB"));
         var taskId = mapping.SyncTaskId!.Value;
         var rejecting = true;
         var channel = new RecordingChannelClient
@@ -582,7 +588,7 @@ public sealed partial class StockSyncWorkerTests(WorkersFixture fixture) : IAsyn
     public async Task Manual_retry_gives_max_attempts_new_attempts()
     {
         var product = await SeedProductAsync();
-        var mapping = await MapAsync(Website, product.ProductId, externalSku: "WEB");
+        var mapping = await MapAsync(Website, product.ProductId, externalSku: Sku("WEB"));
         var taskId = mapping.SyncTaskId!.Value;
         var channel = new RecordingChannelClient
         {
@@ -615,7 +621,7 @@ public sealed partial class StockSyncWorkerTests(WorkersFixture fixture) : IAsyn
     public async Task Poison_messages_go_to_the_dlq_of_their_queue_and_nothing_is_pushed()
     {
         var product = await SeedProductAsync();
-        var onPos = await MapAsync(Pos, product.ProductId, externalSku: "POS");
+        var onPos = await MapAsync(Pos, product.ProductId, externalSku: Sku("POS"));
         var (posId, websiteId) = (await ChannelIdAsync(Pos), await ChannelIdAsync(Website));
         var orderTask = new ProcessingTask(ProcessingTaskType.OrderProcessing, null, $"corr-{Guid.NewGuid():N}", null);
         await fixture.WithDbAsync(async db =>
@@ -697,7 +703,7 @@ public sealed partial class StockSyncWorkerTests(WorkersFixture fixture) : IAsyn
     public async Task Host_stopping_during_a_push_cancels_it_and_the_message_is_redelivered()
     {
         var product = await SeedProductAsync();
-        var mapping = await MapAsync(Website, product.ProductId, externalSku: "WEB");
+        var mapping = await MapAsync(Website, product.ProductId, externalSku: Sku("WEB"));
         var taskId = mapping.SyncTaskId!.Value;
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var cancelled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

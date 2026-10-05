@@ -34,7 +34,8 @@ public interface IChannelService
     /// <exception cref="Common.Exceptions.NotFoundException">The channel does not exist.</exception>
     /// <exception cref="FluentValidation.ValidationException">The product does not exist (<c>productId</c>).</exception>
     /// <exception cref="Common.Exceptions.ConflictException">
-    /// <see cref="ChannelProductErrorCodes.MappingExists"/>, <see cref="ChannelProductErrorCodes.ExternalProductIdTaken"/>.
+    /// <see cref="ChannelProductErrorCodes.MappingExists"/>, <see cref="ChannelProductErrorCodes.ExternalProductIdTaken"/>,
+    /// <see cref="ChannelProductErrorCodes.ExternalSkuTaken"/>.
     /// </exception>
     Task<ChannelProductSavedResponse> CreateProductAsync(
         Guid channelId,
@@ -46,7 +47,9 @@ public interface IChannelService
     /// requests a sync like <see cref="CreateProductAsync"/>; deactivating does nothing on the channel.
     /// </summary>
     /// <exception cref="Common.Exceptions.NotFoundException"><see cref="ChannelProductErrorCodes.MappingNotFound"/>.</exception>
-    /// <exception cref="Common.Exceptions.ConflictException"><see cref="ChannelProductErrorCodes.ExternalProductIdTaken"/>.</exception>
+    /// <exception cref="Common.Exceptions.ConflictException">
+    /// <see cref="ChannelProductErrorCodes.ExternalProductIdTaken"/>, <see cref="ChannelProductErrorCodes.ExternalSkuTaken"/>.
+    /// </exception>
     Task<ChannelProductSavedResponse> UpdateProductAsync(
         Guid channelId,
         Guid channelProductId,

@@ -27,7 +27,9 @@ internal sealed class ChannelProductConfiguration : IEntityTypeConfiguration<Cha
             .HasForeignKey(x => x.ProductId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        // A product is mapped at most once per channel, and an external id identifies one product.
+        // A product is mapped at most once per channel, and an external id identifies one product: the external product
+        // id, or - for a mapping without one - the external SKU (the key a channel knows the product by,
+        // SimulatedChannelStock.ExternalKeyOf). Inactive mappings count for both.
         builder.HasIndex(x => new { x.ChannelId, x.ProductId })
             .IsUnique()
             .HasDatabaseName(ExpectedUniqueViolations.ChannelProductMapping);
@@ -35,6 +37,10 @@ internal sealed class ChannelProductConfiguration : IEntityTypeConfiguration<Cha
             .IsUnique()
             .HasFilter("\"ExternalProductId\" IS NOT NULL")
             .HasDatabaseName(ExpectedUniqueViolations.ChannelProductExternalProductId);
+        builder.HasIndex(x => new { x.ChannelId, x.ExternalSku })
+            .IsUnique()
+            .HasFilter("\"ExternalProductId\" IS NULL")
+            .HasDatabaseName(ExpectedUniqueViolations.ChannelProductExternalSku);
         builder.HasIndex(x => x.ProductId);
     }
 }

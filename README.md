@@ -562,6 +562,13 @@ npm run dev     # http://localhost:5173 - needs the API on http://localhost:5080
   external product id and external SKU; `sortBy` = `sku` (default) or `createdAt`).
 - `POST /api/channels/{channelId}/products` (Manager/Admin): `{productId, externalProductId?, externalSku?}` - at least one
   of the two external ids, at most 128 characters each. 201 with the mapping and `syncTaskId`.
+- **How a channel knows a product, and what is unique.** A mapping is known to its channel by its external product id
+  when it has one, otherwise by its external SKU - the key of stock sync, of reconciliation and of webhooks (section
+  9). Per channel, among all mappings (Inactive ones included): a product is mapped once, an external product id
+  belongs to one mapping, and **an external SKU belongs to one mapping among those without an external product id**
+  (partial unique index `IX_ChannelProducts_ChannelId_ExternalSku`). The same SKU may repeat next to mappings that
+  have an external product id (it is only a label there) and on other channels; it is compared exactly as stored
+  (trimmed, case-sensitive).
 - `PUT /api/channels/{channelId}/products/{channelProductId}` (Manager/Admin): `{externalProductId?, externalSku?, status}`
   (`Active` / `Inactive`). Product and channel of a mapping cannot change; there is no delete (deactivate instead).
 - `syncTaskId` is the stock-sync task the request started (section 7), or null: channel or mapping not Active, channel
@@ -569,11 +576,12 @@ npm run dev     # http://localhost:5173 - needs the API on http://localhost:5080
 - Errors: 404 `not_found` (channel), 404 `channel_product_not_found` (mapping, also when it belongs to another channel),
   400 on `productId` (product does not exist) or `externalProductId` (neither external id given),
   409 `channel_product_exists` (product already mapped on this channel), 409 `external_product_id_taken` (the external
-  product id belongs to another product on this channel).
+  product id belongs to another product on this channel), 409 `external_sku_taken` (create or update would leave two
+  mappings of the channel with this external SKU and no external product id). The dialog shows each on its field.
 - `GET /api/processing/tasks` accepts `channelId`; task responses carry `channelId`, `productId` and `productSku` (set
   for `StockSync` tasks, null otherwise; the SKU comes from a left join in the same query). Attempt error codes of stock sync: `channel_timeout`, `channel_unavailable`, `channel_rate_limited`,
   `channel_circuit_open` (temporary), `channel_rejected` (permanent).
-- A business conflict that the API answers with 409 (the two above, `product_sku_exists`, `stock_import_already_applied`,
+- A business conflict that the API answers with 409 (the three above, `product_sku_exists`, `stock_import_already_applied`,
   ...) is logged once at Information (`Request failed with 409: <errorCode>`). EF Core's own entries for such a unique
   violation are written at Debug; every other database failure is logged at Error as before
   (`ExpectedUniqueViolations`, `DatabaseFailureLogInterceptor`).

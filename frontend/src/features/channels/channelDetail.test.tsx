@@ -25,6 +25,7 @@ import {
   expectLanguageSwitchChangesTextOnly,
   findDialog,
   rowOf,
+  switchLanguage,
   type AppUser,
   settled,
 } from '@/test/interactions';
@@ -493,14 +494,22 @@ describe('channel detail: mapping a product', () => {
     expect(taken.closest('.ant-form-item')).toContainElement(within(dialog).getByLabelText('Mã sản phẩm trên kênh'));
     expect(within(dialog).queryByRole('alert')).not.toBeInTheDocument();
 
+    // 409: the external SKU is the one of another mapping without an external product id - on the external SKU.
+    state.createAnswer = () => problem(409, { errorCode: 'external_sku_taken' });
+    await create();
+    const skuTaken = await within(dialog).findByText('SKU trên kênh này đang thuộc về một sản phẩm khác của kênh.');
+    expect(skuTaken.closest('.ant-form-item')).toContainElement(within(dialog).getByLabelText('SKU trên kênh'));
+    await waitFor(() => expect(fieldErrors()).toEqual(['SKU trên kênh này đang thuộc về một sản phẩm khác của kênh.']));
+    expect(within(dialog).queryByRole('alert')).not.toBeInTheDocument();
+
     // 404: the channel is gone - a form error.
     state.createAnswer = () => problem(404, { errorCode: 'not_found' });
     await create();
     expect(await within(dialog).findByRole('alert')).toHaveTextContent('Không tìm thấy dữ liệu.');
 
-    // Four rejected requests: the dialog is still open with what was typed, the list was not fetched again, and
+    // Five rejected requests: the dialog is still open with what was typed, the list was not fetched again, and
     // nothing claims that a sync was or was not started.
-    expect(creates).toHaveLength(4);
+    expect(creates).toHaveLength(5);
     expect(within(dialog).getByLabelText('Mã sản phẩm trên kênh')).toHaveValue('WEB-1002');
     expect(listRequests).toHaveLength(1);
     expect(screen.queryByTestId('sync-result')).not.toBeInTheDocument();
@@ -664,6 +673,41 @@ describe('channel detail: changing a mapping', () => {
       { externalProductId: 'WEB-1001', externalSku: null, status: 'Inactive' },
       { externalProductId: null, externalSku: null, status: 'Inactive' },
     ]);
+    expect(listRequests).toHaveLength(1);
+  });
+
+  it('puts a taken external SKU (409) on the external SKU, in the language of the page', async () => {
+    const { state, updates, listRequests } = serveChannelDetail(websiteChannel, [teaMapping, coffeeMapping]);
+    const { user } = renderDetail();
+    const dialog = await openEditDialog(user, 'COF-01');
+    const externalId = within(dialog).getByLabelText('Mã sản phẩm trên kênh');
+    const externalSku = within(dialog).getByLabelText('SKU trên kênh');
+
+    // Without an external product id the SKU is how the channel knows the product: one product per SKU.
+    state.updateAnswer = () => problem(409, { errorCode: 'external_sku_taken' });
+    await user.clear(externalId);
+    await user.clear(externalSku);
+    await user.type(externalSku, 'SKU-TEA');
+    await user.click(within(dialog).getByRole('button', { name: 'Lưu' }));
+    const taken = await within(dialog).findByText('SKU trên kênh này đang thuộc về một sản phẩm khác của kênh.');
+    expect(taken.closest('.ant-form-item')).toContainElement(externalSku);
+    // On the field only: no form-level message, and the other field has none.
+    expect(within(dialog).queryByRole('alert')).not.toBeInTheDocument();
+    expect(externalId.closest('.ant-form-item')).not.toHaveTextContent('thuộc về');
+
+    // The text is the client's for the code: the next answer is shown in the language the page has then.
+    await switchLanguage(user, 'EN');
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+    const takenInEnglish = await within(dialog).findByText(
+      'This external SKU belongs to another product on this channel.',
+    );
+    expect(takenInEnglish.closest('.ant-form-item')).toContainElement(within(dialog).getByLabelText('External SKU'));
+    expect(
+      within(dialog).queryByText('SKU trên kênh này đang thuộc về một sản phẩm khác của kênh.'),
+    ).not.toBeInTheDocument();
+
+    const sent = { externalProductId: null, externalSku: 'SKU-TEA', status: 'Inactive' };
+    expect(updates.map((update) => update.body)).toEqual([sent, sent]);
     expect(listRequests).toHaveLength(1);
   });
 });

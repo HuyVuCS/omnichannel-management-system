@@ -39,7 +39,11 @@ interface ChannelProductFormValues {
 /** The API's limit for both external ids; here only an input limit. */
 const MAX_EXTERNAL_ID_LENGTH = 128;
 
-const CODE_FIELDS = { channel_product_exists: 'productId', external_product_id_taken: 'externalProductId' };
+const CODE_FIELDS = {
+  channel_product_exists: 'productId',
+  external_product_id_taken: 'externalProductId',
+  external_sku_taken: 'externalSku',
+};
 
 function orNull(value: string | undefined): string | null {
   return value ? value : null;
@@ -52,7 +56,8 @@ function orNull(value: string | undefined): string | null {
  *
  * The rules are the API's and come back on the fields: at least one of the two external ids (reported on the external
  * product id), a product that is already mapped (on the product), an external product id that belongs to another
- * product (on the external product id).
+ * product (on the external product id), an external SKU another mapping without an external product id already uses
+ * (on the external SKU).
  */
 export function ChannelProductFormModal({ channel, state, onClose, onSaved }: ChannelProductFormModalProps) {
   const { t } = useTranslation();

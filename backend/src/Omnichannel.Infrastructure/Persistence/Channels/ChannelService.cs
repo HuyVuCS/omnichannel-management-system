@@ -242,7 +242,10 @@ internal sealed class ChannelService(
         return task.TaskId;
     }
 
-    /// <summary>The unique indexes decide (no check-then-insert): one mapping per product, one product per external id.</summary>
+    /// <summary>
+    /// The unique indexes decide (no check-then-insert): one mapping per product, one product per external product id, and
+    /// one product per external SKU among the mappings that have no external product id.
+    /// </summary>
     private async Task SaveMappingAsync(ChannelProduct mapping, CancellationToken cancellationToken)
     {
         try
@@ -260,6 +263,12 @@ internal sealed class ChannelService(
             throw new ConflictException(
                 ChannelProductErrorCodes.ExternalProductIdTaken,
                 $"External product id '{mapping.ExternalProductId}' belongs to another product on this channel.");
+        }
+        catch (DbUpdateException exception) when (exception.IsUniqueViolation(ExpectedUniqueViolations.ChannelProductExternalSku))
+        {
+            throw new ConflictException(
+                ChannelProductErrorCodes.ExternalSkuTaken,
+                $"External SKU '{mapping.ExternalSku}' belongs to another product on this channel.");
         }
     }
 
