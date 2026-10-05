@@ -361,8 +361,10 @@ public sealed partial class ReportExportEndToEndTests
         }
 
         Assert.Equal(0, probe.PutsOf(taskId));
+        // For its requester the export is simply expired: it is finished and past its retention time (the code of
+        // the failure stays with the task).
         var detail = await DetailAsync(manager, taskId);
-        Assert.Equal((ReportExportStatus.Failed, ReportErrorCodes.ExportExpired), (detail.Status, detail.ErrorCode));
+        Assert.Equal((ReportExportStatus.Expired, (string?)null), (detail.Status, detail.ErrorCode));
     }
 
     [Fact]
@@ -546,7 +548,8 @@ public sealed partial class ReportExportEndToEndTests
                     WaitTimeout,
                     "two sweep rounds while the storage is down");
                 Assert.Null((await ExportAsync(factory, taskId)).DeletedAt);
-                Assert.Equal(ReportExportStatus.Succeeded, (await DetailAsync(manager, taskId)).Status);
+                // For its requester the export is expired all the same: its retention time is over.
+                Assert.Equal(ReportExportStatus.Expired, (await DetailAsync(manager, taskId)).Status);
 
                 await _storage.StartAsync();
                 await Eventually.WaitAsync(

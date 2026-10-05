@@ -4,7 +4,9 @@ using Omnichannel.Application.Common.Abstractions;
 using Omnichannel.Application.Common.Exceptions;
 using Omnichannel.Application.Common.Messaging;
 using Omnichannel.Application.Common.Paging;
+using Omnichannel.Application.Common.Validation;
 using Omnichannel.Application.Processing;
+using Omnichannel.Application.Reports;
 using Omnichannel.Domain.Entities;
 using Omnichannel.Domain.Enums;
 using Omnichannel.Infrastructure.Persistence.Channels;
@@ -204,6 +206,11 @@ internal sealed class ProcessingTaskService(
                 $"Task '{taskId}' is {task.Status}; only a Failed task can be retried.");
         }
 
+        if (task.TaskType == ProcessingTaskType.ReportExport)
+        {
+            await EnsureExportNotExpiredAsync(taskId, now, cancellationToken);
+        }
+
         var retryMessage = task.TaskType == ProcessingTaskType.StockSync
             ? await StockSyncRetryMessageAsync(task, cancellationToken)
             : await CopyOfSourceMessageAsync(task, cancellationToken);
@@ -237,6 +244,24 @@ internal sealed class ProcessingTaskService(
             task.TaskId, requestedBy, newMessageId, previousMessageId, task.AttemptBudgetStart);
 
         return new RetryProcessingTaskResponse(task.TaskId, task.Status, newMessageId);
+    }
+
+    /// <summary>
+    /// An export past its retention time can only fail again (the worker refuses to build it), and the alert of that
+    /// failure would stay open for good: the retention sweep has dealt with the export already. Nothing is written.
+    /// </summary>
+    private async Task EnsureExportNotExpiredAsync(Guid taskId, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var export = await dbContext.ReportExports
+            .AsNoTracking()
+            .Where(e => e.TaskId == taskId)
+            .Select(e => new { e.DeletedAt, e.ExpiresAt })
+            .SingleOrDefaultAsync(cancellationToken);
+
+        if (export is not null && ReportExportExpiry.IsPastRetention(export.DeletedAt, export.ExpiresAt, now))
+        {
+            throw new ConflictException(ReportErrorCodes.ExportExpired, ValidationMessages.Get(ValidationMessages.Keys.ExportExpired));
+        }
     }
 
     /// <summary>

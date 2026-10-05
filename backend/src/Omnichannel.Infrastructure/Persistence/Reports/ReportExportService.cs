@@ -81,17 +81,19 @@ internal sealed class ReportExportService(
             .Take(query.PageSize)
             .ToListAsync(cancellationToken);
 
-        return new PagedResult<ReportExportResponse>(rows.Select(ToResponse).ToList(), query.Page, query.PageSize, totalCount);
+        var now = timeProvider.GetUtcNow();
+        return new PagedResult<ReportExportResponse>(rows.Select(row => ToResponse(row, now)).ToList(), query.Page, query.PageSize, totalCount);
     }
 
     public async Task<ReportExportResponse> GetAsync(Guid taskId, CancellationToken cancellationToken) =>
-        ToResponse(await FindOwnAsync(taskId, cancellationToken));
+        ToResponse(await FindOwnAsync(taskId, cancellationToken), timeProvider.GetUtcNow());
 
     public async Task<ReportDownloadResponse> GetDownloadAsync(Guid taskId, CancellationToken cancellationToken)
     {
         var export = await FindOwnAsync(taskId, cancellationToken);
 
-        if (export.DeletedAt is not null)
+        // Before "not ready": past its retention time an export has nothing to wait for either.
+        if (ReportExportExpiry.IsPastRetention(export.DeletedAt, export.ExpiresAt, timeProvider.GetUtcNow()))
         {
             throw new ConflictException(ReportErrorCodes.ExportExpired, ValidationMessages.Get(ValidationMessages.Keys.ExportExpired));
         }
@@ -239,9 +241,9 @@ internal sealed class ReportExportService(
             // The code of the last attempt; its message stays where it is.
             e.ProcessingTask.Attempts.OrderByDescending(a => a.AttemptNo).Select(a => a.ErrorCode).FirstOrDefault()));
 
-    private static ReportExportResponse ToResponse(Row row)
+    private static ReportExportResponse ToResponse(Row row, DateTimeOffset now)
     {
-        var status = row.DeletedAt is not null ? ReportExportStatus.Expired : Enum.Parse<ReportExportStatus>(row.TaskStatus.ToString());
+        var status = ReportExportExpiry.StatusOf(row.TaskStatus, row.DeletedAt, row.ExpiresAt, now);
         return new ReportExportResponse(
             row.TaskId,
             row.ReportType,

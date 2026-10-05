@@ -782,13 +782,18 @@ GET /api/reports/exports/{taskId}/download ─► { url (presigned GET, 5 min), 
 - **Reading** (the requester only): `GET /api/reports/exports` (paged; `sortBy` only `createdAt`, newest first unless
   `sortDir=asc`; filter `reportType`), `GET /api/reports/exports/{taskId}`. Item: `taskId`, `reportType`, `status`,
   `parameters`, `fileName`, `rowCount`, `sizeBytes`, `createdAt`, `completedAt`, `expiresAt`, `errorCode`.
-  `status` is the status of the task (`Pending`, `InProgress`, `RetryScheduled`, `Succeeded`, `Failed`) or **`Expired`**
-  once the file was deleted. `errorCode` is the code of the last attempt of a `Failed` export, otherwise null - never
-  an error text. `rowCount` = data rows of the file (orders + item lines, or products).
+  `status` is the status of the task (`Pending`, `InProgress`, `RetryScheduled`, `Succeeded`, `Failed`) or
+  **`Expired`**: the file was deleted, or the export is finished (`Succeeded` / `Failed`) and its `expiresAt` has
+  passed - **from `expiresAt` on, whether or not the sweep has run yet** (the retention time is a promise about
+  personal data, and the worker applies the same rule). An export that is still waiting or running past its
+  `expiresAt` keeps the status of its task: the worker fails it as `export_expired`. `errorCode` is the code of the
+  last attempt of a `Failed` export, otherwise null (also for `Expired`) - never an error text. `rowCount` = data rows
+  of the file (orders + item lines, or products).
 - **Download:** `GET /api/reports/exports/{taskId}/download` → `{ url, expiresAt, fileName }`: a presigned `GET` valid
   for `Reports:DownloadLinkLifetime`, computed locally (no call to the storage), to be opened by the browser without
-  the API's token. 409 `export_not_ready` unless the export `Succeeded`, 409 `export_expired` once its file was
-  deleted. The file is stored with `Content-Type` `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`
+  the API's token. 409 `export_expired` once the file was deleted or `expiresAt` has passed (checked first, for
+  every export), 409 `export_not_ready` unless the export `Succeeded`. A link handed out shortly before `expiresAt`
+  stays valid for its own lifetime. The file is stored with `Content-Type` `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`
   and `Content-Disposition: attachment; filename="<fileName>"`; the storage serves both from the stored object (checked
   with the emulator), so nothing is added to the link. The link is a credential: it is returned and never logged.
   A download is not audited; the request is (`report.export_requested` with `reportType` and `requestedBy`).
@@ -823,14 +828,18 @@ GET /api/reports/exports/{taskId}/download ─► { url (presigned GET, 5 min), 
   alert of the failure is on the Alerts page (`ProcessingFailed`). "Retry" there
   (`POST /api/processing/tasks/{id}/retry`) republishes the request with a fresh attempt budget; when it succeeds the
   alert resolves. The same task id is the export's id, so `GET /api/reports/exports/{taskId}` shows `Failed` with its
-  `errorCode` to the requester.
+  `errorCode` to the requester. **A retry of an export past its retention time is refused**: 409 `export_expired`
+  (localised `detail`) when the file was deleted or `expiresAt` has passed - nothing is written (no message, no
+  audit event). Such an export could only fail again, and nothing would ever end the alert of that failure.
 - **Retention:** the file is kept `Reports:Retention` (7 days) from the request (`expiresAt`). The Workers host sweeps
   every `Reports:CleanupInterval` (first round at most 30 s after start-up): for each export past `expiresAt` whose
   task has ended it deletes `exports/{taskId}.xlsx` (outside any transaction; a missing object is success - this also
-  removes the file of a failed export whose upload happened) and then marks the row (`DeletedAt`) - the export is
-  `Expired`. A delete that fails is a warning with the task id and is tried again in the next round; an export whose
-  task is still waiting is left to the worker (which fails it as `export_expired`). Several instances may sweep at
-  the same time. The rows themselves are kept.
+  removes the file of a failed export whose upload happened) and then, **in one transaction**, marks the row
+  (`DeletedAt`) and resolves the `ProcessingFailed` alert of the same task (with its `alert.changed` hint): an
+  expired export leaves nothing to act on, so the alert of a failed export ends at most one sweep interval after its
+  retention time. A delete that fails is a warning with the task id and is tried again in the next round; an export
+  whose task is still waiting is left to the worker (which fails it as `export_expired`; a later round then takes
+  it, alert included). Several instances may sweep at the same time. The rows themselves are kept.
 - **Configuration** (`Reports` section, read by the API and the Workers host, validated at start-up):
 
   | Setting | Default | Range | |
@@ -860,8 +869,11 @@ GET /api/reports/exports/{taskId}/download ─► { url (presigned GET, 5 min), 
 - **Package:** `ClosedXML` 0.105.1 (MIT), pinned in `Directory.Packages.props`, referenced by
   `Omnichannel.Infrastructure` only. It brings `ClosedXML.Parser` 2.0.0, `DocumentFormat.OpenXml` and
   `DocumentFormat.OpenXml.Framework` 3.1.1, `ExcelNumberFormat` 1.1.0, `RBush.Signed` 4.0.0 and `System.IO.Packaging`
-  8.0.1 (all MIT) and `SixLabors.Fonts` 1.0.0 (Apache-2.0). `SixLabors.Fonts` changed its licence with version 2:
-  do not raise that transitive version without checking it.
+  8.0.1 (all MIT) and `SixLabors.Fonts` 1.0.0 (Apache-2.0). `SixLabors.Fonts` changed its licence with version 2
+  (Six Labors Split License), so it is **pinned centrally at 1.0.0** (`CentralPackageTransitivePinningEnabled` in
+  `Directory.Packages.props`): a package that needs 2.0 or later fails the restore with `NU1109` instead of raising
+  it silently. Do not raise the pin without a licence decision. Transitive pinning holds for every version in that
+  file: a package that only comes in through another one never resolves above the version listed there.
 - **Scripted check** (needs the Workers host, the emulator and migration `ReportExports`):
   `powershell -ExecutionPolicy Bypass -File scripts\smoke\task-020.ps1`. Manual requests: the last section of
   `src/Omnichannel.Api/Omnichannel.Api.http`.

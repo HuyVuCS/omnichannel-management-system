@@ -113,9 +113,13 @@ internal static class ReportExportTesting
 
     /// <summary>Moves the end of an export's retention time (the only way a test gets an expired export).</summary>
     public static Task ExpireAsync(ApiFactory factory, Guid taskId, TimeSpan ago) =>
+        SetExpiryAsync(factory, taskId, DateTimeOffset.UtcNow - ago);
+
+    /// <summary>Sets the end of an export's retention time; nothing else of the export changes.</summary>
+    public static Task SetExpiryAsync(ApiFactory factory, Guid taskId, DateTimeOffset expiresAt) =>
         factory.QueryDbAsync(db => db.ReportExports
             .Where(e => e.TaskId == taskId)
-            .ExecuteUpdateAsync(update => update.SetProperty(e => e.ExpiresAt, DateTimeOffset.UtcNow - ago)));
+            .ExecuteUpdateAsync(update => update.SetProperty(e => e.ExpiresAt, expiresAt.ToUniversalTime())));
 
     /// <summary>Products with their inventory rows, stored directly (no import: only the rows matter here).</summary>
     public static async Task<List<Product>> SeedProductsAsync(

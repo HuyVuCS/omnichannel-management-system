@@ -6,6 +6,11 @@
   -->
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <!--
+      A version listed here also holds for a package that only comes in through another package ("Transitive pins"
+      below): a package that needs a higher one fails the restore instead of raising it silently.
+    -->
+    <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
   </PropertyGroup>
 
   <ItemGroup Label="EF Core / PostgreSQL">
@@ -26,6 +31,14 @@
   <ItemGroup Label="Excel">
     <!-- Workbooks of the background exports (Report Export Worker). -->
     <PackageVersion Include="ClosedXML" Version="0.105.1" />
+  </ItemGroup>
+
+  <ItemGroup Label="Transitive pins">
+    <!--
+      Comes in through ClosedXML (range [1.0.0, 3.0.0)). 1.0.0 is Apache-2.0; from 2.0 the package is under the
+      Six Labors Split License (a paid licence above a revenue threshold). Do not raise it without a licence decision.
+    -->
+    <PackageVersion Include="SixLabors.Fonts" Version="1.0.0" />
   </ItemGroup>
 
   <ItemGroup Label="Resilience">

@@ -137,7 +137,7 @@ try {
     Assert-Step '16 orders export -> 202' 202 $accepted.Status
     $exportId = [string]$accepted.Body.taskId
     $waited = Wait-Export $exportId $manager $ExportWaitSeconds
-    Assert-Step '17 the object storage answers (is the emulator up, do the Workers have its keys? README "Reports and Excel export")' $false $waited.StorageDown
+    Assert-Step '17 the Report Export Worker reached the object storage (is the emulator up, do the Workers have its keys? README "Reports and Excel export")' $true (-not $waited.StorageDown)
     if ($waited.StorageDown) { throw 'The Report Export Worker cannot reach the object storage: start it, run scripts\setup-object-storage.ps1, restart the Workers host and run the script again.' }
     Assert-Step "18 the export is built within $ExportWaitSeconds s (is the Workers host running?)" 'Succeeded' $waited.Status
 

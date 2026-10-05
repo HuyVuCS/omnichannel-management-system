@@ -9,6 +9,7 @@ using Microsoft.Extensions.Options;
 using Omnichannel.Application.Auth;
 using Omnichannel.Application.Common.Messaging;
 using Omnichannel.Application.Common.Paging;
+using Omnichannel.Application.Processing;
 using Omnichannel.Application.Reports;
 using Omnichannel.Domain.Entities;
 using Omnichannel.Domain.Enums;
@@ -416,16 +417,7 @@ public sealed class ReportExportEndpointsTests(ApiFactory factory)
         var succeeded = await RequestAsync(owner, InventoryPath, request);
         const string secret = "Host=db.internal;Password=***; the storage said no";
         await FailAsync(failed, "storage_unavailable", secret);
-        await factory.QueryDbAsync(async db =>
-        {
-            var now = DateTimeOffset.UtcNow;
-            var task = await db.ProcessingTasks.Include(t => t.Attempts).SingleAsync(t => t.TaskId == succeeded);
-            var attempt = task.StartAttempt(ReportExportMessageHandler.WorkerName, "i-1", now);
-            db.ProcessingAttempts.Add(attempt);
-            (await db.ReportExports.SingleAsync(e => e.TaskId == succeeded)).Complete(4096, 12, now);
-            task.Succeed(null, attempt.AttemptId, now);
-            return await db.SaveChangesAsync();
-        });
+        await SucceedAsync(succeeded, sizeBytes: 4096, rowCount: 12);
         var since = DateTimeOffset.UtcNow;
 
         // Not finished: nothing to download.
@@ -463,7 +455,9 @@ public sealed class ReportExportEndpointsTests(ApiFactory factory)
         var url = new Uri(link.Url);
         Assert.Equal($"/{StorageEmulator.Bucket}/exports/{succeeded}.xlsx", url.AbsolutePath);
         Assert.Contains("X-Amz-Signature=", url.Query, StringComparison.Ordinal);
-        Assert.Contains("X-Amz-Expires=300", url.Query, StringComparison.Ordinal);
+        // Five minutes. The signature starts on a whole second and the link ends at the request's exact time plus five
+        // minutes, so the signed lifetime is 300 s or 301 s.
+        Assert.Matches("[?&]X-Amz-Expires=30[01](&|$)", url.Query);
         // The link is a credential: it is in the answer and in no log event of the API.
         Assert.All(factory.Logs.RenderedSince(since), line =>
         {
@@ -490,7 +484,136 @@ public sealed class ReportExportEndpointsTests(ApiFactory factory)
             (await ListAsync(owner, "")).Items.Select(e => e.Status));
     }
 
+    // ---- the end of the retention time (task 021 A1, A2) -------------------------------------------------------
+
+    [Fact]
+    public async Task From_its_expiry_time_on_a_finished_export_is_expired_whether_or_not_the_sweep_has_run()
+    {
+        var (owner, _, _) = await factory.CreateUserClientAsync(AppRoles.Manager);
+        var request = new ExportInventoryRequest(null, false, "UTC");
+        var waiting = await RequestAsync(owner, InventoryPath, request);
+        var failed = await RequestAsync(owner, InventoryPath, request);
+        var succeeded = await RequestAsync(owner, InventoryPath, request);
+        await FailAsync(failed, "storage_unavailable", "down");
+        await SucceedAsync(succeeded, sizeBytes: 4096, rowCount: 12);
+
+        // Shortly before the end of the retention time (the exact second is the unit tests' business: this host runs
+        // on the real clock): everything as the task says, and the file can still be fetched.
+        foreach (var taskId in new[] { waiting, failed, succeeded })
+        {
+            await SetExpiryAsync(factory, taskId, DateTimeOffset.UtcNow.AddSeconds(30));
+        }
+
+        Assert.Equal(
+            [(ReportExportStatus.Succeeded, null), (ReportExportStatus.Failed, "storage_unavailable"), (ReportExportStatus.Pending, null)],
+            (await ListAsync(owner, "")).Items.Select(e => (e.Status, e.ErrorCode)));
+        Assert.Equal(ReportExportStatus.Succeeded, (await DetailAsync(owner, succeeded)).Status);
+        var link = await owner.GetAsync($"/api/reports/exports/{succeeded}/download");
+        Assert.Equal(HttpStatusCode.OK, link.StatusCode);
+        Assert.Contains("X-Amz-Signature=", (await link.ReadAsync<ReportDownloadResponse>()).Url, StringComparison.Ordinal);
+
+        // Past it, and no sweep has run: the finished exports are expired, the waiting one is the worker's to fail.
+        foreach (var taskId in new[] { waiting, failed, succeeded })
+        {
+            await SetExpiryAsync(factory, taskId, DateTimeOffset.UtcNow.AddSeconds(-1));
+        }
+
+        Assert.Equal(
+            [(ReportExportStatus.Expired, null), (ReportExportStatus.Expired, null), (ReportExportStatus.Pending, null)],
+            (await ListAsync(owner, "")).Items.Select(e => (e.Status, e.ErrorCode)));
+        var expired = await DetailAsync(owner, succeeded);
+        // What the export produced stays readable.
+        Assert.Equal((ReportExportStatus.Expired, (string?)null, (int?)12, (long?)4096), (expired.Status, expired.ErrorCode, expired.RowCount, expired.SizeBytes));
+        Assert.Equal((ReportExportStatus.Expired, (string?)null), ((await DetailAsync(owner, failed)).Status, (await DetailAsync(owner, failed)).ErrorCode));
+        Assert.Equal(ReportExportStatus.Pending, (await DetailAsync(owner, waiting)).Status);
+        Assert.All(
+            await factory.QueryDbAsync(db => db.ReportExports.AsNoTracking().Where(e => e.TaskId == waiting || e.TaskId == failed || e.TaskId == succeeded).ToListAsync()),
+            export => Assert.Null(export.DeletedAt));
+
+        // No link any more - for the waiting export too: "expired" comes before "not ready".
+        foreach (var (language, detail) in new[]
+        {
+            ("en", "This export has expired and its file was deleted. Request it again."),
+            ("vi", "Lần xuất này đã hết hạn và tệp đã bị xoá. Hãy yêu cầu xuất lại.")
+        })
+        {
+            foreach (var taskId in new[] { succeeded, failed, waiting })
+            {
+                using var message = new HttpRequestMessage(HttpMethod.Get, $"/api/reports/exports/{taskId}/download");
+                message.Headers.AcceptLanguage.ParseAdd(language);
+                var response = await owner.SendAsync(message);
+                using var problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+                Assert.Equal(
+                    (HttpStatusCode.Conflict, ReportErrorCodes.ExportExpired, detail),
+                    (response.StatusCode, problem.RootElement.GetProperty("errorCode").GetString(), problem.RootElement.GetProperty("detail").GetString()));
+            }
+        }
+    }
+
+    [Fact]
+    public async Task A_manual_retry_of_an_expired_failed_export_is_refused_and_writes_nothing()
+    {
+        var (manager, _, _) = await factory.CreateUserClientAsync(AppRoles.Manager);
+        var request = new ExportInventoryRequest(null, false, "UTC");
+        var pastRetention = await RequestAsync(manager, InventoryPath, request);
+        var swept = await RequestAsync(manager, InventoryPath, request);
+        var alive = await RequestAsync(manager, InventoryPath, request);
+        foreach (var taskId in new[] { pastRetention, swept, alive })
+        {
+            await FailAsync(taskId, "storage_unavailable", "down");
+        }
+
+        // One is past its retention time and not swept yet; the file of the other is deleted (the mark alone counts).
+        await SetExpiryAsync(factory, pastRetention, DateTimeOffset.UtcNow.AddSeconds(-1));
+        await factory.QueryDbAsync(async db =>
+        {
+            (await db.ReportExports.SingleAsync(e => e.TaskId == swept)).MarkDeleted(DateTimeOffset.UtcNow);
+            return await db.SaveChangesAsync();
+        });
+
+        foreach (var taskId in new[] { pastRetention, swept })
+        {
+            var before = await TaskAsync(factory, taskId);
+            foreach (var (language, detail) in new[]
+            {
+                ("en", "This export has expired and its file was deleted. Request it again."),
+                ("vi", "Lần xuất này đã hết hạn và tệp đã bị xoá. Hãy yêu cầu xuất lại.")
+            })
+            {
+                using var message = new HttpRequestMessage(HttpMethod.Post, $"/api/processing/tasks/{taskId}/retry");
+                message.Headers.AcceptLanguage.ParseAdd(language);
+                var refused = await manager.SendAsync(message);
+                using var problem = JsonDocument.Parse(await refused.Content.ReadAsStringAsync());
+                Assert.Equal(
+                    (HttpStatusCode.Conflict, ReportErrorCodes.ExportExpired, detail),
+                    (refused.StatusCode, problem.RootElement.GetProperty("errorCode").GetString(), problem.RootElement.GetProperty("detail").GetString()));
+            }
+
+            // Nothing written: the task as it was, no second message, no audit event of a retry.
+            var after = await TaskAsync(factory, taskId);
+            Assert.Equal(
+                (ProcessingTaskStatus.Failed, before.MessageId, before.AttemptBudgetStart, before.UpdatedAt),
+                (after.Status, after.MessageId, after.AttemptBudgetStart, after.UpdatedAt));
+            Assert.Equal(1, await OutboxRowsAsync(taskId));
+            Assert.Equal(0, await RetryEventsAsync(taskId));
+        }
+
+        // A failed export inside its retention time is retried as before.
+        var accepted = await manager.PostAsync($"/api/processing/tasks/{alive}/retry", null);
+        Assert.Equal(HttpStatusCode.Accepted, accepted.StatusCode);
+        Assert.Equal(ProcessingTaskStatus.Pending, (await TaskAsync(factory, alive)).Status);
+        Assert.Equal(2, await OutboxRowsAsync(alive));
+        Assert.Equal(1, await RetryEventsAsync(alive));
+        Assert.Equal(ReportExportStatus.Pending, (await DetailAsync(manager, alive)).Status);
+    }
+
     // ---- helpers -----------------------------------------------------------------------------------------------
+
+    private Task<int> OutboxRowsAsync(Guid taskId) =>
+        factory.QueryDbAsync(db => db.OutboxEvents.CountAsync(e => e.AggregateId == taskId.ToString()));
+
+    private Task<int> RetryEventsAsync(Guid taskId) =>
+        factory.QueryDbAsync(db => db.SystemEventLogs.CountAsync(l => l.EventType == ProcessingEvents.RetryRequested && l.TaskId == taskId));
 
     private static async Task<(HttpStatusCode Status, Dictionary<string, string[]> Errors)> PostAsync(HttpClient client, string path, string json, string language)
     {
@@ -520,6 +643,19 @@ public sealed class ReportExportEndpointsTests(ApiFactory factory)
             var attempt = task.StartAttempt(ReportExportMessageHandler.WorkerName, "i-1", now);
             db.ProcessingAttempts.Add(attempt);
             task.Fail(attempt.AttemptId, errorCode, errorMessage, now);
+            return await db.SaveChangesAsync();
+        });
+
+    /// <summary>Ends an export's task as the worker would after storing the file: one attempt, result set, task Succeeded.</summary>
+    private Task SucceedAsync(Guid taskId, long sizeBytes, int rowCount) =>
+        factory.QueryDbAsync(async db =>
+        {
+            var now = DateTimeOffset.UtcNow;
+            var task = await db.ProcessingTasks.Include(t => t.Attempts).SingleAsync(t => t.TaskId == taskId);
+            var attempt = task.StartAttempt(ReportExportMessageHandler.WorkerName, "i-1", now);
+            db.ProcessingAttempts.Add(attempt);
+            (await db.ReportExports.SingleAsync(e => e.TaskId == taskId)).Complete(sizeBytes, rowCount, now);
+            task.Succeed(null, attempt.AttemptId, now);
             return await db.SaveChangesAsync();
         });
 

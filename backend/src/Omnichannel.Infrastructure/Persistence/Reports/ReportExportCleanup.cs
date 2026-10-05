@@ -1,11 +1,13 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Omnichannel.Application.Alerts;
 using Omnichannel.Application.Common.Abstractions;
 using Omnichannel.Application.Common.Exceptions;
 using Omnichannel.Application.Reports;
 using Omnichannel.Domain.Entities;
 using Omnichannel.Domain.Enums;
+using Omnichannel.Infrastructure.Persistence.Alerts;
 
 namespace Omnichannel.Infrastructure.Persistence.Reports;
 
@@ -17,7 +19,8 @@ public sealed record ReportExportCleanupResult(int Expired, int Failed);
 /// <summary>
 /// The retention sweep of exports (they hold personal data and accumulate with use): the file of every export that is
 /// past its <c>ExpiresAt</c> and whose task is terminal is deleted from the object storage, then the export is marked
-/// deleted - which makes it <c>Expired</c> for its requester.
+/// deleted, and the <c>ProcessingFailed</c> alert of its task ends with it: nothing is left to act on (a retry of an
+/// expired export is refused).
 /// <para>
 /// The storage is called outside any transaction, and only what was deleted is marked. An export without a file (it
 /// failed before or after the upload) is handled the same way: its key depends on the task id alone, and deleting a
@@ -29,6 +32,7 @@ public sealed record ReportExportCleanupResult(int Expired, int Failed);
 public sealed class ReportExportCleanup(
     OmnichannelDbContext dbContext,
     IObjectStorage storage,
+    AlertStore alerts,
     ICurrentUser currentUser,
     IOptions<ReportsOptions> options,
     TimeProvider timeProvider,
@@ -91,7 +95,10 @@ public sealed class ReportExportCleanup(
             .ToListAsync(cancellationToken);
     }
 
-    /// <summary>One statement; a row another instance marked meanwhile keeps its first deletion time.</summary>
+    /// <summary>
+    /// The mark and the end of the exports' alerts, in one transaction: an alert is only written together with its
+    /// cause. A row another instance marked meanwhile keeps its first deletion time.
+    /// </summary>
     private async Task<int> MarkDeletedAsync(List<Guid> taskIds, CancellationToken cancellationToken)
     {
         if (taskIds.Count == 0)
@@ -102,7 +109,9 @@ public sealed class ReportExportCleanup(
         // A set-based update bypasses the auditing interceptor, hence UpdatedAt/UpdatedBy.
         var now = timeProvider.GetUtcNow();
         var actor = currentUser.UserId ?? SystemActor;
-        return await dbContext.ReportExports
+
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        var marked = await dbContext.ReportExports
             .Where(e => taskIds.Contains(e.TaskId) && e.DeletedAt == null)
             .ExecuteUpdateAsync(
                 update => update
@@ -110,5 +119,10 @@ public sealed class ReportExportCleanup(
                     .SetProperty(e => e.UpdatedAt, now)
                     .SetProperty(e => e.UpdatedBy, actor),
                 cancellationToken);
+        // Every export whose file is gone, also one another instance marked a moment ago: a key without an unresolved
+        // alert changes nothing.
+        await alerts.ResolveAsync(taskIds.Select(AlertDedupKey.ProcessingFailed).ToArray(), cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return marked;
     }
 }
