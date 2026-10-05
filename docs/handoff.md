@@ -3,23 +3,15 @@
 This file is an index and a snapshot of what is in flight. The repository documents are the memory; follow the links.
 
 ## 1. Snapshot
-- Written: 2026-10-05 15:10 (+07:00), by Claude Code, **in the middle of task 021** (Part A committed, Part B not).
-- Branch `master` (nothing pushed). HEAD: `076f518` "task 021 A5: a thumbnail whose image link has expired asks for
-  fresh links once" (this file is committed on top of it).
-- **Uncommitted (all of it is task 021 Part B, complete and per-file tested, waiting for the final verification):**
-  - modified: `README.md`; `frontend/src/app/{navigation.tsx,router.tsx,codeSplitting.test.tsx}`;
-    `frontend/src/features/{alerts/alerts.test.tsx, auth/auth.test.tsx, dashboard/dashboard.test.tsx,
-    inventory/InventoryPage.tsx, inventory/inventory.test.tsx, logs/eventSummary.ts, logs/logs.test.tsx,
-    logs/systemEventsApi.ts, orders/OrdersPage.tsx, orders/orders.test.tsx, processing/processingApi.ts,
-    realtime/hintTags.ts, realtime/hintTags.test.ts, realtime/realtime.test.tsx}`;
-    `frontend/src/shared/{api/baseApi.ts, i18n/en.json, i18n/vi.json, utils/format.ts}`; `frontend/src/test/systemEvents.ts`
-  - new: `frontend/src/features/reports/` (page, forms, table, API slice, tests), `frontend/src/test/reports.ts`,
-    `scripts/smoke/task-021.ps1`
-- No API, Workers host or preview server is left running by Claude Code. The development PostgreSQL, RabbitMQ and
-  object storage containers are up. A frontend test series may still be running in the background of the old chat (it
-  writes nothing into the repository).
-- Newest migration: **`20261004183420_ReportExports`** — **applied to development** on 2026-10-05 (with
+- Written: 2026-10-05 15:50 (+07:00), by Claude Code, right after finishing task 021 (replaces the snapshot taken
+  in the middle of it).
+- Branch `master` (nothing pushed). HEAD: the report commit of task 021 (`task 021: report`), on top of `896d27c`
+  "task 021: Reports & Excel export page …"; this file is committed with or right after it.
+- Working tree: clean. No API, Workers host or preview server is left running by Claude Code; the development
+  PostgreSQL, RabbitMQ and object storage containers are up.
+- Newest migration: **`20261004183420_ReportExports`** — applied to development on 2026-10-05 (with
   `20261004074312_ProductImage`), by Claude Code as the migrator. Task 021 adds no migration.
+- `docs/roadmap.md` still shows 021 as `Open`: Cowork updates the roadmap and the log in the review.
 
 ## 2. Project in 5 lines
 Multi-channel order and inventory management: React dashboard → ASP.NET Core API → PostgreSQL (source of truth) →
@@ -40,58 +32,32 @@ Source-of-truth order when documents disagree:
 
 ## 4. Progress
 - 001–020 — Done (titles in [docs/roadmap.md](roadmap.md)).
-- 021 — Reports & Excel export page + Part A (review 020, review 019) + A0 — **Open, in progress**:
-  [task](tasks/021-reports-page.md). No report yet.
+- 021 — Reports & Excel export page + Part A (review 020, review 019) + A0 — **Review**:
+  [task](tasks/021-reports-page.md), [report](tasks/021-reports-page.report.md).
 - 022 — Reconciliation Worker — Planned
 - 023 — `POST /api/webhooks/{slug}` — Planned
 - 024 — Invoice Worker + Notification Worker — Planned
 
 ## 5. In flight — task 021
-**Done and committed**
-- A0 (development steps of 019/020): `scripts\setup-object-storage.ps1`; `docker compose … up -d objectstorage`
-  (recreated with the `127.0.0.1` CORS origins); `dotnet ef migrations list` (pending exactly `ProductImage`,
-  `ReportExports`, both additive) → `database update`; smoke `task-019.ps1` **50/50** and `task-020.ps1` **46/46** on
-  development (020 on the committed state, before any change).
-- `3a94587` Cowork's documents of the round. `b492b86` A1–A4: the sweep marks `DeletedAt` and resolves the task's
-  `ProcessingFailed` alert in one transaction; manual retry of an expired export → 409 `export_expired`; `Expired`
-  by time in list / detail / download (`ReportExportExpiry`); `SixLabors.Fonts` pinned at 1.0.0 with transitive
-  pinning (resolved versions identical before/after, 286 lines, 0 differences; a package needing 2.x fails with
-  `NU1109`; 1.0.0 is Apache-2.0 per nuget.org); smoke 020 step 17 reads `True`. Backend **1300/1300**, 0 warnings;
-  smoke 020 again 46/46 on development with these changes. `076f518` A5 (expired image links).
-
-**Done, not committed (Part B)** — see section 1. Verified so far: typecheck and lint exit 0; every touched test
-file green; **full `npm test` 4 of 4 green so far in the five-run series** (452 tests; 432 s, 259 s, 218 s, 234 s);
-first-load set 970.14 → 971.00 kB raw (318.10 → 318.40 gzip), `ReportsPage` is a lazy chunk (12.8 kB).
-Browser check on the production build on development (1280 px, vi + en): shortcut from Orders prefilled the form;
-the export went Pending → In progress → Succeeded by push (no polling); download click produced an anchor to the
-storage with `rel="noreferrer"`, no `target`, and the link is in no store / DOM / text afterwards; a fetch of the
-link without credentials answered 200 with bytes starting `PK`; inventory export; labels on Sync & Processing, Logs
-and the dashboard; Staff has no menu item, gets the no-access page and no shortcut button.
-
-**Left to do (in this order)**
-1. Fifth full `npm test` run and one full `npm run test:slow` (run with nothing else running; if the old chat's
-   results are not available, run the series again: 5 × `npm test`, then `npm run test:slow`).
-2. `npm run build` + `npm run measure` (final numbers), then `scripts\smoke\task-021.ps1` on development (run it in
-   the background and read its output file; it ends with the frontend build and tests).
-3. Final `dotnet build` + `dotnet test` in `backend/` (no backend change since `b492b86`).
-4. Commit Part B as `task 021: …`; write `docs/tasks/021-reports-page.report.md` and commit it.
-
-**For the report (not written anywhere else yet)**
-- Deviations: A2's "one second before `ExpiresAt`" is a unit test of `ReportExportExpiry` (the single API test host
-  runs on the real clock; the API test uses ±30 s / −1 s); the "pin bites" probe was
-  `SixLabors.ImageSharp.Drawing` 2.1.0; `X-Amz-Expires=300` assertion of 020 loosened to 300|301 (timing-dependent,
-  red once); two existing export tests now expect `Expired` (A2); tests that used `/reports` as the request-free
-  placeholder page now use `/no-such-page`; `export_too_large` / `too_many_exports` are shown in the client's own
-  words (`errors.*`, the existing convention), not the server's `detail` with its numbers; the exports table sums to
-  976 px (992 minus a scrollbar), action column fixed right.
-- Question for Cowork: `ComingSoon` and `plannedTask` are unused now (every menu page is built) — remove them?
-- No mutation run was done for 021 (the task does not ask for one).
+**Task 021: report written, awaiting Cowork review.** Nothing half-finished; everything is committed:
+`3a94587` Cowork's documents of the round, `b492b86` A1–A4 (backend), `076f518` A5, `896d27c` Part B (Reports page,
+shortcuts, live tag, labels, smoke script, README), then the report.
+Verified: backend build 0 warnings, **1300/1300**; frontend typecheck and lint clean, **5 of 5** consecutive full
+`npm test` runs green (452 tests) and one full `npm run test:slow` green (the third; the first two are explained in
+the report); smoke `task-019.ps1` 50/50, `task-020.ps1` 46/46 (twice) and `task-021.ps1` **25/25 on development**;
+first-load set 970.14 → 971.00 kB raw; browser check on the production build (vi + en, Manager and Staff).
+Questions the review must answer (report, "Blocked / questions for Cowork"):
+1. The browser actually saving a downloaded file was not exercised (see section 6).
+2. `ComingSoon` / `plannedTask` / the `comingSoon` texts are unused now — remove?
+3. `MAX_EXPORT_RANGE_DAYS` is the second client copy of a server limit — keep constants, or a config endpoint (026)?
+4. The time zone shown is the browser's IANA zone as the OS names it (here `Asia/Bangkok`).
+Deviations to confirm are listed in the report (nine, none architectural).
 
 ## 6. Pending for the user
-- **One confirmation:** the browser check did not let the browser actually *save* the export file (a download in the
-  Browser pane needs your explicit OK). Either say "yes, download it" in the chat, or click *Download* on
-  `/reports` once yourself and confirm that the file is saved under its name and the page stays. The header that
-  causes it (`Content-Disposition: attachment`) is checked by smoke 020 step 30 and smoke 021 step 16.
+- **One optional check:** on `/reports` (Manager or Admin) click *Download* on a succeeded export and confirm that
+  the browser saves the `.xlsx` under its name and the page stays. Claude Code checked everything up to that click
+  (link target, `rel`, nothing kept, bytes and the `attachment` header) but may not save a file in the Browser pane
+  without an explicit OK.
 - No manual development step is open. `OMNICHANNEL_MIGRATOR_CONNECTION` is set at user level (Claude Code reads it
   from there; it is never printed).
 - Open decisions (roadmap): before 024 — where "payment succeeded" comes from; before 025 — hosting and the
@@ -144,8 +110,9 @@ and the dashboard; Staff has no menu item, gets the no-access page and no shortc
 - **Inventory rows are always locked in `ProductId` order.** → log, "Task 003 result".
 
 ## 9. Next action
-**Claude Code:** finish task 021 — section 5, "Left to do" (test series, smoke 021 on development, final backend
-run, commit Part B, report). **User:** the one confirmation of section 6. Then **Cowork:** review task 021.
+**Cowork:** review task 021 (report + commits `b492b86`, `076f518`, `896d27c`), answer the four questions, update
+the roadmap and the implementation log, then write task 022 (Reconciliation Worker). **User:** the optional download
+check of section 6. **Claude Code:** `/next-task` once task 022 exists.
 
 ## 10. Resume prompts
 New Claude Code chat:
@@ -157,5 +124,5 @@ docs/handoff.md.")
 
 New Cowork chat:
 ```
-Dự án Management System. Đọc docs/handoff.md, docs/roadmap.md và docs/implementation-log.md trong thư mục đã kết nối, rồi tiếp tục vai trò lập kế hoạch/review theo docs/tasks/README.md. Việc tiếp theo: chờ Claude Code hoàn tất task 021 (docs/tasks/021-reports-page.report.md chưa có; Part A đã commit b492b86 và 076f518, Part B chưa commit), sau đó review task 021, cập nhật roadmap và implementation log, rồi viết task 022 (Reconciliation Worker).
+Dự án Management System. Đọc docs/handoff.md, docs/roadmap.md và docs/implementation-log.md trong thư mục đã kết nối, rồi tiếp tục vai trò lập kế hoạch/review theo docs/tasks/README.md. Việc tiếp theo: review task 021 (docs/tasks/021-reports-page.report.md, các commit b492b86, 076f518, 896d27c), trả lời 4 câu hỏi trong report, cập nhật roadmap và implementation log, rồi viết task 022 (Reconciliation Worker).
 ```
