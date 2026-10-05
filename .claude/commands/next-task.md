@@ -30,9 +30,18 @@ write the report with `Status: Blocked` and the question, then stop.
 Run every verification command the task lists (at minimum `dotnet build` and `dotnet test` in `backend/` for backend work).
 Fix failures caused by your changes. Report only what was actually executed, with real results.
 
+## 4b. Apply to development
+
+When build and tests are green, apply the development steps the task needs (storage key helper, `docker compose up -d`
+of changed services, pending migrations as the migrator) and run the task's smoke script on development, following
+"Development steps" in `docs/tasks/README.md` exactly: development only, additive migrations only, never print
+`OMNICHANNEL_MIGRATOR_CONNECTION` or any secret, stop (`Blocked`) on anything destructive or unexpected, leave no host
+running. A step that cannot be applied goes to "Manual steps for the user" with the reason.
+
 ## 5. Commit and report
 
 1. `git status` → stage only the files belonging to this task → commit with message `task NNN: <title>`.
 2. Write `docs/tasks/NNN-<same-name>.report.md` using the template in `docs/tasks/README.md`, then commit it too
    (a separate commit is fine).
-3. Finish with a 3-5 line summary in chat: status, commit hash, test result, anything blocked or needing a manual step.
+3. Finish with a 3-5 line summary in chat: status, commit hash, test result, development steps applied, anything blocked
+   or left to the user.

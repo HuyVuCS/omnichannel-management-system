@@ -9,6 +9,13 @@ Anything listed under "Deviations" differs from, or adds to, the architecture do
 - Handoff through `docs/tasks/` (see `docs/tasks/README.md`): Cowork writes `NNN-*.md`, Claude Code runs `/next-task`
   and writes `NNN-*.report.md`. Only results in a report count as verified.
 - `.claude/settings.json` pre-approves read-only/build commands and denies reading `.env` files.
+- **Development steps are applied by Claude Code (user, 2026-10-05).** After a task is verified, Claude Code applies
+  what the development environment needs — the key helper, `dotnet ef database update` as the migrator, `docker compose
+  up -d` of changed services — and runs the smoke script there; the report lists them under "Development steps
+  (applied)". Guardrails in `docs/tasks/README.md` (development only, additive migrations only, never print secrets,
+  stop on anything destructive). The migrator connection comes from the user-level environment variable
+  `OMNICHANNEL_MIGRATOR_CONNECTION` (set once by the user). Trade-off accepted by the user: the least-privilege
+  boundary of steps 1–3 (Claude Code without DDL rights) is given up for the development database only.
 
 ## Steps 1–3 — Solution, Docker, data model, Auth/RBAC (2026-09-25)
 
@@ -607,3 +614,47 @@ results; only **Manager/Admin** may export; files are kept **7 days**.
     202 with a task; added `GET /api/reports/exports`, `GET /api/reports/exports/{taskId}`,
     `GET /api/reports/exports/{taskId}/download`.
 25. Export files are deleted after 7 days (the doc names no retention).
+
+## Task 020 result (reviewed 2026-10-05)
+
+Excel export, always in the background: `POST /api/reports/{orders|inventory}/export` (Manager/Admin; task + export row
++ outbox event + audit event in one transaction, 202), Report Export Worker on queue `report.export` (snapshot read in
+`REPEATABLE READ, READ ONLY`, workbook with ClosedXML 0.105.1, upload of `exports/{taskId}.xlsx` after that
+transaction, completion in one transaction), list / detail / download link for the requester only, retention sweep in
+the Workers host (7 days), object storage in the Workers host (`PutAsync`); Part A: README provider notes, `127.0.0.1`
+dev origins in the emulator's CORS. Backend 1278/1278, 0 warnings, 22 of 22 mutants killed; smoke 46/46 on a throwaway
+environment; peak working set at `MaxRows` 255 MiB (orders) / 336 MiB (inventory); log scan clean. Migration
+`ReportExports` not yet applied to development (user's manual steps). Doc deviations 22–25 confirmed (23 with the
+system event type `report_export.message_rejected`). Review: `docs/tasks/020-*.review.md`.
+
+| Topic | Decision | Reason | Revisit when |
+| --- | --- | --- | --- |
+| Stored attachment header | The object is stored with `Content-Disposition: attachment; filename="…"` (ASCII name); the presigned GET adds nothing. Fallback if a provider does not return the stored header: `response-content-disposition` on the presigned GET (works with the emulator too) | Checked with the emulator in 020 | 025 (provider check) |
+| Formula-safe text | Text only through `Value`, never `FormulaA1`; a leading apostrophe is doubled (ClosedXML drops one as Excel's text mark) | Formula injection; names keep their apostrophe | ClosedXML major upgrade |
+| Row limit at the worker | Counted while streaming, checked before each row (stops at `MaxRows + 1`) | No extra `COUNT`; memory stays bounded when the data grew | — |
+| Export alerts (review 020 q1) | Final failures of exports open `ProcessingFailed` like every task; **the sweep resolves the alert of each export it expires, in the transaction that sets `DeletedAt`**; a manual retry of an export that is deleted or past `ExpiresAt` is refused with 409 `export_expired` (021 A1) | One alert rule for every task type (`export_parameters_invalid` is a deployment signal); an alert with nothing left to act on must end; a retry of an expired export can only fail and would open an alert nobody resolves | — |
+| Expiry in the API (review 020 q2) | A terminal export past `ExpiresAt` is `Expired` in list and detail, and the download answers 409 `export_expired` past `ExpiresAt`, whether or not the sweep has run (021 A2) | Retention is a promise about personal data; the API agrees with the worker | — |
+| `SixLabors.Fonts` (review 020 q3) | Pinned centrally at 1.0.0 (Apache-2.0) through transitive pinning (021 A3); 2.x is under the Six Labors Split License | A transitive bump must fail the restore, not change the licence silently | ClosedXML requires ≥ 2.0 (then decide on the licence) |
+| Upload timeout (review 020 q4) | `ObjectStorage:RequestTimeout` (10 s) also bounds an export upload; 025 measures a `MaxRows` upload against the production provider and adds a Workers-only `ObjectStorage:UploadTimeout` if it needs more than half of it | ~5 MiB at `MaxRows`; images need the short timeout | 025 |
+| Unfinished limit during an outage (review 020 q5) | Accepted: exports waiting while the Workers host is down count toward `MaxUnfinishedPerUser`; manual retries are not counted | The limit exists to protect a queue that does not drain; the list shows the waiting exports | Users complain about blocked exports |
+| Time zone ids (review 020 q6) | Contract: an IANA id; the hosts accept what they resolve (also Windows names through ICU); the frontend always sends the browser's IANA zone | Harmless while API and Workers share an image; a mismatch fails cleanly as `export_parameters_invalid` | API and Workers on different platforms |
+| Dashboard `processing` (review 020 q7) | Lists `ReportExport` like every task type; labelled in 021 | A failed export is a failed task | — |
+
+## Task 021 plan — Reports & Excel export page (2026-10-05)
+
+| Topic | Decision | Reason | Revisit when |
+| --- | --- | --- | --- |
+| Page | `/reports` ("Báo cáo & Excel", doc §3.2), Manager/Admin only (`REPORTS_ROLES` next to its paths, like `LOGS_ROLES`): menu item hidden for Staff, the address answers with the forbidden page; lazy chunk | The API is Manager/Admin; same pattern as Logs/Audit | — |
+| Content | A request card (Orders / Inventory) above the table "My exports"; **no charts** | The dashboard is the overview; the doc names no report beyond the export | Users ask for report views |
+| Orders request | Filters of `GET /api/orders`: channel, status, customer, search; a **required** range of local days (default: the last 30 days including today; at most 366 days — constant `MAX_EXPORT_RANGE_DAYS`, the server stays the authority like `MAX_IMAGE_BYTES`), sent as instants with `dateRange.ts` | Same meaning as the list; the API requires the range | `Reports:MaxRangeDays` changes |
+| Inventory request | Filters of `GET /api/inventory`: search, low stock only | Same meaning as the list | — |
+| Time zone and language | `timeZone` = `Intl.DateTimeFormat().resolvedOptions().timeZone` (IANA), shown read-only on the form; the file language is the UI language (the `Accept-Language` header the client already sends), shown as help text | The file must match what the user sees; no extra choice to make | Users need another zone or language |
+| Errors of a request | Field errors (range, search) on the fields; `export_too_large`, `too_many_exports` and errors without a field (e.g. `timeZone`) as a form-level message | 020 deviation 3: these codes belong to no field | — |
+| Shortcut from the lists | Orders and Inventory pages get an "Export to Excel" button (Manager/Admin) that opens `/reports` with the list's current filters in **router location state** (not the address); they prefill the form; nothing is requested until the user submits | Lists and exports share their filters (020); exporting stays a deliberate action; the address of `/reports` belongs to the exports table | — |
+| Exports table | `GET /api/reports/exports`; page, page size, sort direction (by request time) and `reportType` filter in the address (`useListQueryState`); columns: requested at, report, filters (summary from `parameters`), status, rows, size, kept until, actions | — | — |
+| Live status | New realtime tag type `ReportExport`: `processing.task.changed` with `taskType: ReportExport` → `{ReportExport, taskId}` + `{ReportExport, LIST}` (as well as today's tags); `all` → `ReportExport`; part of the resync set. While the connection is not live and an unfinished export is on the page: poll the list every 5 s (the order-outcome pattern of 016) | Hints carry `taskType`, so other task changes do not refetch the exports | — |
+| Download | The link is fetched by a **mutation** (`GET …/download`, not cached), followed at once through a temporary `<a rel="noreferrer">`; the link is never kept in the store, the address or a log; 409 `export_expired` / `export_not_ready` → localised message and a refetch of the table | The link is a credential (5 min); the stored `Content-Disposition` makes the browser save the file without leaving the page | — |
+| Failed and expired exports | Failed: error-code label (known codes, raw fallback) and a link to the task detail, where retry lives (doc §3.4); Expired: grey tag, no download | One retry path for every task | — |
+| Labels elsewhere | `ReportExport` in `TASK_TYPES` (filter, column, task detail, dashboard); event types `report.export_requested` (report type, requester) and `report_export.message_rejected` (`reasonCode`) on the Logs/Audit page | Raw names since 020 | — |
+| Expired image links (review 019) | A thumbnail whose image fails to load **after its `expiresAt`** asks for one refetch of the product list; requests of one burst are coalesced; a failure before `expiresAt` refetches nothing (no loop) | Failure-driven, no timers; self-healing with one request | — |
+| Development steps (user, 2026-10-05) | Claude Code applies the pending steps of 019/020 first (A0) and the steps of every later task itself; smoke and browser checks run on development | User decision: no manual steps after a task | A step fails or would be destructive (then it stays with the user) |

@@ -20,12 +20,12 @@ Keep it short (target ≤ 150 lines): link to files instead of copying them.
 2. **Project in 5 lines** — what the system is; source-of-truth order: `CLAUDE.md` → architecture doc
    (`THIET_KE_KIEN_TRUC_HE_THONG_OMNICHANNEL_AI_CODING_GUIDE.docx`, in the Cowork project) → `docs/implementation-log.md` → `docs/roadmap.md`.
 3. **Workflow** — Cowork plans/reviews and writes `docs/tasks/NNN-*.md` + `*.review.md`; Claude Code runs `/next-task`, writes
-   `*.report.md`; the user runs steps needing secrets. Link `docs/tasks/README.md`.
+   `*.report.md` and applies the development steps itself (`docs/tasks/README.md`, "Development steps"). Link `docs/tasks/README.md`.
 4. **Progress** — one line per task from the roadmap: `NNN — title — Done/Review/Open/Planned` (only 001 … next 3 planned).
 5. **In flight** — current task number and state: *task file written, not started* / *in progress (what is done, what is left)* /
    *report written, awaiting Cowork review* / *reviewed, next task not written*. Include unfinished work of this chat.
-6. **Pending for the user** — manual steps from the latest report not yet confirmed (e.g. `dotnet ef database update` for migration
-   `<name>`, manual acceptance check), and open decisions from the roadmap.
+6. **Pending for the user** — development steps Claude Code could not apply (with the reason), the one-time setup if
+   `OMNICHANNEL_MIGRATOR_CONNECTION` is missing, and open decisions from the roadmap.
 7. **Environment** — how to run (3 terminals: API, Workers, scripts; commands in README §5–6), where secrets live **by name only**
    (`docker/.env`, user-secrets of `Omnichannel.Api` and `Omnichannel.Workers`), ports (API 5080, RabbitMQ UI 15672, PostgreSQL 5432).
 8. **Gotchas learned** — short bullets with a pointer to the log/review that explains each (e.g. RabbitMQ 4 does not count
