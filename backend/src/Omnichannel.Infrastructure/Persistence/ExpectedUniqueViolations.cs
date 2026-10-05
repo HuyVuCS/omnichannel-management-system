@@ -37,6 +37,12 @@ public static class ExpectedUniqueViolations
     /// <summary><c>ChannelProducts (ChannelId, ExternalProductId)</c> → 409 <c>external_product_id_taken</c>.</summary>
     public const string ChannelProductExternalProductId = "IX_ChannelProducts_ChannelId_ExternalProductId";
 
+    /// <summary>
+    /// <c>ChannelProducts (ChannelId, ExternalSku)</c> among the mappings without an external product id → 409
+    /// <c>external_sku_taken</c>.
+    /// </summary>
+    public const string ChannelProductExternalSku = "IX_ChannelProducts_ChannelId_ExternalSku";
+
     /// <summary>Every constant of this class (PostgreSQL identifiers are compared case-sensitively).</summary>
     public static readonly FrozenSet<string> ConstraintNames = typeof(ExpectedUniqueViolations)
         .GetFields(BindingFlags.Public | BindingFlags.Static)

@@ -138,7 +138,7 @@ public sealed class DatabaseFailureLogTests(ApiFactory factory)
     [Fact]
     public void Every_constant_of_the_registry_is_registered()
     {
-        Assert.Equal(8, ExpectedUniqueViolations.ConstraintNames.Count);
+        Assert.Equal(9, ExpectedUniqueViolations.ConstraintNames.Count);
         Assert.Superset(
             new HashSet<string>
             {
@@ -149,7 +149,8 @@ public sealed class DatabaseFailureLogTests(ApiFactory factory)
                 ExpectedUniqueViolations.ProcessingTaskIdempotencyKey,
                 ExpectedUniqueViolations.OrderIdempotency,
                 ExpectedUniqueViolations.ChannelProductMapping,
-                ExpectedUniqueViolations.ChannelProductExternalProductId
+                ExpectedUniqueViolations.ChannelProductExternalProductId,
+                ExpectedUniqueViolations.ChannelProductExternalSku
             },
             ExpectedUniqueViolations.ConstraintNames.ToHashSet());
         Assert.False(ExpectedUniqueViolations.Contains(new InvalidOperationException("no database error inside")));

@@ -98,6 +98,7 @@
     "retry_source_missing": "The original message of the task no longer exists, so there is nothing to send again.",
     "channel_product_exists": "This product is already mapped on this channel.",
     "external_product_id_taken": "This external product ID belongs to another product on this channel.",
+    "external_sku_taken": "This external SKU belongs to another product on this channel.",
     "channel_product_not_found": "The mapping no longer exists.",
     "alert_not_found": "The alert no longer exists.",
     "alert_resolved": "The system has already resolved this alert, so it cannot be acknowledged.",

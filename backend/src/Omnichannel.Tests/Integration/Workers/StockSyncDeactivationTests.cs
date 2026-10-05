@@ -20,7 +20,7 @@ public sealed partial class StockSyncWorkerTests
     public async Task Mapping_deactivated_while_a_retry_waits_completes_the_task_without_a_push()
     {
         var product = await SeedProductAsync();
-        var mapping = await MapAsync(Website, product.ProductId, externalSku: "WEB");
+        var mapping = await MapAsync(Website, product.ProductId, externalSku: Sku("WEB"));
         var import = await ImportAsync(product.ProductId, 4);
         var change = await OutboxOfMovementAsync(import.Items[0].MovementId);
         var websiteId = await ChannelIdAsync(Website);
@@ -31,7 +31,7 @@ public sealed partial class StockSyncWorkerTests
             // The push of the stock change fails once; before its retry arrives the mapping is switched off.
             if (update.ProductId == product.ProductId && update.TaskId != mapping.SyncTaskId && Interlocked.Exchange(ref failed, 1) == 0)
             {
-                await UpdateMappingAsync(Website, mapping.ChannelProductId, new UpdateChannelProductRequest(null, "WEB", ChannelProductStatus.Inactive));
+                await UpdateMappingAsync(Website, mapping.ChannelProductId, new UpdateChannelProductRequest(null, Sku("WEB"), ChannelProductStatus.Inactive));
                 throw new ChannelApiException(ChannelApiErrorCodes.Unavailable, "channel down (test)", isTransient: true);
             }
         };
@@ -57,7 +57,7 @@ public sealed partial class StockSyncWorkerTests
     public async Task Channel_deactivated_while_a_retry_waits_completes_the_task_without_a_push()
     {
         var product = await SeedProductAsync();
-        var mapping = await MapAsync(Pos, product.ProductId, externalSku: "POS");
+        var mapping = await MapAsync(Pos, product.ProductId, externalSku: Sku("POS"));
         var import = await ImportAsync(product.ProductId, 4);
         var change = await OutboxOfMovementAsync(import.Items[0].MovementId);
         var pos = await fixture.WithDbAsync(db => db.Channels.AsNoTracking().SingleAsync(c => c.Slug == Pos));
@@ -98,7 +98,7 @@ public sealed partial class StockSyncWorkerTests
     public async Task Delivery_limit_on_a_message_of_a_deactivated_mapping_fails_the_existing_task()
     {
         var product = await SeedProductAsync();
-        var mapping = await MapAsync(Website, product.ProductId, externalSku: "WEB");
+        var mapping = await MapAsync(Website, product.ProductId, externalSku: Sku("WEB"));
         var websiteId = await ChannelIdAsync(Website);
 
         // A stock change whose task exists already (an earlier delivery created it), then the mapping is switched off.
@@ -107,7 +107,7 @@ public sealed partial class StockSyncWorkerTests
         var resolution = await fixture.WithServicesAsync(services => services.GetRequiredService<IStockSyncService>()
             .ResolveInventoryChangeAsync(Website, product.ProductId, messageId, correlationId, CancellationToken.None));
         var taskId = resolution.TaskId!.Value;
-        await UpdateMappingAsync(Website, mapping.ChannelProductId, new UpdateChannelProductRequest(null, "WEB", ChannelProductStatus.Inactive));
+        await UpdateMappingAsync(Website, mapping.ChannelProductId, new UpdateChannelProductRequest(null, Sku("WEB"), ChannelProductStatus.Inactive));
 
         var envelope = new MessageEnvelope(
             messageId,

@@ -27,6 +27,12 @@ public sealed class ChannelProductEndpointsTests(ApiFactory factory)
     private readonly HttpClient _manager = factory.CreateClientAs(AppRoles.Manager);
     private readonly HttpClient _staff = factory.CreateClientAs(AppRoles.Staff);
 
+    // A mapping without an external product id is known to its channel by its external SKU, which is unique per channel
+    // (task 023 A3): every test gets SKUs of its own in the database all these tests share.
+    private readonly string _tag = TestData.UniqueSuffix();
+
+    private string Sku(string name) => $"{name}-{_tag}";
+
     // ---- create -----------------------------------------------------------------------------------------------
 
     [Fact]
@@ -108,7 +114,7 @@ public sealed class ChannelProductEndpointsTests(ApiFactory factory)
 
         // The same product can be mapped on another channel.
         var website = await ChannelAsync("website");
-        await MapAsync(website.ChannelId, product.ProductId, externalSku: "WEB");
+        await MapAsync(website.ChannelId, product.ProductId, externalSku: Sku("WEB"));
     }
 
     [Fact]
@@ -127,10 +133,55 @@ public sealed class ChannelProductEndpointsTests(ApiFactory factory)
         Assert.Equal(ChannelProductErrorCodes.ExternalProductIdTaken, await taken.ReadErrorCodeAsync());
         Assert.Equal((0, 0, 0), await RowsOfAsync(pos.ChannelId, second.ProductId));
 
-        // The id is unique per channel only, and the external SKU is not unique at all.
-        await MapAsync(website.ChannelId, second.ProductId, externalProductId: externalId, externalSku: "SAME");
+        // The id is unique per channel only.
+        await MapAsync(website.ChannelId, second.ProductId, externalProductId: externalId, externalSku: Sku("SAME"));
+    }
+
+    [Fact]
+    public async Task External_sku_of_another_mapping_without_an_external_product_id_is_a_conflict()
+    {
+        var pos = await ChannelAsync("pos");
+        var website = await ChannelAsync("website");
+        var (first, second) = (await CreateProductAsync(), await CreateProductAsync());
+        var sku = Sku("SKU");
+        await MapAsync(pos.ChannelId, first.ProductId, externalSku: sku);
+
+        // Without an external product id the SKU is how the channel knows the product: both would be the same item there.
+        var taken = await _manager.PostAsJsonAsync(
+            $"/api/channels/{pos.ChannelId}/products", new CreateChannelProductRequest(second.ProductId, null, $"  {sku} "));
+
+        Assert.Equal(HttpStatusCode.Conflict, taken.StatusCode);
+        Assert.Equal(ChannelProductErrorCodes.ExternalSkuTaken, await taken.ReadErrorCodeAsync());
+        Assert.Equal("external_sku_taken", ChannelProductErrorCodes.ExternalSkuTaken);
+        // Mapping, task and message are one transaction: the rejected request added none of them.
+        Assert.Equal((0, 0, 0), await RowsOfAsync(pos.ChannelId, second.ProductId));
+
+        // The same SKU next to it is fine for a mapping that has an external product id (the channel knows that one by
+        // its id) - also for several of them -, and on another channel.
+        await MapAsync(pos.ChannelId, second.ProductId, externalProductId: $"P-{TestData.UniqueSuffix()}", externalSku: sku);
         var third = await CreateProductAsync();
-        await MapAsync(website.ChannelId, third.ProductId, externalSku: "SAME");
+        await MapAsync(pos.ChannelId, third.ProductId, externalProductId: $"P-{TestData.UniqueSuffix()}", externalSku: sku);
+        await MapAsync(website.ChannelId, third.ProductId, externalSku: sku);
+        // The SKU is compared as it is stored: another case is another SKU.
+        var fourth = await CreateProductAsync();
+        await MapAsync(pos.ChannelId, fourth.ProductId, externalSku: sku.ToLowerInvariant());
+    }
+
+    [Fact]
+    public async Task External_sku_of_an_inactive_mapping_is_still_taken()
+    {
+        var pos = await ChannelAsync("pos");
+        var (first, second) = (await CreateProductAsync(), await CreateProductAsync());
+        var sku = Sku("OFF");
+        var mapping = await MapAsync(pos.ChannelId, first.ProductId, externalSku: sku);
+        await UpdateAsync(pos.ChannelId, mapping.ChannelProductId, new UpdateChannelProductRequest(null, sku, ChannelProductStatus.Inactive));
+
+        // Like the external product id: a mapping that is switched off keeps its place (it can be switched on again).
+        var taken = await _manager.PostAsJsonAsync(
+            $"/api/channels/{pos.ChannelId}/products", new CreateChannelProductRequest(second.ProductId, null, sku));
+
+        Assert.Equal(HttpStatusCode.Conflict, taken.StatusCode);
+        Assert.Equal(ChannelProductErrorCodes.ExternalSkuTaken, await taken.ReadErrorCodeAsync());
     }
 
     [Fact]
@@ -241,7 +292,7 @@ public sealed class ChannelProductEndpointsTests(ApiFactory factory)
     {
         var website = await ChannelAsync("website");
         var product = await CreateProductAsync();
-        var mapping = await MapAsync(website.ChannelId, product.ProductId, externalSku: "WEB");
+        var mapping = await MapAsync(website.ChannelId, product.ProductId, externalSku: Sku("WEB"));
 
         var list = await _staff.GetAsync($"/api/channels/{website.ChannelId}/products?search={product.Sku}");
         var create = await _staff.PostAsJsonAsync(
@@ -284,7 +335,7 @@ public sealed class ChannelProductEndpointsTests(ApiFactory factory)
         await SetChannelStatusAsync(marketplace, ChannelStatus.Inactive);
         try
         {
-            var mapping = await MapAsync(marketplace.ChannelId, product.ProductId, externalSku: "MP-1", expectSync: false);
+            var mapping = await MapAsync(marketplace.ChannelId, product.ProductId, externalSku: Sku("MP-1"), expectSync: false);
 
             Assert.Null(mapping.SyncTaskId);
             Assert.Equal((1, 0, 0), await RowsOfAsync(marketplace.ChannelId, product.ProductId));
@@ -325,12 +376,12 @@ public sealed class ChannelProductEndpointsTests(ApiFactory factory)
         Assert.Equal(ChannelProductStatus.Inactive, inactive.Status);
 
         // A change while Inactive: stored, not synced.
-        var changedWhileInactive = await UpdateAsync(path.ChannelId, path.ChannelProductId, new UpdateChannelProductRequest(null, "POS-3", ChannelProductStatus.Inactive));
+        var changedWhileInactive = await UpdateAsync(path.ChannelId, path.ChannelProductId, new UpdateChannelProductRequest(null, Sku("POS-3"), ChannelProductStatus.Inactive));
         Assert.Null(changedWhileInactive.SyncTaskId);
-        Assert.Equal(((string?)null, "POS-3"), (changedWhileInactive.ExternalProductId, changedWhileInactive.ExternalSku));
+        Assert.Equal(((string?)null, Sku("POS-3")), (changedWhileInactive.ExternalProductId, changedWhileInactive.ExternalSku));
 
         // Re-activation: sync.
-        var active = await UpdateAsync(path.ChannelId, path.ChannelProductId, new UpdateChannelProductRequest(null, "POS-3", ChannelProductStatus.Active));
+        var active = await UpdateAsync(path.ChannelId, path.ChannelProductId, new UpdateChannelProductRequest(null, Sku("POS-3"), ChannelProductStatus.Active));
         Assert.NotNull(active.SyncTaskId);
         Assert.NotEqual(renamed.SyncTaskId, active.SyncTaskId);
 
@@ -351,18 +402,52 @@ public sealed class ChannelProductEndpointsTests(ApiFactory factory)
         var (first, second) = (await CreateProductAsync(), await CreateProductAsync());
         var taken = $"EXT-{TestData.UniqueSuffix()}";
         await MapAsync(pos.ChannelId, first.ProductId, externalProductId: taken);
-        var mapping = await MapAsync(pos.ChannelId, second.ProductId, externalSku: "MINE");
+        var mapping = await MapAsync(pos.ChannelId, second.ProductId, externalSku: Sku("MINE"));
 
         var response = await _manager.PutAsJsonAsync(
             $"/api/channels/{pos.ChannelId}/products/{mapping.ChannelProductId}",
-            new UpdateChannelProductRequest(taken, "MINE", ChannelProductStatus.Active), TestData.Json);
+            new UpdateChannelProductRequest(taken, Sku("MINE"), ChannelProductStatus.Active), TestData.Json);
 
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
         Assert.Equal(ChannelProductErrorCodes.ExternalProductIdTaken, await response.ReadErrorCodeAsync());
         var stored = await factory.QueryDbAsync(db => db.ChannelProducts.AsNoTracking().SingleAsync(m => m.ChannelProductId == mapping.ChannelProductId));
-        Assert.Equal(((string?)null, "MINE"), (stored.ExternalProductId, stored.ExternalSku));
+        Assert.Equal(((string?)null, Sku("MINE")), (stored.ExternalProductId, stored.ExternalSku));
         // The sync that the change would have requested was rolled back with it.
         Assert.Equal((1, 1, 1), await RowsOfAsync(pos.ChannelId, second.ProductId));
+    }
+
+    [Fact]
+    public async Task Update_rejects_an_external_sku_of_another_mapping_without_an_external_product_id_and_keeps_the_mapping()
+    {
+        var pos = await ChannelAsync("pos");
+        var (first, second) = (await CreateProductAsync(), await CreateProductAsync());
+        var (taken, mine) = (Sku("TAKEN"), Sku("MINE"));
+        await MapAsync(pos.ChannelId, first.ProductId, externalSku: taken);
+        var externalId = $"EXT-{TestData.UniqueSuffix()}";
+        var mapping = await MapAsync(pos.ChannelId, second.ProductId, externalProductId: externalId, externalSku: mine);
+        var path = $"/api/channels/{pos.ChannelId}/products/{mapping.ChannelProductId}";
+
+        // Taking the SKU while the mapping has an external product id is allowed: the channel knows it by the id.
+        var withId = await _manager.PutAsJsonAsync(path, new UpdateChannelProductRequest(externalId, taken, ChannelProductStatus.Active), TestData.Json);
+        Assert.Equal(HttpStatusCode.OK, withId.StatusCode);
+
+        // Dropping the id then leaves two mappings with the same SKU and nothing else: refused, whatever the status.
+        foreach (var status in new[] { ChannelProductStatus.Active, ChannelProductStatus.Inactive })
+        {
+            var response = await _manager.PutAsJsonAsync(path, new UpdateChannelProductRequest(null, taken, status), TestData.Json);
+
+            Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+            Assert.Equal(ChannelProductErrorCodes.ExternalSkuTaken, await response.ReadErrorCodeAsync());
+        }
+
+        var stored = await factory.QueryDbAsync(db => db.ChannelProducts.AsNoTracking().SingleAsync(m => m.ChannelProductId == mapping.ChannelProductId));
+        Assert.Equal((externalId, taken, ChannelProductStatus.Active), (stored.ExternalProductId, stored.ExternalSku, stored.Status));
+        // Create and the first change each requested a sync; the refused changes left nothing behind.
+        Assert.Equal((1, 2, 2), await RowsOfAsync(pos.ChannelId, second.ProductId));
+
+        // With a SKU of its own the id can go.
+        var own = await _manager.PutAsJsonAsync(path, new UpdateChannelProductRequest(null, mine, ChannelProductStatus.Active), TestData.Json);
+        Assert.Equal(HttpStatusCode.OK, own.StatusCode);
     }
 
     [Fact]
@@ -371,7 +456,7 @@ public sealed class ChannelProductEndpointsTests(ApiFactory factory)
         var pos = await ChannelAsync("pos");
         var website = await ChannelAsync("website");
         var product = await CreateProductAsync();
-        var mapping = await MapAsync(pos.ChannelId, product.ProductId, externalSku: "POS");
+        var mapping = await MapAsync(pos.ChannelId, product.ProductId, externalSku: Sku("POS"));
         var body = new UpdateChannelProductRequest(null, "CHANGED", ChannelProductStatus.Active);
 
         var unknown = await _manager.PutAsJsonAsync($"/api/channels/{pos.ChannelId}/products/{Guid.NewGuid()}", body, TestData.Json);
@@ -385,7 +470,7 @@ public sealed class ChannelProductEndpointsTests(ApiFactory factory)
         }
 
         var stored = await factory.QueryDbAsync(db => db.ChannelProducts.AsNoTracking().SingleAsync(m => m.ChannelProductId == mapping.ChannelProductId));
-        Assert.Equal("POS", stored.ExternalSku);
+        Assert.Equal(Sku("POS"), stored.ExternalSku);
     }
 
     [Fact]
@@ -393,7 +478,7 @@ public sealed class ChannelProductEndpointsTests(ApiFactory factory)
     {
         var pos = await ChannelAsync("pos");
         var product = await CreateProductAsync();
-        var mapping = await MapAsync(pos.ChannelId, product.ProductId, externalSku: "POS");
+        var mapping = await MapAsync(pos.ChannelId, product.ProductId, externalSku: Sku("POS"));
         var path = $"/api/channels/{pos.ChannelId}/products/{mapping.ChannelProductId}";
 
         var noId = await _manager.PutAsJsonAsync(path, new { externalProductId = "", externalSku = (string?)null, status = "Active" });

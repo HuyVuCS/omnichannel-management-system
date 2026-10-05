@@ -57,6 +57,12 @@ public static class ChannelProductErrorCodes
     /// <summary>The external product id belongs to another product on this channel.</summary>
     public const string ExternalProductIdTaken = "external_product_id_taken";
 
+    /// <summary>
+    /// The external SKU is the one of another mapping of this channel that has no external product id either: both would
+    /// be the same item on the channel.
+    /// </summary>
+    public const string ExternalSkuTaken = "external_sku_taken";
+
     /// <summary>No such mapping on this channel.</summary>
     public const string MappingNotFound = "channel_product_not_found";
 }
