@@ -31,9 +31,9 @@ Source-of-truth order when documents disagree:
 
 ## 4. Progress
 - 001–019 — Done (titles in [docs/roadmap.md](roadmap.md)).
-- 020 — Excel export in the background (ClosedXML + object storage) + Part A (review 019) — **Review**:
-  [task](tasks/020-excel-export.md), [report](tasks/020-excel-export.report.md).
-- 021 — Reports & Excel export page; labels for the new task and event types; refresh of expired image links — Planned
+- 020 — Excel export in the background + Part A (review 019) — Done ([review](tasks/020-excel-export.review.md)).
+- 021 — Reports & Excel export page + Part A (review 020, review 019) + A0 (development steps of 019/020) — **Open**:
+  [task](tasks/021-reports-page.md).
 - 022 — Reconciliation Worker — Planned
 - 023 — `POST /api/webhooks/{slug}` — Planned
 
@@ -57,20 +57,10 @@ Questions the review must answer (report, "Blocked / questions for Cowork"):
 Doc deviations 22–25 are confirmed in the report (23 with one addition: event type `report_export.message_rejected`).
 
 ## 6. Pending for the user
-Required before exports work on development (report, "Manual steps for the user"), in this order:
-1. `powershell -ExecutionPolicy Bypass -File scripts\setup-object-storage.ps1` — **again**: it now also stores the
-   storage keys in the user-secrets of `Omnichannel.Workers` (prints no key). Without it the Workers host stops at
-   start-up (`ObjectStorage:AccessKeyId is required`).
-2. Migration `ReportExports` as the migrator (applies `ProductImage` too, if still pending):
-   `cd backend; dotnet ef database update -p src/Omnichannel.Infrastructure -s src/Omnichannel.Api`.
-3. Restart the Workers host (and an API running the old build).
-
-Then optional: `powershell -ExecutionPolicy Bypass -File scripts\smoke\task-020.ps1` on development (and
-`task-019.ps1`, if not done yet). The next `docker compose … up -d` recreates the emulator container with the two
-`127.0.0.1` CORS origins of Part A2 (its data stays).
-- Unconfirmed from earlier rounds: the three manual steps of 019 (the emulator container is running, so the key
-  helper and `docker compose up` were done; migration `ProductImage` unknown); `Host=127.0.0.1` in both user-secrets
-  and in `OMNICHANNEL_MIGRATOR_CONNECTION` (016b).
+*(Updated by Cowork after review 020.)* Since 2026-10-05 Claude Code applies the development steps itself
+([docs/tasks/README.md](tasks/README.md), "Development steps"); the steps of 019/020 are task 021 A0.
+One-time, by the user: the persistent user environment variable `OMNICHANNEL_MIGRATOR_CONNECTION` (migrator role,
+`Host=127.0.0.1`), then restart the editor / Claude app so Claude Code inherits it.
 - Open decisions (roadmap): before 024 — where "payment succeeded" comes from; before 025 — hosting and the
   production object-storage provider.
 
@@ -134,9 +124,8 @@ Then optional: `powershell -ExecutionPolicy Bypass -File scripts\smoke\task-020.
   while the development emulator runs. → report 020, "Smoke script".
 
 ## 9. Next action
-**User:** the three manual steps of section 6 (key helper again, migration `ReportExports`, restart the Workers host).
-**Cowork (in parallel):** review task 020 ([report](tasks/020-excel-export.report.md), commits `4f20d69`..`c596353`),
-answer its seven questions, update the roadmap and the log, then write task 021 (Reports page + Part A).
+*(Updated by Cowork.)* Review 020 done (accepted), task 021 written. **User:** set `OMNICHANNEL_MIGRATOR_CONNECTION`
+once (section 6). **Claude Code:** `/next-task` → 021 (A0 applies the pending steps of 019/020 first).
 
 ## 10. Resume prompts
 New Claude Code chat:
