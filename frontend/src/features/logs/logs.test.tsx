@@ -24,6 +24,8 @@ import {
   managerEvents,
   orderRejectedEvent,
   processingFailedEvent,
+  reconciliationEvent,
+  reconciliationWithTroubleEvent,
   serveSystemEvents,
   syncRejectedEvent,
   systemEvent,
@@ -130,6 +132,7 @@ describe('logs: who may read them', () => {
       'Ghi nhận cảnh báo',
       'Yêu cầu xuất tệp',
       'Thông điệp xuất tệp bị từ chối',
+      'Đối soát tồn kho',
     ]);
   });
 
@@ -139,8 +142,8 @@ describe('logs: who may read them', () => {
     await loaded();
 
     const options = await offeredOptions(user, 'Loại sự kiện');
-    expect(options).toHaveLength(16);
-    expect(options.slice(11)).toEqual([
+    expect(options).toHaveLength(17);
+    expect(options.slice(12)).toEqual([
       'Tạo người dùng',
       'Đổi vai trò',
       'Khoá người dùng',
@@ -531,6 +534,82 @@ describe('logs: rows', () => {
       'Message m-2 rejected on stock.sync.pos: quota_exceeded',
       'Message m-1 rejected on stock.sync.pos: —',
     ]);
+  });
+
+  it('says what a reconciliation run found and did, and which channels it could not read, in both languages', async () => {
+    // A run that names less than it should: no counts for the cap, an entry without a reason, an entry that is none.
+    const sparse = systemEvent({
+      logId: 130,
+      level: 'Warning',
+      eventType: 'reconciliation.completed',
+      details: { checked: 5, drifted: 0, tasksCreated: 0, unreadable: [{ channel: 'POS' }, 'junk'] },
+    });
+    const empty = systemEvent({ logId: 129, level: 'Warning', eventType: 'reconciliation.completed', details: {} });
+    serveSystemEvents([reconciliationWithTroubleEvent, reconciliationEvent, sparse, empty]);
+    const { user } = renderLogs();
+    await screen.findByText('12/1.340 sản phẩm lệch tồn · đã tạo 12 tác vụ đồng bộ');
+
+    expect(columnTexts('Sự kiện')).toEqual(Array.from({ length: 4 }, () => 'Đối soát tồn kho'));
+    expect(columnTexts('Mức độ')).toEqual(Array.from({ length: 4 }, () => 'Cảnh báo'));
+    expect(columnTexts('Nội dung')).toEqual([
+      // Drift beyond the cap is said, and every channel that could not be read by name: with the label of its error
+      // code, or the code as it is when this client has no label for it.
+      '620/1.340 sản phẩm lệch tồn · đã tạo 500 tác vụ đồng bộ · còn 120 để lượt sau · ' +
+        'không đọc được: POS (kênh không khả dụng), Website (tls_handshake_failed)',
+      // Nothing deferred, every channel read: neither part is there.
+      '12/1.340 sản phẩm lệch tồn · đã tạo 12 tác vụ đồng bộ',
+      '0/5 sản phẩm lệch tồn · đã tạo 0 tác vụ đồng bộ · không đọc được: POS (—)',
+      '—/— sản phẩm lệch tồn · đã tạo — tác vụ đồng bộ',
+    ]);
+    // The run is found again by its correlation id: its tasks on Sync & Processing, its event here.
+    expect(within(cellOf(reconciliationEvent, 'Liên kết')).getByRole('link', { name: 'Luồng' })).toHaveAttribute(
+      'href',
+      `/logs?${WINDOW}&correlationId=reconciliation-0199b3c27d1e7c4a9f00aabbccddeeff`,
+    );
+
+    await switchLanguage(user, 'EN');
+    await screen.findByText('12 of 1.340 products differ · 12 sync tasks created');
+
+    expect(columnTexts('Event')).toEqual(Array.from({ length: 4 }, () => 'Stock reconciliation'));
+    expect(columnTexts('Summary')).toEqual([
+      '620 of 1.340 products differ · 500 sync tasks created · 120 left for the next run · ' +
+        'not readable: POS (channel unavailable), Website (tls_handshake_failed)',
+      '12 of 1.340 products differ · 12 sync tasks created',
+      '0 of 5 products differ · 0 sync tasks created · not readable: POS (—)',
+      '— of — products differ · — sync tasks created',
+    ]);
+  });
+
+  it('has a label for every error code of a channel call', async () => {
+    const codes = [
+      'channel_timeout',
+      'channel_unavailable',
+      'channel_rate_limited',
+      'channel_rejected',
+      'channel_circuit_open',
+    ];
+    serveSystemEvents([
+      systemEvent({
+        logId: 128,
+        level: 'Warning',
+        eventType: 'reconciliation.completed',
+        details: {
+          checked: 0,
+          drifted: 0,
+          tasksCreated: 0,
+          deferred: 0,
+          unreadable: codes.map((errorCode, index) => ({ channel: `K${index + 1}`, errorCode, pairs: 1 })),
+        },
+      }),
+    ]);
+    renderLogs();
+
+    expect(
+      await screen.findByText(
+        '0/0 sản phẩm lệch tồn · đã tạo 0 tác vụ đồng bộ · không đọc được: K1 (kênh không phản hồi), ' +
+          'K2 (kênh không khả dụng), K3 (kênh giới hạn tần suất), K4 (kênh từ chối), K5 (tạm ngừng gọi sau nhiều lỗi)',
+      ),
+    ).toBeInTheDocument();
   });
 
   it('keeps a row inside a 1280 px window', async () => {

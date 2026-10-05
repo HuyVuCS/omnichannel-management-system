@@ -13,6 +13,8 @@ public static class ExternalChannelsServiceCollectionExtensions
     public static IServiceCollection AddSimulatedChannelStockClient(this IServiceCollection services, IConfiguration configuration)
     {
         services.Configure<ChannelSimulationOptions>(configuration.GetSection(ChannelSimulationOptions.SectionName));
+        // The simulated channels' own state (a PostgreSQL table); only the simulator knows it.
+        services.AddSingleton<ISimulatedChannelStockStore, SimulatedChannelStockStore>();
         services.AddKeyedSingleton<IChannelStockClient, SimulatedChannelStockClient>(ResilientChannelStockClient.AdapterKey);
         services.AddSingleton<IChannelStockClient, ResilientChannelStockClient>();
 

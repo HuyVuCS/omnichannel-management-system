@@ -21,7 +21,7 @@ public sealed class ChannelResilienceOptions
 /// <summary>
 /// The breaker of a channel opens when, within <see cref="SamplingDuration"/>, at least <see cref="MinimumThroughput"/> calls
 /// were made and <see cref="FailureRatio"/> of them failed with a transient error or a timeout. While it is open
-/// (<see cref="BreakDuration"/>) the channel is not called and pushes fail at once with <c>channel_circuit_open</c>.
+/// (<see cref="BreakDuration"/>) the channel is not called and calls fail at once with <c>channel_circuit_open</c>.
 /// </summary>
 public sealed class ChannelCircuitBreakerOptions
 {
@@ -55,21 +55,44 @@ public sealed class ResilientChannelStockClient(
     private readonly ConcurrentDictionary<string, ResiliencePipeline> _pipelines = new(StringComparer.Ordinal);
     private readonly ChannelResilienceOptions _options = options.Value;
 
-    public async Task PushAvailableStockAsync(ChannelStockUpdate update, CancellationToken cancellationToken)
+    public Task PushAvailableStockAsync(ChannelStockUpdate update, CancellationToken cancellationToken) =>
+        ExecuteAsync(
+            update.ChannelSlug,
+            static async (state, token) =>
+            {
+                await state.adapter.PushAvailableStockAsync(state.update, token);
+                return true;
+            },
+            (adapter, update),
+            cancellationToken);
+
+    /// <summary>
+    /// Through the same pipeline as the pushes: a read that fails or times out says the same about the channel's health,
+    /// and an open breaker stops reads as well.
+    /// </summary>
+    public Task<IReadOnlyList<ChannelStockReading>> ReadAvailableStockAsync(ChannelStockQuery query, CancellationToken cancellationToken) =>
+        ExecuteAsync(
+            query.ChannelSlug,
+            static async (state, token) => await state.adapter.ReadAvailableStockAsync(state.query, token),
+            (adapter, query),
+            cancellationToken);
+
+    private async Task<TResult> ExecuteAsync<TState, TResult>(
+        string channelSlug,
+        Func<TState, CancellationToken, ValueTask<TResult>> call,
+        TState state,
+        CancellationToken cancellationToken)
     {
-        var pipeline = _pipelines.GetOrAdd(update.ChannelSlug, CreatePipeline);
+        var pipeline = _pipelines.GetOrAdd(channelSlug, CreatePipeline);
         try
         {
-            await pipeline.ExecuteAsync(
-                static async (state, token) => await state.adapter.PushAvailableStockAsync(state.update, token),
-                (adapter, update),
-                cancellationToken);
+            return await pipeline.ExecuteAsync(call, state, cancellationToken);
         }
         catch (TimeoutRejectedException exception)
         {
             throw new ChannelApiException(
                 ChannelApiErrorCodes.Timeout,
-                $"Channel '{update.ChannelSlug}' did not answer within {_options.CallTimeout}.",
+                $"Channel '{channelSlug}' did not answer within {_options.CallTimeout}.",
                 isTransient: true,
                 exception);
         }
@@ -77,7 +100,7 @@ public sealed class ResilientChannelStockClient(
         {
             throw new ChannelApiException(
                 ChannelApiErrorCodes.CircuitOpen,
-                $"Channel '{update.ChannelSlug}' was not called: its circuit breaker is open after repeated failures.",
+                $"Channel '{channelSlug}' was not called: its circuit breaker is open after repeated failures.",
                 isTransient: true,
                 exception);
         }

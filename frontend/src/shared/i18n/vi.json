@@ -788,7 +788,15 @@
       "user_unlocked": "Mở khoá người dùng",
       "user_password_reset": "Đặt lại mật khẩu",
       "report_export_requested": "Yêu cầu xuất tệp",
-      "report_export_message_rejected": "Thông điệp xuất tệp bị từ chối"
+      "report_export_message_rejected": "Thông điệp xuất tệp bị từ chối",
+      "reconciliation_completed": "Đối soát tồn kho"
+    },
+    "channelErrors": {
+      "channel_timeout": "kênh không phản hồi",
+      "channel_unavailable": "kênh không khả dụng",
+      "channel_rate_limited": "kênh giới hạn tần suất",
+      "channel_rejected": "kênh từ chối",
+      "channel_circuit_open": "tạm ngừng gọi sau nhiều lỗi"
     },
     "rejection": {
       "invalid_json": "không phải JSON hợp lệ",
@@ -830,7 +838,15 @@
       "user_unlocked": "Tài khoản được mở khoá",
       "user_password_reset": "Đã đặt mật khẩu tạm thời",
       "report_export_requested": "Báo cáo: {{reportType}}",
-      "report_export_message_rejected": "Thông điệp {{messageId}} bị từ chối: {{reason}}"
+      "report_export_message_rejected": "Thông điệp {{messageId}} bị từ chối: {{reason}}",
+      "reconciliation_completed": {
+        "drift": "{{drifted}}/{{checked}} sản phẩm lệch tồn",
+        "tasks": "đã tạo {{tasksCreated}} tác vụ đồng bộ",
+        "deferred": "còn {{deferred}} để lượt sau",
+        "unreadable": "không đọc được: {{channels}}",
+        "channel": "{{channel}} ({{reason}})",
+        "channelSeparator": ", "
+      }
     }
   },
   "reports": {

@@ -1,12 +1,15 @@
 using Microsoft.Extensions.Options;
 using Omnichannel.Application;
+using Omnichannel.Application.Channels;
 using Omnichannel.Application.Common.Abstractions;
 using Omnichannel.Infrastructure;
 using Omnichannel.Infrastructure.ExternalChannels;
+using Omnichannel.Infrastructure.Persistence.Channels;
 using Omnichannel.Infrastructure.RabbitMQ;
 using Omnichannel.Infrastructure.S3;
 using Omnichannel.Workers.OrderWorker;
 using Omnichannel.Workers.OutboxPublisher;
+using Omnichannel.Workers.ReconciliationWorker;
 using Omnichannel.Workers.ReportExportWorker;
 using Omnichannel.Workers.StockSyncWorker;
 
@@ -54,6 +57,13 @@ public static class WorkerHostSetup
                 resilience.CircuitBreaker = stockSync.Value.CircuitBreaker;
             });
 
+        // Reconciliation reads the channels through the same client as the Stock Sync Worker.
+        services.AddOptions<ReconciliationOptions>()
+            .Bind(configuration.GetSection(ReconciliationOptions.SectionName))
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<ReconciliationOptions>, ReconciliationOptionsValidator>();
+        services.AddScoped<StockReconciliation>();
+
         services.AddOptions<ReportExportWorkerOptions>()
             .Bind(configuration.GetSection(ReportExportWorkerOptions.SectionName))
             .ValidateOnStart();
@@ -67,6 +77,7 @@ public static class WorkerHostSetup
         services.AddHostedService<StockSyncWorkerService>();
         services.AddHostedService<ReportExportWorkerService>();
         services.AddHostedService<ReportExportCleanupService>();
+        services.AddHostedService<ReconciliationService>();
 
         return services;
     }

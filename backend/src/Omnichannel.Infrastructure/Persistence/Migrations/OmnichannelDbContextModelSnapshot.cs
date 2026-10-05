@@ -994,6 +994,35 @@ namespace Omnichannel.Infrastructure.Persistence.Migrations
                     b.ToTable("SystemEventLogs", (string)null);
                 });
 
+            modelBuilder.Entity("Omnichannel.Infrastructure.ExternalChannels.SimulatedChannelStock", b =>
+                {
+                    b.Property<string>("ChannelSlug")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("ExternalKey")
+                        .HasMaxLength(140)
+                        .HasColumnType("character varying(140)");
+
+                    b.Property<int>("AvailableStock")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("LastRequestId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("ChannelSlug", "ExternalKey");
+
+                    b.ToTable("SimulatedChannelStocks", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_SimulatedChannelStocks_AvailableStock_NonNegative", "\"AvailableStock\" >= 0");
+                        });
+                });
+
             modelBuilder.Entity("Omnichannel.Infrastructure.Identity.ApplicationRole", b =>
                 {
                     b.Property<Guid>("Id")

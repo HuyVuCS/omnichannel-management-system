@@ -202,6 +202,45 @@ export const exportRejectedEvent = systemEvent({
   details: { messageId: 'msg-41', reasonCode: 'unknown_task' },
 });
 
+const RECONCILIATION_CORRELATION_ID = 'reconciliation-0199b3c27d1e7c4a9f00aabbccddeeff';
+
+/** A reconciliation run that found drift on every channel it could read. */
+export const reconciliationEvent = systemEvent({
+  logId: 131,
+  level: 'Warning',
+  eventType: 'reconciliation.completed',
+  createdAt: new Date(2026, 9, 5, 11, 15).toISOString(),
+  correlationId: RECONCILIATION_CORRELATION_ID,
+  workerName: 'ReconciliationWorker',
+  details: {
+    runId: '0199b3c2-7d1e-7c4a-9f00-aabbccddeeff',
+    checked: 1340,
+    inSync: 1328,
+    drifted: 12,
+    tasksCreated: 12,
+    deferred: 0,
+    skippedUnfinished: 3,
+    skippedRejected: 1,
+    unreadable: [],
+  },
+});
+
+/** A run that reached its cap and could not read two channels: one with a code this client knows, one without. */
+export const reconciliationWithTroubleEvent = systemEvent({
+  ...reconciliationEvent,
+  logId: 132,
+  details: {
+    ...reconciliationEvent.details,
+    drifted: 620,
+    tasksCreated: 500,
+    deferred: 120,
+    unreadable: [
+      { channel: 'POS', errorCode: 'channel_unavailable', pairs: 40 },
+      { channel: 'Website', errorCode: 'tls_handshake_failed', pairs: 7 },
+    ],
+  },
+});
+
 /** One event per type the API has an allowlist entry for, newest first; the last five are the Admin's. */
 export const everyEventType: SystemEvent[] = [
   importedEvent,

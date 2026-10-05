@@ -23,6 +23,7 @@ export const EVENT_TYPES = [
   'alert.acknowledged',
   'report.export_requested',
   'report_export.message_rejected',
+  'reconciliation.completed',
   'user.created',
   'user.role_changed',
   'user.locked',

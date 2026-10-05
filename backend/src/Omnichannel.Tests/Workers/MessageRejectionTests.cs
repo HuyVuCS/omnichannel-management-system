@@ -325,6 +325,9 @@ public sealed class MessageRejectionTests
     private sealed class NoChannel : IChannelStockClient
     {
         public Task PushAvailableStockAsync(ChannelStockUpdate update, CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public Task<IReadOnlyList<ChannelStockReading>> ReadAvailableStockAsync(ChannelStockQuery query, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
     }
 
     private sealed class RunningHost : IHostApplicationLifetime

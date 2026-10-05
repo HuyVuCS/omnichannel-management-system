@@ -1,7 +1,7 @@
 namespace Omnichannel.Infrastructure.ExternalChannels;
 
 /// <summary>
-/// Bound from the <c>ChannelSimulation</c> configuration section and read on every push (<c>IOptionsMonitor</c>): a change
+/// Bound from the <c>ChannelSimulation</c> configuration section and read on every call (<c>IOptionsMonitor</c>): a change
 /// of the settings file applies without restarting the Workers host, so a channel can be made to fail and recover during a
 /// demo. Only the simulated channel client reads it.
 /// </summary>
@@ -18,11 +18,19 @@ public sealed class ChannelSimulationOptions
     /// </summary>
     public const string TransientErrorSkuPrefix = "SIM-TEMP-";
 
+    /// <summary>
+    /// External SKU prefix of a product whose updates the channel accepts and then loses, when <see cref="SkuRules"/> is
+    /// on: the push succeeds but the channel keeps no value, so a read never shows the central stock (permanent drift,
+    /// for demonstrating reconciliation).
+    /// </summary>
+    public const string LostUpdateSkuPrefix = "SIM-LOST-";
+
     /// <summary>Behaviour per channel slug (<c>website</c>, <c>pos</c>, <c>digital-platform</c>); a channel without an entry succeeds.</summary>
     public Dictionary<string, SimulatedChannelSettings> Channels { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
-    /// Deterministic failures by external SKU prefix (<see cref="PermanentErrorSkuPrefix"/>, <see cref="TransientErrorSkuPrefix"/>).
+    /// Deterministic behaviour by external SKU prefix (<see cref="PermanentErrorSkuPrefix"/>,
+    /// <see cref="TransientErrorSkuPrefix"/>, <see cref="LostUpdateSkuPrefix"/>). Pushes only: reads are not affected.
     /// Off by default; switched on in <c>appsettings.Development.json</c> only.
     /// </summary>
     public bool SkuRules { get; set; }

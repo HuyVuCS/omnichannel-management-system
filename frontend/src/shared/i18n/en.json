@@ -788,7 +788,15 @@
       "user_unlocked": "User unlocked",
       "user_password_reset": "Password reset",
       "report_export_requested": "Export requested",
-      "report_export_message_rejected": "Export message rejected"
+      "report_export_message_rejected": "Export message rejected",
+      "reconciliation_completed": "Stock reconciliation"
+    },
+    "channelErrors": {
+      "channel_timeout": "channel did not answer",
+      "channel_unavailable": "channel unavailable",
+      "channel_rate_limited": "rate limited by the channel",
+      "channel_rejected": "rejected by the channel",
+      "channel_circuit_open": "paused after repeated failures"
     },
     "rejection": {
       "invalid_json": "not valid JSON",
@@ -830,7 +838,15 @@
       "user_unlocked": "Account unlocked",
       "user_password_reset": "Temporary password set",
       "report_export_requested": "Report: {{reportType}}",
-      "report_export_message_rejected": "Message {{messageId}} rejected: {{reason}}"
+      "report_export_message_rejected": "Message {{messageId}} rejected: {{reason}}",
+      "reconciliation_completed": {
+        "drift": "{{drifted}} of {{checked}} products differ",
+        "tasks": "{{tasksCreated}} sync tasks created",
+        "deferred": "{{deferred}} left for the next run",
+        "unreadable": "not readable: {{channels}}",
+        "channel": "{{channel}} ({{reason}})",
+        "channelSeparator": ", "
+      }
     }
   },
   "reports": {

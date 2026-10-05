@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Npgsql;
 using Omnichannel.Infrastructure.Persistence;
 using Omnichannel.Infrastructure.RabbitMQ;
 using Omnichannel.Workers;
@@ -38,6 +39,7 @@ public sealed class WorkersFixture : IAsyncLifetime
     private readonly RabbitMqContainer _rabbit;
     private IHost? _tools;
     private IConnection? _assertionConnection;
+    private int _isolatedDatabases;
 
     public WorkersFixture()
     {
@@ -95,12 +97,37 @@ public sealed class WorkersFixture : IAsyncLifetime
     /// A Workers host (not started) with test configuration; <paramref name="overrides"/> win.
     /// <paramref name="configureServices"/> runs after the production registrations (test seams, log capture).
     /// </summary>
+    /// <param name="databaseConnectionString">Another database of this server (<see cref="CreateIsolatedDatabaseAsync"/>); the shared one when null.</param>
     public IHost CreateHost(
         string instanceId,
         IDictionary<string, string?>? overrides = null,
-        Action<IServiceCollection>? configureServices = null) =>
+        Action<IServiceCollection>? configureServices = null,
+        string? databaseConnectionString = null) =>
         BuildWorkersHost(
-            _postgres.GetConnectionString(), _rabbit.Hostname, _amqpHostPort, instanceId, overrides, configureServices);
+            databaseConnectionString ?? _postgres.GetConnectionString(), _rabbit.Hostname, _amqpHostPort, instanceId, overrides, configureServices);
+
+    /// <summary>
+    /// A migrated database of its own on the same server, for tests whose subject looks at <b>every</b> row of a table
+    /// (a reconciliation run reads all mappings): in the shared database the rows of every other test would take part.
+    /// Seeded like any migrated database (the three channels, the roles), otherwise empty. Never dropped: the container
+    /// goes away with the fixture.
+    /// </summary>
+    public async Task<string> CreateIsolatedDatabaseAsync()
+    {
+        var name = $"isolated_{Interlocked.Increment(ref _isolatedDatabases)}";
+        await using (var server = new NpgsqlConnection(_postgres.GetConnectionString()))
+        {
+            await server.OpenAsync();
+            await using var create = new NpgsqlCommand($"CREATE DATABASE \"{name}\"", server);
+            await create.ExecuteNonQueryAsync();
+        }
+
+        var connectionString = new NpgsqlConnectionStringBuilder(_postgres.GetConnectionString()) { Database = name }.ConnectionString;
+        var options = new DbContextOptionsBuilder<OmnichannelDbContext>().UseNpgsql(connectionString).Options;
+        await using var dbContext = new OmnichannelDbContext(options);
+        await dbContext.Database.MigrateAsync();
+        return connectionString;
+    }
 
     /// <summary>
     /// Workers host with the production registrations against the given database and broker (test credentials).
@@ -108,7 +135,9 @@ public sealed class WorkersFixture : IAsyncLifetime
     /// Two things differ from production unless a test asks for them: the object storage is configuration only (valid, at
     /// an address nothing listens on - a test that stores export files overrides <c>ObjectStorage:*</c> with a started
     /// emulator), and the retention sweep of exports does not run (<paramref name="retentionSweep"/>): in the background
-    /// it would add statements to tests that count them and expire the exports of other tests.
+    /// it would add statements to tests that count them and expire the exports of other tests. Reconciliation is
+    /// switched off the same way (<c>Reconciliation:Enabled</c>; a test of the service overrides it): a run would create
+    /// stock-sync tasks for the mappings of every test in the database.
     /// </para>
     /// </summary>
     public static IHost BuildWorkersHost(
@@ -138,6 +167,7 @@ public sealed class WorkersFixture : IAsyncLifetime
             ["OutboxPublisher:PollInterval"] = "00:00:00.100",
             ["OutboxPublisher:InitialBackoff"] = "00:00:00.200",
             ["OutboxPublisher:MaxBackoff"] = "00:00:02",
+            ["Reconciliation:Enabled"] = "false",
             // Never connected (port 9, "discard"): only the options must be valid for the host to start.
             ["ObjectStorage:ServiceUrl"] = "http://127.0.0.1:9",
             ["ObjectStorage:BucketName"] = "not-used",

@@ -31,7 +31,7 @@ try
     });
 
     // RabbitMQ topology, Outbox Publisher, Order Worker, Stock Sync Worker, Report Export Worker and its retention
-    // sweep; further workers follow in later steps.
+    // sweep, Reconciliation; further workers follow in later steps.
     builder.Services.AddWorkerServices(builder.Configuration);
 
     var host = builder.Build();
