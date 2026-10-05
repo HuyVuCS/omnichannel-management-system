@@ -3,15 +3,23 @@
 This file is an index and a snapshot of what is in flight. The repository documents are the memory; follow the links.
 
 ## 1. Snapshot
-- Written: 2026-10-05 03:15 (+07:00), by Claude Code, right after finishing task 020.
-- Branch `master` (nothing pushed). HEAD: `c596353` "task 020: report" (this file is committed on top of it).
-- Working tree: clean. No API, Workers host or throwaway container is left running by Claude Code; the development
-  PostgreSQL, RabbitMQ and object storage emulator containers are up (not touched in this chat).
-- Newest migration: **`20261004183420_ReportExports`** (task 020) — generated, applied only on a throwaway
-  environment; **not applied to development**. Before it: `20261004074312_ProductImage` (task 019; whether it is
-  applied on development is unconfirmed), `20261002215102_Alerts` (applied).
-- `docs/roadmap.md` still shows 020 as `Open`: Cowork updates the roadmap and the log in the review.
-- Left on the machine by this chat: the image `mcr.microsoft.com/dotnet/aspnet:10.0` (340 MB, pulled for a Linux check).
+- Written: 2026-10-05 15:10 (+07:00), by Claude Code, **in the middle of task 021** (Part A committed, Part B not).
+- Branch `master` (nothing pushed). HEAD: `076f518` "task 021 A5: a thumbnail whose image link has expired asks for
+  fresh links once" (this file is committed on top of it).
+- **Uncommitted (all of it is task 021 Part B, complete and per-file tested, waiting for the final verification):**
+  - modified: `README.md`; `frontend/src/app/{navigation.tsx,router.tsx,codeSplitting.test.tsx}`;
+    `frontend/src/features/{alerts/alerts.test.tsx, auth/auth.test.tsx, dashboard/dashboard.test.tsx,
+    inventory/InventoryPage.tsx, inventory/inventory.test.tsx, logs/eventSummary.ts, logs/logs.test.tsx,
+    logs/systemEventsApi.ts, orders/OrdersPage.tsx, orders/orders.test.tsx, processing/processingApi.ts,
+    realtime/hintTags.ts, realtime/hintTags.test.ts, realtime/realtime.test.tsx}`;
+    `frontend/src/shared/{api/baseApi.ts, i18n/en.json, i18n/vi.json, utils/format.ts}`; `frontend/src/test/systemEvents.ts`
+  - new: `frontend/src/features/reports/` (page, forms, table, API slice, tests), `frontend/src/test/reports.ts`,
+    `scripts/smoke/task-021.ps1`
+- No API, Workers host or preview server is left running by Claude Code. The development PostgreSQL, RabbitMQ and
+  object storage containers are up. A frontend test series may still be running in the background of the old chat (it
+  writes nothing into the repository).
+- Newest migration: **`20261004183420_ReportExports`** — **applied to development** on 2026-10-05 (with
+  `20261004074312_ProductImage`), by Claude Code as the migrator. Task 021 adds no migration.
 
 ## 2. Project in 5 lines
 Multi-channel order and inventory management: React dashboard → ASP.NET Core API → PostgreSQL (source of truth) →
@@ -25,49 +33,74 @@ Source-of-truth order when documents disagree:
 
 ## 3. Workflow
 - **Cowork** plans and reviews: writes `docs/tasks/NNN-*.md` and `NNN-*.review.md`, updates the roadmap and the log.
-- **Claude Code** implements: `/next-task` picks the lowest-numbered task without a report, commits, writes `NNN-*.report.md`.
-- **The user** runs steps that need secrets and the manual checks; smoke scripts live in `scripts/smoke/`.
-- Details and the report template: [docs/tasks/README.md](tasks/README.md).
+- **Claude Code** implements: `/next-task` picks the lowest-numbered task without a report, commits, writes
+  `NNN-*.report.md`, and **applies the development steps itself** (key helper, changed containers, additive
+  migrations as the migrator, smoke script on development).
+- Details, guardrails and the report template: [docs/tasks/README.md](tasks/README.md), "Development steps".
 
 ## 4. Progress
-- 001–019 — Done (titles in [docs/roadmap.md](roadmap.md)).
-- 020 — Excel export in the background + Part A (review 019) — Done ([review](tasks/020-excel-export.review.md)).
-- 021 — Reports & Excel export page + Part A (review 020, review 019) + A0 (development steps of 019/020) — **Open**:
-  [task](tasks/021-reports-page.md).
+- 001–020 — Done (titles in [docs/roadmap.md](roadmap.md)).
+- 021 — Reports & Excel export page + Part A (review 020, review 019) + A0 — **Open, in progress**:
+  [task](tasks/021-reports-page.md). No report yet.
 - 022 — Reconciliation Worker — Planned
 - 023 — `POST /api/webhooks/{slug}` — Planned
+- 024 — Invoice Worker + Notification Worker — Planned
 
-## 5. In flight
-**Task 020: report written, awaiting Cowork review.** Nothing half-finished; everything of this chat is committed:
-`a9c53f3` Cowork's documents of the round, `4f20d69` Part A, `141c33d` backend + worker + migration + tests,
-`4df5baa` smoke script + key helper + README + `.http`, `c596353` report.
-Verified: backend build 0 warnings, 1278/1278 tests; 22 of 22 mutants killed; smoke 46/46 on a **throwaway**
-environment; an export at `MaxRows` peaks at 255 MiB (orders) / 336 MiB (inventory) in the Workers process; log scan
-clean; IANA time zones and a workbook without fonts checked on Windows and in the API's Linux image. No frontend file
-changed. No stop condition of the task was hit.
-Questions the review must answer (report, "Blocked / questions for Cowork"):
-1. The `ProcessingFailed` alert of an export that can never succeed (`export_expired`, `export_too_large`,
-   `export_parameters_invalid`) never resolves — resolve it in the sweep, or open none?
-2. An export past `expiresAt` but not swept yet is still `Succeeded` and downloadable (at most one sweep interval).
-3. `SixLabors.Fonts` (transitive of ClosedXML) is 1.0.0 / Apache-2.0; from 2.0 another licence — pin it (026)?
-4. `ObjectStorage:RequestTimeout` (10 s) also bounds the upload of a whole export file (025).
-5. Unfinished exports count toward the per-user limit while the Workers host is down (409 for the fourth).
-6. Windows time zone names are accepted where the host knows them — restrict to IANA?
-7. The dashboard summary's `processing` now has a `ReportExport` entry (label in 021).
-Doc deviations 22–25 are confirmed in the report (23 with one addition: event type `report_export.message_rejected`).
+## 5. In flight — task 021
+**Done and committed**
+- A0 (development steps of 019/020): `scripts\setup-object-storage.ps1`; `docker compose … up -d objectstorage`
+  (recreated with the `127.0.0.1` CORS origins); `dotnet ef migrations list` (pending exactly `ProductImage`,
+  `ReportExports`, both additive) → `database update`; smoke `task-019.ps1` **50/50** and `task-020.ps1` **46/46** on
+  development (020 on the committed state, before any change).
+- `3a94587` Cowork's documents of the round. `b492b86` A1–A4: the sweep marks `DeletedAt` and resolves the task's
+  `ProcessingFailed` alert in one transaction; manual retry of an expired export → 409 `export_expired`; `Expired`
+  by time in list / detail / download (`ReportExportExpiry`); `SixLabors.Fonts` pinned at 1.0.0 with transitive
+  pinning (resolved versions identical before/after, 286 lines, 0 differences; a package needing 2.x fails with
+  `NU1109`; 1.0.0 is Apache-2.0 per nuget.org); smoke 020 step 17 reads `True`. Backend **1300/1300**, 0 warnings;
+  smoke 020 again 46/46 on development with these changes. `076f518` A5 (expired image links).
+
+**Done, not committed (Part B)** — see section 1. Verified so far: typecheck and lint exit 0; every touched test
+file green; **full `npm test` 4 of 4 green so far in the five-run series** (452 tests; 432 s, 259 s, 218 s, 234 s);
+first-load set 970.14 → 971.00 kB raw (318.10 → 318.40 gzip), `ReportsPage` is a lazy chunk (12.8 kB).
+Browser check on the production build on development (1280 px, vi + en): shortcut from Orders prefilled the form;
+the export went Pending → In progress → Succeeded by push (no polling); download click produced an anchor to the
+storage with `rel="noreferrer"`, no `target`, and the link is in no store / DOM / text afterwards; a fetch of the
+link without credentials answered 200 with bytes starting `PK`; inventory export; labels on Sync & Processing, Logs
+and the dashboard; Staff has no menu item, gets the no-access page and no shortcut button.
+
+**Left to do (in this order)**
+1. Fifth full `npm test` run and one full `npm run test:slow` (run with nothing else running; if the old chat's
+   results are not available, run the series again: 5 × `npm test`, then `npm run test:slow`).
+2. `npm run build` + `npm run measure` (final numbers), then `scripts\smoke\task-021.ps1` on development (run it in
+   the background and read its output file; it ends with the frontend build and tests).
+3. Final `dotnet build` + `dotnet test` in `backend/` (no backend change since `b492b86`).
+4. Commit Part B as `task 021: …`; write `docs/tasks/021-reports-page.report.md` and commit it.
+
+**For the report (not written anywhere else yet)**
+- Deviations: A2's "one second before `ExpiresAt`" is a unit test of `ReportExportExpiry` (the single API test host
+  runs on the real clock; the API test uses ±30 s / −1 s); the "pin bites" probe was
+  `SixLabors.ImageSharp.Drawing` 2.1.0; `X-Amz-Expires=300` assertion of 020 loosened to 300|301 (timing-dependent,
+  red once); two existing export tests now expect `Expired` (A2); tests that used `/reports` as the request-free
+  placeholder page now use `/no-such-page`; `export_too_large` / `too_many_exports` are shown in the client's own
+  words (`errors.*`, the existing convention), not the server's `detail` with its numbers; the exports table sums to
+  976 px (992 minus a scrollbar), action column fixed right.
+- Question for Cowork: `ComingSoon` and `plannedTask` are unused now (every menu page is built) — remove them?
+- No mutation run was done for 021 (the task does not ask for one).
 
 ## 6. Pending for the user
-*(Updated by Cowork after review 020.)* Since 2026-10-05 Claude Code applies the development steps itself
-([docs/tasks/README.md](tasks/README.md), "Development steps"); the steps of 019/020 are task 021 A0.
-One-time, by the user: the persistent user environment variable `OMNICHANNEL_MIGRATOR_CONNECTION` (migrator role,
-`Host=127.0.0.1`), then restart the editor / Claude app so Claude Code inherits it.
+- **One confirmation:** the browser check did not let the browser actually *save* the export file (a download in the
+  Browser pane needs your explicit OK). Either say "yes, download it" in the chat, or click *Download* on
+  `/reports` once yourself and confirm that the file is saved under its name and the page stays. The header that
+  causes it (`Content-Disposition: attachment`) is checked by smoke 020 step 30 and smoke 021 step 16.
+- No manual development step is open. `OMNICHANNEL_MIGRATOR_CONNECTION` is set at user level (Claude Code reads it
+  from there; it is never printed).
 - Open decisions (roadmap): before 024 — where "payment succeeded" comes from; before 025 — hosting and the
   production object-storage provider.
 
 ## 7. Environment
 - Start infrastructure with docker compose (PostgreSQL, RabbitMQ, object storage emulator), then three terminals:
-  API, Workers, scripts/commands. Commands: README §1, §5, §6; stock sync: README §7; images: README "Product images";
-  exports: README "Reports and Excel export". Frontend: `cd frontend; npm run dev`.
+  API, Workers, scripts/commands. Commands: README §1, §5, §6; exports: README "Reports and Excel export";
+  frontend: `cd frontend; npm run dev`.
 - Ports: API 5080, frontend dev server 5173 and `vite preview` 4173 (both proxy `/api`, WebSockets included),
   PostgreSQL 5432, RabbitMQ 5672, RabbitMQ UI 15672, object storage S3 API 8333 (all on `127.0.0.1`).
 - Secrets, by name and location only:
@@ -76,56 +109,43 @@ One-time, by the user: the persistent user environment variable `OMNICHANNEL_MIG
   - user-secrets of `Omnichannel.Api` — `ConnectionStrings:Default`, `Jwt:SigningKey`, `BootstrapAdmin:*`,
     `ObjectStorage:AccessKeyId`, `ObjectStorage:SecretAccessKey`;
   - user-secrets of `Omnichannel.Workers` — `ConnectionStrings:Default`, `RabbitMq:UserName`, `RabbitMq:Password`,
-    and since 020 `ObjectStorage:AccessKeyId`, `ObjectStorage:SecretAccessKey` (set by the key helper);
+    `ObjectStorage:AccessKeyId`, `ObjectStorage:SecretAccessKey`;
   - `backend/src/Omnichannel.Api/.env` (git-ignored) — `BOOTSTRAP_ADMIN_EMAIL`, `BOOTSTRAP_ADMIN_PASSWORD`, read by the
-    smoke scripts (another environment: `SMOKE_BASE_URL`, `SMOKE_ADMIN_EMAIL`, `SMOKE_ADMIN_PASSWORD`);
-  - `OMNICHANNEL_MIGRATOR_CONNECTION` (environment variable) — for `dotnet ef database update`; not available to Claude Code.
-- Tests: `dotnet test` in `backend/` (1278, about 2.5 min; integration tests need Docker: PostgreSQL, RabbitMQ,
-  `chrislusf/seaweedfs:4.48`); `npm test` in `frontend/` (405, 4–5 minutes, run with nothing else running);
-  `npm run test:slow`; `npm run measure` after `npm run build`.
-- Node 22.12 or later (`frontend/.nvmrc` pins 24); .NET SDK 10. Workers run in Development for the simulator's SKU rules.
-- Test accounts on development: smoke users are locked after each run; the test Admin `ui-check-61563` is locked.
+    smoke scripts;
+  - `OMNICHANNEL_MIGRATOR_CONNECTION` (user-level environment variable) — for `dotnet ef database update`.
+- Tests: `dotnet test` in `backend/` (1300, about 3 min; needs Docker); `npm test` in `frontend/` (452, 4–7 minutes,
+  run with nothing else running); `npm run test:slow`; `npm run measure` after `npm run build`.
+- Test accounts on development: smoke users are locked after each run (also `smoke-021-ui-*` of the browser check).
 
 ## 8. Gotchas learned
-- **Exports:** always a background task; the message carries only `{ taskId }`; rows are read in one
-  `REPEATABLE READ, READ ONLY` transaction; the upload happens after it; the object key is `exports/{taskId}.xlsx`;
-  an export exists only for its requester (404 otherwise). → README "Reports and Excel export"; report 020.
-- **Text cells:** ClosedXML never writes a formula through `Value`, but it drops a leading apostrophe — the sheet
-  writer doubles it. Times are converted to the request's zone; widths are fixed. → `Excel/ReportSheet.cs`; report 020.
-- **Lists and exports share their filters** (`OrderFilters`, `InventoryFilters`): change a list filter there. → report 020.
-- **Workers test hosts** get dummy storage settings and no retention sweep unless asked
-  (`BuildWorkersHost(retentionSweep: …)`); export tests use a user of their own (`ApiFactory.CreateUserClientAsync`).
-  → report 020, "Existing tests changed".
-- **Product images:** the API never receives image bytes; nothing is trusted until confirm checks the stored object;
-  no storage call inside a transaction; links and keys are never logged. → README "Product images"; report 019.
-- **A rejected worker message carries a `reasonCode`**; a new event type needs an allowlist entry and a detail case.
-  → README "System events".
-- **Alerts are written only by `AlertStore`**, inside the transaction of the cause. → README "Alerts"; report 017.
-- **Frontend:** tests end with `await settled()`; request tests also run under `npm run test:slow`; dialogs end with
-  `<ResetFormOnOpen>`; check effects in `npm run build` + `vite preview` (StrictMode hides defects); jsdom applies no
-  library CSS. → README "Frontend"; reports 016b, 018b, 019; log "Task 018 result".
-- **Cowork's git:** run `git --no-optional-locks status` from the Cowork VM (a plain `git status` leaves `.git/index.lock`).
-- **`Assert-Step` is strict**; smoke scripts run npm after stopping the hosts they started. → `scripts/smoke/_common.ps1`.
-- **A script that starts hosts and leaves them running hangs the calling tool** (piped or redirected): run it in the
-  background and read its output file. → reports 018b, 020.
+- **An export ends at `ExpiresAt`**, swept or not: `Expired` in the API, download and retry 409 `export_expired`;
+  the sweep resolves the task's alert in the transaction that sets `DeletedAt`. → README "Reports and Excel export".
+- **Transitive pinning is on**: every version in `Directory.Packages.props` also caps transitive packages; a
+  conflict is `NU1109` at restore. → README, *Package*.
+- **A download link is a credential**: fetched by a mutation, followed through a temporary anchor, removed with
+  `request.reset()` — the hook's own `reset` does not remove it. → `features/reports/components/ExportsTable.tsx`.
+- **Every menu page makes requests now**: the request-free page of tests is `/no-such-page`. → Part B tests.
+- **A table next to a scrollbar has 976 px** at 1280 px, not 992. → `LogsPage.tsx`, `ExportsTable.tsx`.
+- **Expired image links**: a thumbnail asks for fresh links only after `expiresAt`, and once until an image has
+  loaded. → README "Frontend", *Product images*.
+- **Migrations as the migrator**: read the user-level variable inside a script, redact the output, list before
+  update, additive only. → `docs/tasks/README.md`.
+- **Exports:** always a background task; message `{ taskId }`; visible to the requester only. → report 020.
+- **Alerts are written only by `AlertStore`**, inside the transaction of the cause. → README "Alerts".
+- **Frontend:** tests end with `await settled()`; request tests also run under `npm run test:slow`; check effects in
+  `npm run build` + `vite preview`; jsdom applies no library CSS. → README "Frontend".
+- **A script that starts hosts and leaves them running hangs the calling tool**: run it in the background and read
+  its output file; a running API / Workers process locks `bin/Debug`. → reports 018b, 020.
+- **PowerShell 5.1:** scripts ASCII only (no repository path literal in a scratch script — pass it as a parameter);
+  stderr of native tools is a terminating error under `Stop`. → report 020, deviation 11.
+- **Bash heredocs with apostrophes fail** in this shell: write edit scripts to a file first.
 - **Local connections use `127.0.0.1`**, never `localhost`. → README §3.
 - **RabbitMQ 4 does not count `basic.nack(requeue)` toward `x-delivery-limit`.** → log, "Task 007 result".
-- **Inventory rows are always locked in `ProductId` order.** → log, "Task 003 result", "Task 006 plan".
-- **The hub takes the token from the query string**; never log URLs of `/api/hubs/*`. → review 015.
-- **A running API or Workers process locks `bin/Debug`**; stop them before building. → reports 008, 014.
-- **PowerShell 5.1:** scripts are ASCII only; stderr of `docker` / `dotnet` is a terminating error under
-  `$ErrorActionPreference = 'Stop'` (`cmd /c "… 2>&1"`); under a UTF-8 console a pipe to a native command starts with
-  a byte-order mark unless `[Console]::InputEncoding` is set (`$OutputEncoding` alone is not enough).
-  → `scripts/setup-object-storage.ps1`; report 020, deviation 11.
-- **Git rewrites files with CRLF** on checkout / stash pop; keep constraint SQL in EF configurations on one line.
-  → `ProductConfiguration.cs`, `ReportExportConfiguration.cs`.
-- **Throwaway environment for smoke runs** (new migration not on development): PostgreSQL 55432, RabbitMQ 55672, the
-  emulator through the compose service under another project name — on another port with a `ports: !override` file
-  while the development emulator runs. → report 020, "Smoke script".
+- **Inventory rows are always locked in `ProductId` order.** → log, "Task 003 result".
 
 ## 9. Next action
-*(Updated by Cowork.)* Review 020 done (accepted), task 021 written. **User:** set `OMNICHANNEL_MIGRATOR_CONNECTION`
-once (section 6). **Claude Code:** `/next-task` → 021 (A0 applies the pending steps of 019/020 first).
+**Claude Code:** finish task 021 — section 5, "Left to do" (test series, smoke 021 on development, final backend
+run, commit Part B, report). **User:** the one confirmation of section 6. Then **Cowork:** review task 021.
 
 ## 10. Resume prompts
 New Claude Code chat:
@@ -137,5 +157,5 @@ docs/handoff.md.")
 
 New Cowork chat:
 ```
-Dự án Management System. Đọc docs/handoff.md, docs/roadmap.md và docs/implementation-log.md trong thư mục đã kết nối, rồi tiếp tục vai trò lập kế hoạch/review theo docs/tasks/README.md. Việc tiếp theo: review task 020 (docs/tasks/020-excel-export.report.md, các commit 4f20d69..c596353), trả lời 7 câu hỏi trong report, cập nhật roadmap và implementation log, rồi viết task 021 (trang Reports & Excel export + Part A).
+Dự án Management System. Đọc docs/handoff.md, docs/roadmap.md và docs/implementation-log.md trong thư mục đã kết nối, rồi tiếp tục vai trò lập kế hoạch/review theo docs/tasks/README.md. Việc tiếp theo: chờ Claude Code hoàn tất task 021 (docs/tasks/021-reports-page.report.md chưa có; Part A đã commit b492b86 và 076f518, Part B chưa commit), sau đó review task 021, cập nhật roadmap và implementation log, rồi viết task 022 (Reconciliation Worker).
 ```
