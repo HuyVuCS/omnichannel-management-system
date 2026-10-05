@@ -8,7 +8,7 @@ import { findDialog, rowOf, settled, switchLanguage, type AppUser } from '@/test
 import { renderApp } from '@/test/renderApp';
 import { adminUser, api, managerUser, problem, server, sessionOf, staffUser } from '@/test/server';
 import { imageUrl, productImage, serveProductImages, serveStorage, STORAGE_ORIGIN } from '@/test/storage';
-import { forgetImageLinks, REUSE_MARGIN_MS, withStableUrl } from './imageLinks';
+import { forgetImageLinks, linkHasExpired, REUSE_MARGIN_MS, withStableUrl } from './imageLinks';
 import { MAX_IMAGE_BYTES } from './imageUpload';
 import type { Product } from './productsApi';
 
@@ -226,6 +226,156 @@ describe('product images: one link per image', () => {
     // No image any more; a later image starts over even with the old version stamp.
     expect(withStableUrl('p-1', null, now)).toBeNull();
     expect(withStableUrl('p-1', { ...first, url: 'again', updatedAt: at(1) }, now)?.url).toBe('again');
+  });
+});
+
+describe('product images: a link that expired while the page was open', () => {
+  const EXPIRED_MS = -1000;
+  const many = (signature: string, expiresInMs?: number): Product[] =>
+    Array.from({ length: 20 }, (_, index) => {
+      const no = String(index + 1).padStart(2, '0');
+      return {
+        ...base,
+        productId: `p-${no}`,
+        sku: `SKU-${no}`,
+        name: `Sản phẩm ${no}`,
+        image: productImage({ url: imageUrl(`products/p-${no}/1`, signature) }, expiresInMs),
+      };
+    });
+  const thumbnails = () => screen.getAllByRole('img', { name: /^Sản phẩm \d\d$/ });
+  const sources = () => thumbnails().map((image) => image.getAttribute('src'));
+
+  it('asks for the list once when twenty thumbnails fail with an expired link, and shows the new links', async () => {
+    const { state, requests } = serveProducts(many('sig-old', EXPIRED_MS));
+    const { store } = renderProducts();
+    await screen.findByText('SKU-20');
+    await settled(store);
+    expect(requests).toHaveLength(1);
+
+    // The next response carries fresh links, as every response does.
+    const fresh = many('sig-new');
+    state.products = fresh;
+    for (const image of thumbnails()) {
+      fireEvent.error(image);
+    }
+
+    await waitFor(() => expect(sources()).toEqual(fresh.map((product) => product.image!.url)));
+    await settled(store);
+    expect(requests).toHaveLength(2);
+    expect(screen.queryByRole('img', { name: 'Không tải được ảnh' })).not.toBeInTheDocument();
+  });
+
+  it('asks for nothing when a link fails before it expires', async () => {
+    const { requests } = serveProducts([tea, coffee]);
+    const { store } = renderProducts();
+    await screen.findByText('TEA-01');
+    await settled(store);
+
+    fireEvent.error(screen.getByRole('img', { name: 'Trà xanh' }));
+
+    expect(within(rowOf('TEA-01')).getByRole('img', { name: 'Không tải được ảnh' })).toBeInTheDocument();
+    await settled(store);
+    expect(requests).toHaveLength(1);
+  });
+
+  it('tries the new link once: when it fails too, nothing more is asked for', async () => {
+    const { state, requests } = serveProducts([
+      { ...tea, image: productImage({ url: teaImage.url }, EXPIRED_MS) },
+      coffee,
+    ]);
+    const { store } = renderProducts();
+    await screen.findByText('TEA-01');
+    await settled(store);
+
+    const fresh = productImage({ url: imageUrl('products/p-tea/1', 'sig-fresh') });
+    state.products = [{ ...tea, image: fresh }, coffee];
+    fireEvent.error(screen.getByRole('img', { name: 'Trà xanh' }));
+    await waitFor(() => expect(screen.getByRole('img', { name: 'Trà xanh' })).toHaveAttribute('src', fresh.url));
+    await settled(store);
+    expect(requests).toHaveLength(2);
+
+    // The storage is down: the fresh link fails as well.
+    fireEvent.error(screen.getByRole('img', { name: 'Trà xanh' }));
+
+    expect(within(rowOf('TEA-01')).getByRole('img', { name: 'Không tải được ảnh' })).toBeInTheDocument();
+    await settled(store);
+    expect(requests).toHaveLength(2);
+  });
+
+  it('does not chase links that are expired again and again: one request until an image has loaded', async () => {
+    // A client clock far ahead of the server's: every link looks expired the moment it arrives.
+    const expired = (signature: string) => productImage({ url: imageUrl('products/p-tea/1', signature) }, EXPIRED_MS);
+    const { state, requests } = serveProducts([{ ...tea, image: expired('sig-1') }, coffee]);
+    const { store } = renderProducts();
+    await screen.findByText('TEA-01');
+    await settled(store);
+
+    state.products = [{ ...tea, image: expired('sig-2') }, coffee];
+    fireEvent.error(screen.getByRole('img', { name: 'Trà xanh' }));
+    await waitFor(() =>
+      expect(screen.getByRole('img', { name: 'Trà xanh' })).toHaveAttribute('src', expired('sig-2').url),
+    );
+    await settled(store);
+    expect(requests).toHaveLength(2);
+
+    // It fails too, and looks expired too: nothing is asked for.
+    fireEvent.error(screen.getByRole('img', { name: 'Trà xanh' }));
+    await settled(store);
+    expect(requests).toHaveLength(2);
+
+    // A later response brings a link that loads; when that one expires in turn, the page asks again - once.
+    state.products = [{ ...tea, image: expired('sig-3') }, coffee];
+    await refetchList(store, requests);
+    fireEvent.load(screen.getByRole('img', { name: 'Trà xanh' }));
+    state.products = [{ ...tea, image: expired('sig-4') }, coffee];
+    fireEvent.error(screen.getByRole('img', { name: 'Trà xanh' }));
+    await waitFor(() =>
+      expect(screen.getByRole('img', { name: 'Trà xanh' })).toHaveAttribute('src', expired('sig-4').url),
+    );
+    await settled(store);
+    expect(requests).toHaveLength(4);
+  });
+
+  it('asks for the one product when the preview of the edit dialog fails with an expired link', async () => {
+    const old = productImage({ url: teaImage.url }, EXPIRED_MS);
+    const { state, requests } = serveProducts([{ ...tea, image: old }, coffee]);
+    const fresh = productImage({ url: imageUrl('products/p-tea/1', 'sig-fresh') });
+    const single: string[] = [];
+    server.use(
+      http.get(api('/products/:id'), ({ params }) => {
+        single.push(String(params.id));
+        return HttpResponse.json({ ...tea, image: fresh });
+      }),
+    );
+    const { user, store } = renderProducts();
+    await screen.findByText('TEA-01');
+    const dialog = await openEditDialog(user, 'TEA-01');
+    const preview = () => imageIn(within(dialog).getByTestId('product-image-field'));
+    expect(preview()).toHaveAttribute('src', old.url);
+    await settled(store);
+
+    fireEvent.error(preview()!);
+
+    await waitFor(() => expect(preview()).toHaveAttribute('src', fresh.url));
+    expect(single).toEqual(['p-tea']);
+    // The list behind the dialog was not asked for: its own thumbnail has not failed.
+    expect(requests).toHaveLength(1);
+    expect(state.products).toHaveLength(2);
+
+    // The fresh link failing asks for nothing.
+    fireEvent.error(preview()!);
+    expect(within(dialog).getByRole('img', { name: 'Không tải được ảnh' })).toBeInTheDocument();
+    await settled(store);
+    expect(single).toEqual(['p-tea']);
+  });
+
+  it('decides "expired" by the link alone (the rule itself)', () => {
+    const now = Date.parse('2026-10-04T02:00:00Z');
+    const at = (ms: number) => ({ expiresAt: new Date(now + ms).toISOString() });
+
+    expect(linkHasExpired(at(1), now)).toBe(false);
+    expect(linkHasExpired(at(0), now)).toBe(true);
+    expect(linkHasExpired(at(-1), now)).toBe(true);
   });
 });
 
