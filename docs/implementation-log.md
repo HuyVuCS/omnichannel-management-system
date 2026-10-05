@@ -707,3 +707,27 @@ reconciliation runs **periodically only** (no "run now").
     2026-10-05: no real channel accounts; doc §8.5 needs a readable channel state).
 27. `IChannelStockClient` gains a batch read of the channel's available stock.
 28. System event type `reconciliation.completed`; reconciliation runs carry the correlation id `reconciliation-{runId}`.
+
+## Task 022 result (reviewed 2026-10-05)
+
+Reconciliation Worker: `ReconciliationService` (Workers host, every `Reconciliation:Interval`, 1 min in Development)
+runs `StockReconciliation` under a PostgreSQL advisory lock; candidates per channel in keyset pages (one raw query with
+the unfinished / last-finished facts per pair), a batch read of the channel through the resilient client, a task +
+directed `stock.sync.requested` per drifted pair (correlation id `reconciliation-{runId}`, cap per run), one
+`reconciliation.completed` event when a run created a task or could not read a channel; the simulated channels keep
+accepted pushes in `SimulatedChannelStocks` (migration, plain Npgsql on their own connections), `SIM-LOST-` for
+permanent drift; Logs/Audit label. Part A: placeholder page removed (menu pages typed by the menu's paths), README §4,
+load-sensitive test pattern. Backend 1396/1396, 0 warnings, 23 of 23 mutants killed; candidate page 6 ms at 1,000
+mappings / 50,000 tasks (no new index); frontend 454 tests, 2 of 2 full runs and the slow run green at the first
+attempt; first-load set 969.55 kB raw (−1.45 kB); migration applied on development as the migrator; smoke 23/23 on
+development. Doc deviations 26–28 confirmed. Review: `docs/tasks/022-*.review.md`.
+
+| Topic | Decision | Reason | Revisit when |
+| --- | --- | --- | --- |
+| Failure isolation of a run (review 022 q2) | Any exception of a channel read except host shutdown makes that channel unreadable for the run (`unexpected`, Error log with the exception); a database failure of the run's own queries ends the run (023 A1) | One failing channel must not stop the others (doc §1.2) | — |
+| Failed pairs already in sync (review 022) | A pair whose newest finished task `Failed` with a transient code gets one task even without drift (counted `failedRetried`), so its `StockSyncFailed` alert ends through the existing success path (023 A2) | The alert ends only with a `Succeeded` task; reconciliation is the promised recovery path (log 014); the run still writes no alert | — |
+| External SKU per channel (review 022 q4) | Unique among a channel's mappings without an external product id (partial unique index, 409 `external_sku_taken`) (023 A3) | Two products writing one channel item is wrong on any channel; the simulator made it visible | Channels that key by SKU and product id together |
+| Interrupted run (review 022 q1) | No event; its tasks carry the run's correlation id, the failure is in the log, the next run reports what is still drifted | A best-effort event fails for the same reason as the run | — |
+| Event contents | `unreadable[].channel` = channel name (snapshot); the run reads on after the cap to count `deferred` exactly | The Logs line needs no lookup; every run reads every pair anyway | — |
+| Trusting unfinished tasks | A pair with a non-terminal stock-sync task is skipped; a task that can never end blocks its pair | Accepted for now | 026: detection of stale non-terminal tasks |
+| Reconciliation in tests | Each reconciliation test uses its own database; test hosts run with `Reconciliation:Enabled=false` unless a test asks for it | A run looks at every mapping | — |
