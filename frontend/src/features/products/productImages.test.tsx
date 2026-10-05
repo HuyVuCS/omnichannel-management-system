@@ -242,7 +242,9 @@ describe('product images: a link that expired while the page was open', () => {
         image: productImage({ url: imageUrl(`products/p-${no}/1`, signature) }, expiresInMs),
       };
     });
-  const thumbnails = () => screen.getAllByRole('img', { name: /^Sản phẩm \d\d$/ });
+  // Plain DOM queries: looking twenty images up by role and name takes long enough, with every answer late and the
+  // machine busy, to keep the answer of the refetch from being rendered before the wait below gives up.
+  const thumbnails = () => [...document.querySelectorAll<HTMLImageElement>('tbody img')];
   const sources = () => thumbnails().map((image) => image.getAttribute('src'));
 
   it('asks for the list once when twenty thumbnails fail with an expired link, and shows the new links', async () => {
@@ -255,9 +257,15 @@ describe('product images: a link that expired while the page was open', () => {
     // The next response carries fresh links, as every response does.
     const fresh = many('sig-new');
     state.products = fresh;
-    for (const image of thumbnails()) {
-      fireEvent.error(image);
-    }
+    expect(thumbnails().map((image) => image.alt)).toEqual(fresh.map((product) => product.name));
+    // One burst: every load fails before anything else happens. (Failing them one by one would let the answer of the
+    // refetch arrive in between and put a fresh link under an image this loop has yet to fail - which no browser does:
+    // an error belongs to the link that was being loaded.)
+    act(() => {
+      for (const image of thumbnails()) {
+        fireEvent.error(image);
+      }
+    });
 
     await waitFor(() => expect(sources()).toEqual(fresh.map((product) => product.image!.url)));
     await settled(store);

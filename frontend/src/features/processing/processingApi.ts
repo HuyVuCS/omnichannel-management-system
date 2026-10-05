@@ -3,7 +3,7 @@ import { isApiError, isUnexpectedError, type PagedResult } from '@/shared/api/ty
 import type { SortDirection } from '@/shared/hooks/useListQueryState';
 
 /** Values of the API's processing enums (serialised as strings). */
-export const TASK_TYPES = ['OrderProcessing', 'StockSync', 'Invoice', 'Email'] as const;
+export const TASK_TYPES = ['OrderProcessing', 'StockSync', 'Invoice', 'Email', 'ReportExport'] as const;
 export type TaskType = (typeof TASK_TYPES)[number];
 
 export const TASK_STATUSES = ['Pending', 'InProgress', 'RetryScheduled', 'Succeeded', 'Failed'] as const;

@@ -9,6 +9,7 @@ import { LOGS_PATH } from '@/features/logs/paths';
 import { INVENTORY_PATH, MOVEMENTS_PATH, STOCK_IMPORT_PATH, STOCK_IMPORT_ROLES } from '@/features/inventory/paths';
 import { ORDER_DETAIL_ROUTE, ORDER_ENTRY_PATH, ORDERS_PATH } from '@/features/orders/paths';
 import { PROCESSING_PATH, PROCESSING_TASK_ROUTE } from '@/features/processing/paths';
+import { REPORTS_PATH } from '@/features/reports/paths';
 import { RouteErrorPage } from '@/pages/RouteErrorPage';
 import { ComingSoon } from '@/shared/components/ComingSoon';
 import { PageLoading } from '@/shared/components/PageLoading';
@@ -61,6 +62,7 @@ const ProcessingPage = lazyPage(() =>
 const ProcessingTaskPage = lazyPage(() =>
   import('@/features/processing/ProcessingTaskPage').then((m) => ({ default: m.ProcessingTaskPage })),
 );
+const ReportsPage = lazyPage(() => import('@/features/reports/ReportsPage').then((m) => ({ default: m.ReportsPage })));
 
 /** Pages that exist; every other menu item renders a placeholder until its task builds it. */
 const builtPages: Record<string, RouteObject['element']> = {
@@ -74,6 +76,7 @@ const builtPages: Record<string, RouteObject['element']> = {
   [PROCESSING_PATH]: <ProcessingPage />,
   [ALERTS_PATH]: <AlertsPage />,
   [LOGS_PATH]: <LogsPage />,
+  [REPORTS_PATH]: <ReportsPage />,
   '/users': <UsersPage />,
 };
 

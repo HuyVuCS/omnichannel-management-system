@@ -180,6 +180,28 @@ export const passwordResetEvent = systemEvent({
   ...BY_ADMIN,
 });
 
+/** A Manager asked for an export (audit: bulk data leaves the system). */
+export const exportRequestedEvent = systemEvent({
+  logId: 120,
+  eventType: 'report.export_requested',
+  createdAt: new Date(2026, 9, 5, 10, 30).toISOString(),
+  correlationId: 'corr-export-1',
+  taskId: '0199a1b2-0000-7000-8000-0000000000e1',
+  details: { reportType: 'Orders', requestedBy: 'user-manager' },
+  actorEmail: 'manager@example.com',
+});
+
+/** A message of the export queue that could not be processed. */
+export const exportRejectedEvent = systemEvent({
+  logId: 121,
+  level: 'Error',
+  eventType: 'report_export.message_rejected',
+  createdAt: new Date(2026, 9, 5, 10, 31).toISOString(),
+  correlationId: 'corr-export-2',
+  workerName: 'ReportExportWorker',
+  details: { messageId: 'msg-41', reasonCode: 'unknown_task' },
+});
+
 /** One event per type the API has an allowlist entry for, newest first; the last five are the Admin's. */
 export const everyEventType: SystemEvent[] = [
   importedEvent,

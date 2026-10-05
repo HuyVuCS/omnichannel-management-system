@@ -16,6 +16,7 @@ import {
 import { chooseOption, columnTexts, expectLanguageSwitchChangesTextOnly, rowOf, settled } from '@/test/interactions';
 import { ORDER_ID, orderDetail, orderSummary, serveChannels } from '@/test/orders';
 import { renderApp } from '@/test/renderApp';
+import { serveExportRequests, serveExports } from '@/test/reports';
 import { api, managerUser, problem, server, sessionOf, staffUser } from '@/test/server';
 import type { OrderSummary } from './ordersApi';
 
@@ -442,5 +443,69 @@ describe('customer picker', () => {
     const selected = () => filter('Khách hàng').closest('.ant-select')!.querySelector('.ant-select-content');
     await waitFor(() => expect(selected()).toHaveTextContent(longName));
     expect(selected()).toHaveAttribute('title', longName);
+  });
+});
+
+describe('orders list: export to Excel', () => {
+  const exportButton = () => screen.queryByRole('button', { name: /Xuất Excel/ });
+
+  it('takes a Manager to the Reports page with the filters of the list in the form; nothing is requested', async () => {
+    serveOrderList([reserved]);
+    const exports = serveExports();
+    const sent = serveExportRequests();
+    const { user, location, store } = renderOrders(
+      `/orders?channel=pos&status=Reserved&customerId=${AN_ID}&search=DP-2026&from=2026-09-01&to=2026-09-30&page=3&sortDir=asc`,
+      managerUser,
+    );
+    await screen.findByText(reserved.externalOrderId);
+    expect(exportButton()).toHaveStyle({ width: '176px' });
+
+    await user.click(exportButton()!);
+
+    await screen.findByRole('heading', { name: 'Báo cáo & xuất Excel' });
+    // The filters travel in the location state: the address of the Reports page is its table's.
+    expect(location()).toBe('/reports');
+    const form = within(screen.getByTestId('orders-export-form'));
+    expect(screen.getByTestId('orders-export-form')).toBeVisible();
+    expect(form.getByPlaceholderText('Từ ngày')).toHaveValue('01/09/2026');
+    expect(form.getByPlaceholderText('Đến ngày')).toHaveValue('30/09/2026');
+    expect(form.getByLabelText('Tìm đơn hàng')).toHaveValue('DP-2026');
+    expect(await form.findByText('POS')).toBeInTheDocument();
+    expect(form.getByText('Đã giữ hàng')).toBeInTheDocument();
+    expect(await form.findByText('Nguyễn Văn An')).toBeInTheDocument();
+    await settled(store);
+    // The table of the page asked for its first page; no export was requested.
+    expect(exports.requests).toEqual([{ page: '1', pageSize: '20' }]);
+    expect(sent.requests).toHaveLength(0);
+  });
+
+  it('hands over no range when the list has none: the form starts with its default range', async () => {
+    serveOrderList([reserved]);
+    serveExports();
+    const sent = serveExportRequests();
+    const { user, store } = renderOrders('/orders?status=InsufficientStock', managerUser);
+    await screen.findByText(reserved.externalOrderId);
+
+    await user.click(exportButton()!);
+
+    await screen.findByRole('heading', { name: 'Báo cáo & xuất Excel' });
+    const form = within(screen.getByTestId('orders-export-form'));
+    const today = new Date();
+    const twoDigits = (value: number) => String(value).padStart(2, '0');
+    expect(form.getByPlaceholderText('Đến ngày')).toHaveValue(
+      `${twoDigits(today.getDate())}/${twoDigits(today.getMonth() + 1)}/${today.getFullYear()}`,
+    );
+    expect(form.getByText('Không đủ hàng')).toBeInTheDocument();
+    await settled(store);
+    expect(sent.requests).toHaveLength(0);
+  });
+
+  it('is not offered to Staff', async () => {
+    serveOrderList([reserved]);
+    renderOrders('/orders', staffUser);
+    await screen.findByText(reserved.externalOrderId);
+
+    expect(exportButton()).not.toBeInTheDocument();
+    await settled();
   });
 });

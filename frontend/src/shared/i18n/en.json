@@ -100,7 +100,11 @@
     "external_product_id_taken": "This external product ID belongs to another product on this channel.",
     "channel_product_not_found": "The mapping no longer exists.",
     "alert_not_found": "The alert no longer exists.",
-    "alert_resolved": "The system has already resolved this alert, so it cannot be acknowledged."
+    "alert_resolved": "The system has already resolved this alert, so it cannot be acknowledged.",
+    "export_too_large": "The export would have more rows than allowed. Narrow the filters and try again.",
+    "too_many_exports": "You already have the maximum number of exports waiting or running. Wait until one of them has finished.",
+    "export_expired": "This export has expired and its file was deleted. Request it again.",
+    "export_not_ready": "This export has no file to download: it has not finished, or it failed."
   },
   "pages": {
     "notFound": {
@@ -662,7 +666,8 @@
       "OrderProcessing": "Order processing",
       "StockSync": "Stock sync",
       "Invoice": "Invoice",
-      "Email": "E-mail"
+      "Email": "E-mail",
+      "ReportExport": "Excel export"
     },
     "taskStatuses": {
       "Pending": "Pending",
@@ -785,7 +790,9 @@
       "user_role_changed": "Role changed",
       "user_locked": "User locked",
       "user_unlocked": "User unlocked",
-      "user_password_reset": "Password reset"
+      "user_password_reset": "Password reset",
+      "report_export_requested": "Export requested",
+      "report_export_message_rejected": "Export message rejected"
     },
     "rejection": {
       "invalid_json": "not valid JSON",
@@ -825,7 +832,69 @@
       "user_role_changed": "Role: {{from}} → {{to}}",
       "user_locked": "Account locked",
       "user_unlocked": "Account unlocked",
-      "user_password_reset": "Temporary password set"
+      "user_password_reset": "Temporary password set",
+      "report_export_requested": "Report: {{reportType}}",
+      "report_export_message_rejected": "Message {{messageId}} rejected: {{reason}}"
+    }
+  },
+  "reports": {
+    "title": "Reports & Excel export",
+    "exportToExcel": "Export to Excel",
+    "types": {
+      "Orders": "Orders",
+      "Inventory": "Inventory"
+    },
+    "statuses": {
+      "Expired": "Expired"
+    },
+    "request": {
+      "title": "Request an export",
+      "type": "Report",
+      "submit": "Request export",
+      "accepted": "Export requested - it appears below when it is ready."
+    },
+    "form": {
+      "range": "Orders created",
+      "rangeTooLong": "The range must not be longer than {{days}} days.",
+      "channel": "Channel",
+      "status": "Order status",
+      "customer": "Customer",
+      "orderSearch": "Search orders",
+      "productSearch": "Search products",
+      "timeZone": "Times in the file",
+      "language": "Language of the file",
+      "languageValue": "English - the language of this screen"
+    },
+    "exports": {
+      "title": "My exports",
+      "filterType": "Report"
+    },
+    "columns": {
+      "createdAt": "Requested",
+      "reportType": "Report",
+      "filters": "Filters",
+      "status": "Status",
+      "rowCount": "Rows",
+      "size": "Size",
+      "expiresAt": "Kept until"
+    },
+    "filters": {
+      "channel": "Channel: {{name}}",
+      "status": "Status: {{status}}",
+      "customer": "Customer: {{name}}",
+      "search": "Search: {{text}}",
+      "lowStockOnly": "Low stock only",
+      "allProducts": "All products"
+    },
+    "actions": {
+      "download": "Download",
+      "openTask": "Open the task"
+    },
+    "errorCodes": {
+      "export_too_large": "Too many rows",
+      "export_expired": "Expired before it was built",
+      "export_parameters_invalid": "Request cannot be read",
+      "storage_unavailable": "File storage unavailable"
     }
   },
   "dashboard": {

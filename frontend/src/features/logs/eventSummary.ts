@@ -2,6 +2,7 @@ import type { TFunction } from 'i18next';
 import { ALERT_TYPES } from '@/features/alerts/alertsApi';
 import { ROLES } from '@/features/auth/session';
 import { TASK_TYPES } from '@/features/processing/processingApi';
+import { REPORT_TYPES } from '@/features/reports/reportsApi';
 import { formatNumber } from '@/shared/utils/format';
 import { isKnownEventType, type KnownEventType, type SystemEvent } from './systemEventsApi';
 
@@ -146,6 +147,18 @@ export function eventSummary(t: TFunction, event: SystemEvent): EventSummary | n
 
     case 'alert.acknowledged':
       return { text: t(key, { type: label(t, 'alerts.types', ALERT_TYPES, details.type) }) };
+
+    // Who asked is the actor of the event (the "who" column): the API resolves it from `requestedBy`.
+    case 'report.export_requested':
+      return { text: t(key, { reportType: label(t, 'reports.types', REPORT_TYPES, details.reportType) }) };
+
+    case 'report_export.message_rejected':
+      return {
+        text: t(key, {
+          messageId: text(details.messageId),
+          reason: label(t, 'logs.rejection', REJECTION_CODES, details.reasonCode),
+        }),
+      };
 
     case 'user.created':
       return { text: t(key, { role: label(t, 'roles', ROLES, details.role) }) };

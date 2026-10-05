@@ -27,8 +27,8 @@ async function submitLogin(user: ReturnType<typeof renderApp>['user']) {
   await user.click(screen.getByRole('button', { name: 'Đăng nhập' }));
 }
 
-/** A placeholder page: the shell without any request of its own. */
-const QUIET_PAGE = '/reports';
+/** An address without a page: the shell without any request of its own, whatever the role. */
+const QUIET_PAGE = '/no-such-page';
 
 describe('realtime connection lifecycle', () => {
   it('connects only after sign-in, with the token of the session; logout closes it; a new login is a new connection', async () => {

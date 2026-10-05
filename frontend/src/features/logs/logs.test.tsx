@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import dayjs from 'dayjs';
 import { http } from 'msw';
 import { describe, expect, it } from 'vitest';
@@ -128,6 +128,8 @@ describe('logs: who may read them', () => {
       'Chạy lại thủ công',
       'Gửi thông điệp thất bại',
       'Ghi nhận cảnh báo',
+      'Yêu cầu xuất tệp',
+      'Thông điệp xuất tệp bị từ chối',
     ]);
   });
 
@@ -137,8 +139,8 @@ describe('logs: who may read them', () => {
     await loaded();
 
     const options = await offeredOptions(user, 'Loại sự kiện');
-    expect(options).toHaveLength(14);
-    expect(options.slice(9)).toEqual([
+    expect(options).toHaveLength(16);
+    expect(options.slice(11)).toEqual([
       'Tạo người dùng',
       'Đổi vai trò',
       'Khoá người dùng',
@@ -784,7 +786,7 @@ describe('logs: filters, sort and page in the address', () => {
 describe('logs: refresh and errors', () => {
   it('asks again on "Refresh" and whenever the page is opened', async () => {
     const { requests } = serveSystemEvents(managerEvents);
-    const { user } = renderLogs();
+    const { user, router } = renderLogs();
     await loaded();
 
     await user.click(screen.getByRole('button', { name: /Làm mới/ }));
@@ -792,8 +794,9 @@ describe('logs: refresh and errors', () => {
     // The same window: events that arrived in the meantime are part of it.
     expect(requests[1]).toEqual(requests[0]);
 
-    await user.click(screen.getByRole('link', { name: 'Báo cáo' }));
-    await screen.findByText('Trang này sẽ có ở task 021.');
+    // Away, to an address without a page (the shell without any request of its own), and back through the menu.
+    await act(() => router.navigate('/no-such-page'));
+    await screen.findByText('Không tìm thấy trang');
     await user.click(screen.getByRole('link', { name: 'Nhật ký / kiểm toán' }));
     await loaded();
     await waitFor(() => expect(requests).toHaveLength(3));

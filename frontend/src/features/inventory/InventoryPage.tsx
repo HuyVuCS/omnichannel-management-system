@@ -1,10 +1,11 @@
-import { HistoryOutlined, ImportOutlined, ReloadOutlined } from '@ant-design/icons';
+import { FileExcelOutlined, HistoryOutlined, ImportOutlined, ReloadOutlined } from '@ant-design/icons';
 import { Button, Input, Space, Switch, Table, Tooltip, Typography, type TableProps } from 'antd';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router';
 import { useHasAnyRole } from '@/features/auth/useHasAnyRole';
 import { StockStatusTag } from '@/features/products/components/StockStatusTag';
+import { exportPrefillState, REPORTS_PATH, REPORTS_ROLES } from '@/features/reports/paths';
 import {
   DOUBLE_ACTION_COLUMN_WIDTH,
   FILTER_WIDTH,
@@ -28,6 +29,7 @@ export function InventoryPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const canImport = useHasAnyRole(STOCK_IMPORT_ROLES);
+  const canExport = useHasAnyRole(REPORTS_ROLES);
   const list = useListQueryState({ sortFields: INVENTORY_SORT_FIELDS, defaultSortField: 'sku' });
   const lowStockOnly = list.searchParams.get(LOW_STOCK_PARAM) === 'true';
   const { data, isFetching, refetch } = useListInventoryQuery(
@@ -168,6 +170,22 @@ export function InventoryPage() {
             >
               {t('common.refresh')}
             </Button>
+            {/* Hidden for roles that may not export; the API enforces the same rule. */}
+            {canExport && (
+              <Button
+                icon={<FileExcelOutlined />}
+                // To the Reports page with the filters of this list: the form there is filled in, and nothing is
+                // requested before the user submits it.
+                onClick={() =>
+                  void navigate(REPORTS_PATH, {
+                    state: exportPrefillState({ reportType: 'Inventory', search: list.search, lowStockOnly }),
+                  })
+                }
+                style={{ width: PAGE_ACTION_WIDTH }}
+              >
+                {t('reports.exportToExcel')}
+              </Button>
+            )}
             {canImport && (
               <Button
                 type="primary"
