@@ -12,6 +12,7 @@ public sealed class OmnichannelDbContext(DbContextOptions<OmnichannelDbContext> 
     public DbSet<Customer> Customers => Set<Customer>();
     public DbSet<Product> Products => Set<Product>();
     public DbSet<ChannelProduct> ChannelProducts => Set<ChannelProduct>();
+    public DbSet<ChannelCustomer> ChannelCustomers => Set<ChannelCustomer>();
     public DbSet<Inventory> Inventories => Set<Inventory>();
     public DbSet<Order> Orders => Set<Order>();
     public DbSet<OrderItem> OrderItems => Set<OrderItem>();

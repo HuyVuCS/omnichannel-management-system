@@ -85,6 +85,7 @@ public static class DependencyInjection
         services.AddScoped<IInventoryQueryService, InventoryQueryService>();
         services.AddScoped<IInventoryImportService, InventoryImportService>();
         services.AddScoped<IOrderIntakeService, OrderIntakeService>();
+        services.AddScoped<IWebhookOrderService, WebhookOrderService>();
         services.AddScoped<IOrderReservationService, OrderReservationService>();
         services.AddScoped<IOrderQueryService, OrderQueryService>();
         services.AddScoped<IProcessingTaskService, ProcessingTaskService>();

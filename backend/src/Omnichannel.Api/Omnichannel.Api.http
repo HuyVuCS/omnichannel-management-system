@@ -34,6 +34,29 @@ Content-Type: application/json
   "password": ""
 }
 
+### ---- Webhooks (task 023): an order sent by a channel, in the channel's own identifiers ----
+# No bearer token: the request is authenticated by its signature. This file cannot compute one - and must never hold a
+# secret: use scripts\send-webhook.ps1 (it reads the secret from the git-ignored .env, signs the bytes of a body file
+# and sends them):
+#   powershell -ExecutionPolicy Bypass -File scripts\send-webhook.ps1 -Channel website -BodyFile order.json
+# The request below shows the contract. Sent as it is, it is answered 401 webhook_signature_invalid (the placeholder is
+# no signature) - or 401 webhook_timestamp_invalid when the timestamp is more than 5 minutes from the API's clock.
+# X-Webhook-Signature: v1=<hex of HMAC-SHA256(secret, "{timestamp}.{body bytes}")>
+POST {{baseUrl}}/api/webhooks/website
+Content-Type: application/json
+X-Webhook-Timestamp: {{$timestamp}}
+X-Webhook-Signature: v1=0000000000000000000000000000000000000000000000000000000000000000
+X-Correlation-Id: webhook-sample-1
+
+{
+  "externalOrderId": "WEB-20261005-0001",
+  "customer": { "externalCustomerId": "C-1001", "name": "Nguyen Van A", "phone": "0901 234 567", "email": "a@example.com" },
+  "items": [
+    { "externalProductId": "WEB-1001", "quantity": 2 },
+    { "externalSku": "TEA-GREEN-250", "quantity": 1 }
+  ]
+}
+
 ### ---- Channel product mappings (task 014) and realtime / dashboard (task 015) ----
 # Run "Login" first: the requests below take the token from its response. Ids are placeholders: copy them from the
 # responses of "Channels" and "Products" (or set the variables here). No secrets in this file.

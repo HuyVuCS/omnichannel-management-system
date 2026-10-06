@@ -144,4 +144,12 @@
     <value>Lần xuất này đã hết hạn và tệp đã bị xoá. Hãy yêu cầu xuất lại.</value>
     <comment>Export download, 409 export_expired.</comment>
   </data>
+  <data name="ItemIdentifierExactlyOne" xml:space="preserve">
+    <value>Hãy nhập đúng một trong hai: '{PropertyName}' hoặc '{ExternalSku}'.</value>
+    <comment>Webhook order line: neither or both identifiers given; {ExternalSku} is the field name of the external SKU.</comment>
+  </data>
+  <data name="ItemNotSoldOnChannel" xml:space="preserve">
+    <value>Mặt hàng này không được bán trên kênh này.</value>
+    <comment>Webhook order line: no Active mapping of the channel has this external product id / external SKU.</comment>
+  </data>
 </root>

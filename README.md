@@ -111,6 +111,7 @@ dotnet run --project src/Omnichannel.Api --launch-profile http
 - Swagger UI (Development only): http://localhost:5080/swagger
 - Health: http://localhost:5080/health
 - Manual requests: `src/Omnichannel.Api/Omnichannel.Api.http`
+- Webhooks of the channels (`POST /api/webhooks/{slug}`): run `scripts\setup-webhook-secrets.ps1` once, section 9.
 
 Run the API in Docker instead: `docker compose -f docker/docker-compose.yml --env-file docker/.env --profile app up -d --build` (port 8080).
 
@@ -304,6 +305,126 @@ where they differ (architecture doc 8.5). There is no "run now": a run starts by
 - **Scripted check**: `powershell -ExecutionPolicy Bypass -File scripts\smoke\task-022.ps1` (needs the
   `SimulatedChannelStocks` migration, section 4; uses a running API / Workers host or starts them, the Workers host in
   Development; takes about six minutes: it waits for runs of the timer).
+
+### 9. Webhooks (orders sent by a channel)
+
+A channel can send a new order to **`POST /api/webhooks/{slug}`** (architecture doc 8.1: "Webhook -> Identify CHANNEL ->
+Normalize -> Common Order DTO"). The order arrives **in the channel's own identifiers** and ends in the same order
+intake as an order of the Order Entry page: 202 with a task, processed by the Order Worker.
+
+- **Body** (JSON, at most 64 KiB):
+
+  ```json
+  {
+    "externalOrderId": "WEB-20261005-0001",
+    "customer": { "externalCustomerId": "C-1001", "name": "Nguyen Van A", "phone": "0901 234 567", "email": "a@example.com" },
+    "items": [
+      { "externalProductId": "WEB-1001", "quantity": 2 },
+      { "externalSku": "TEA-GREEN-250", "quantity": 1 }
+    ]
+  }
+  ```
+
+  - `externalOrderId` (at most 128 characters after trimming): the channel's order id - the idempotency key of the
+    order on this channel.
+  - `customer.externalCustomerId` (at most 128): the channel's id of the customer; `name` is required, `phone` and
+    `email` are optional (the rules of the customer form).
+  - `items`: 1 to 100 lines, `quantity` 1 to 10,000, and **exactly one** of `externalProductId` / `externalSku` per
+    line - the key the channel knows the product by ("Channel product mappings": the external product id of a mapping,
+    or the external SKU of a mapping that has no external product id). No product twice. A webhook carries no price:
+    the order takes the product's price, like every order.
+- **Signature.** The endpoint takes no bearer token; the sender proves itself with the channel's secret:
+
+  | Header | Value |
+  | --- | --- |
+  | `X-Webhook-Timestamp` | Unix time in whole seconds (digits only), within 5 minutes of the API's clock |
+  | `X-Webhook-Signature` | `v1=<hex>`: HMAC-SHA256 with the secret (its UTF-8 bytes) over `"{timestamp}.{body}"` - the timestamp as sent, a dot, and **the bytes of the body exactly as sent**. Several comma-separated `v1=` values are allowed (one that matches is enough); values of other schemes are ignored. |
+
+  In PowerShell:
+
+  ```powershell
+  $body      = [System.IO.File]::ReadAllBytes('order.json')
+  $timestamp = [string][DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+  $message   = [System.Text.Encoding]::ASCII.GetBytes("$timestamp.") + $body
+  $hmac      = New-Object System.Security.Cryptography.HMACSHA256 -ArgumentList (, [System.Text.Encoding]::UTF8.GetBytes($secret))
+  $signature = ([System.BitConverter]::ToString($hmac.ComputeHash($message))).Replace('-', '').ToLowerInvariant()
+  Invoke-WebRequest -Method POST -Uri 'http://localhost:5080/api/webhooks/website' -ContentType 'application/json' `
+      -Headers @{ 'X-Webhook-Timestamp' = $timestamp; 'X-Webhook-Signature' = "v1=$signature" } -Body $body -UseBasicParsing
+  ```
+
+  Sign and send the same bytes: JSON that is parsed and written again (other spaces, another key order) is another
+  body and is refused. The timestamp is part of what is signed, so a recorded webhook cannot be sent later; sent again
+  within the window it is the same order, which is answered as a duplicate.
+- **What happens to a webhook**, in this order - each step ends the request when it fails:
+  1. rate limit per client address and channel -> 429;
+  2. the raw body is read, at most `MaxBodyBytes` -> 413;
+  3. the slug is an Active channel that has a webhook secret -> otherwise 404 (an unknown, an inactive and an
+     unconfigured channel look the same);
+  4. timestamp, then signature -> 401. **Nothing of the body is parsed before this step**;
+  5. the request acts as **`webhook:{slug}`** from here on;
+  6. the body is read as JSON and validated -> 400 (camelCase keys such as `items[1].externalSku`, `customer.phone`;
+     messages in the language of `Accept-Language`, vi / en);
+  7. every line is resolved to its product through the channel's **Active** mappings -> 400 on the line ("not sold on
+     this channel": unknown id, a mapping that is switched off, a mapping of another channel, the SKU of a mapping
+     that is known by its external product id);
+  8. the customer is resolved through the channel's customer mapping (table `ChannelCustomers`, unique per channel and
+     external customer id). The **first time** a channel names a customer, the customer is created with the name, phone
+     and e-mail of that webhook; **later webhooks never change the customer** (edits made here are not overwritten).
+     There is no matching by phone or e-mail;
+  9. the order goes through the order intake unchanged -> **202** `{ taskId, status, correlationId, duplicate }`. The
+     same webhook again is `duplicate: true` with the same task; the same order id with other content is 409
+     `order_conflict`. `X-Correlation-Id` (when well-formed) is the correlation id of the task and of everything that
+     follows.
+- **Answers:** 202; 400 `validation_failed`; 401 `webhook_timestamp_invalid` / `webhook_signature_invalid`; 404
+  `channel_not_found`; 409 `order_conflict`; 413 `webhook_body_too_large`; 429 `webhook_rate_limited` - all as
+  ProblemDetails with `errorCode` and `correlationId`.
+- **What a webhook can and cannot do.** It can submit a new order for its own channel, and nothing else. The identity
+  `webhook:{slug}` exists inside that one request (set by the signature filter of this action, replacing whatever
+  principal the request arrived with): it is no authenticated user and has no role, so every authorization policy of
+  the API refuses it; no token is issued for it; no other endpoint looks at the signature headers. A bearer token
+  never replaces the signature, and a token sent along with a signed webhook is ignored. The actor is recorded where
+  the intake records it: `receivedBy` in the `order.created` message of the task, and `CreatedBy` of the customer and
+  the customer mapping a webhook creates. Cancellations, order updates, payments and customer updates are not
+  accepted as webhooks.
+- **Secrets.** One per channel slug in the API's configuration, `Webhooks:Channels:{slug}:Secrets` (a list of one or
+  two, each at least 32 characters) - from user-secrets or the environment
+  (`Webhooks__Channels__website__Secrets__0`), **never from an appsettings file**, never logged. A channel without a
+  secret has no webhook. A secret that is too short stops the API at start-up (the message names the channel, never
+  the value).
+  - Development: `powershell -ExecutionPolicy Bypass -File scripts\setup-webhook-secrets.ps1` adds
+    `WEBHOOK_SECRET_WEBSITE`, `WEBHOOK_SECRET_POS` and `WEBHOOK_SECRET_DIGITAL_PLATFORM` to
+    `backend/src/Omnichannel.Api/.env` (git-ignored) when they are missing - 32 random bytes each, base64url - and
+    stores them as `Webhooks:Channels:<slug>:Secrets:0` in the API's user-secrets. It prints no secret and can be run
+    again at any time; restart the API afterwards.
+  - **Rotation without downtime:** add the new secret as the second one (`Secrets:1`) and restart the API - both are
+    accepted; switch the sender to the new secret; then make it the only one (`Secrets:0`), remove the second and
+    restart again. A sender in the middle of the change may also send one `v1=` value per secret.
+- **Settings** (`Webhooks` section of the API, checked at start-up):
+
+  | Setting | Default | Meaning |
+  | --- | --- | --- |
+  | `TimestampTolerance` | `00:05:00` | how far the timestamp may be from the API's clock, either way (30 s to 15 min) |
+  | `MaxBodyBytes` | `65536` | largest body; a longer one is 413 |
+  | `PermitsPerMinute` | `120` | webhooks per minute, client address and channel, whatever their outcome; slugs without a webhook share one window per address |
+  | `Channels:{slug}:Secrets` | none | the channel's secrets (see above) |
+
+- **Logs.** A refused webhook (401 / 404 / 413 / 429) is one Warning: `Webhook refused with {StatusCode} {ReasonCode}:
+  channel slug {ChannelSlug}, client {ClientIp}` - never the body, a header value, the signature or a secret (a slug
+  that does not have the form of a slug is written as `(not a slug)`). An accepted webhook is traced by its task. Behind
+  a reverse proxy the client address is the proxy's until `ForwardedHeaders` is configured (deployment task).
+- **Sending one by hand:** `scripts\send-webhook.ps1` signs the bytes of a file with the secret from the `.env` and
+  posts them; it prints the status and the answer, never the secret or the signature.
+
+  ```powershell
+  powershell -ExecutionPolicy Bypass -File scripts\send-webhook.ps1 -Channel website -BodyFile order.json
+  ```
+
+  `-Timestamp <unix seconds>` sends another timestamp (an old one is 401), `-SignatureOf <other file>` signs other
+  bytes than it sends (a changed body is 401), `-CorrelationId`, `-BaseUrl`. The product of every line must be mapped
+  on the channel first (Channels page, or `POST /api/channels/{channelId}/products`).
+- **Scripted check**: `powershell -ExecutionPolicy Bypass -File scripts\smoke\task-023.ps1` (needs the migrations
+  `ChannelProductExternalSku` and `ChannelCustomers`, section 4, the webhook secrets, and a running API / Workers
+  host or it starts them).
 
 ## Frontend
 
@@ -544,7 +665,8 @@ npm run dev     # http://localhost:5173 - needs the API on http://localhost:5080
 
 ## API conventions
 
-- Every endpoint requires a JWT (`Authorization: Bearer ...`) unless marked `[AllowAnonymous]`.
+- Every endpoint requires a JWT (`Authorization: Bearer ...`) unless marked `[AllowAnonymous]`. One endpoint takes a
+  signature instead: `POST /api/webhooks/{slug}` (section 9).
 - Roles: `Admin`, `Manager`, `Staff`; policies `AdminOnly`, `ManagerOrAdmin`, `AnyStaff`.
 - Errors are RFC 7807 `application/problem+json` with `errorCode` and `correlationId`.
 - Validation errors (400, `errorCode = validation_failed`): every key of `errors` is the camelCase JSON path of the field,

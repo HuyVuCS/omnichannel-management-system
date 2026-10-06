@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
+using Omnichannel.Api.Filters;
 using Omnichannel.Api.Hubs;
 using Omnichannel.Application.Auth;
 
@@ -72,6 +73,21 @@ public static class AuthServiceCollectionExtensions
     }
 
     public const string HubAccessTokenParameter = "access_token";
+
+    /// <summary>
+    /// Webhooks of the channels: their settings (checked at start-up - a secret that is too short stops the host) and the
+    /// filter that verifies a webhook's signature. Not an authentication scheme: nothing but the webhook action uses it.
+    /// </summary>
+    public static IServiceCollection AddWebhooks(this IServiceCollection services, IConfiguration configuration)
+    {
+        services.AddOptions<WebhookOptions>()
+            .Bind(configuration.GetSection(WebhookOptions.SectionName))
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<WebhookOptions>, WebhookOptionsValidator>();
+        services.AddScoped<WebhookSignatureFilter>();
+
+        return services;
+    }
 
     public static IServiceCollection AddRbacAuthorization(this IServiceCollection services)
     {

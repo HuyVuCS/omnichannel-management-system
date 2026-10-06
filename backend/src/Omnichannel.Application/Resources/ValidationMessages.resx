@@ -144,4 +144,12 @@
     <value>This export has expired and its file was deleted. Request it again.</value>
     <comment>Export download, 409 export_expired.</comment>
   </data>
+  <data name="ItemIdentifierExactlyOne" xml:space="preserve">
+    <value>Give exactly one of '{PropertyName}' and '{ExternalSku}'.</value>
+    <comment>Webhook order line: neither or both identifiers given; {ExternalSku} is the field name of the external SKU.</comment>
+  </data>
+  <data name="ItemNotSoldOnChannel" xml:space="preserve">
+    <value>This item is not sold on this channel.</value>
+    <comment>Webhook order line: no Active mapping of the channel has this external product id / external SKU.</comment>
+  </data>
 </root>

@@ -65,6 +65,7 @@ try
     // Security
     builder.Services.AddJwtAuthentication(builder.Configuration);
     builder.Services.AddRbacAuthorization();
+    builder.Services.AddWebhooks(builder.Configuration);
     builder.Services.AddApiRateLimiting();
 
     var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];

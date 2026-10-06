@@ -43,6 +43,12 @@ public static class ExpectedUniqueViolations
     /// </summary>
     public const string ChannelProductExternalSku = "IX_ChannelProducts_ChannelId_ExternalSku";
 
+    /// <summary>
+    /// <c>ChannelCustomers (ChannelId, ExternalCustomerId)</c> → the mapping of the webhook that was first (two webhooks
+    /// naming the same new customer at once).
+    /// </summary>
+    public const string ChannelCustomerExternalId = "IX_ChannelCustomers_ChannelId_ExternalCustomerId";
+
     /// <summary>Every constant of this class (PostgreSQL identifiers are compared case-sensitively).</summary>
     public static readonly FrozenSet<string> ConstraintNames = typeof(ExpectedUniqueViolations)
         .GetFields(BindingFlags.Public | BindingFlags.Static)

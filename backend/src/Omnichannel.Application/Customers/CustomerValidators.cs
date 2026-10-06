@@ -14,21 +14,36 @@ public sealed class CustomerRequestValidator : AbstractValidator<CustomerRequest
 
     public CustomerRequestValidator()
     {
-        RuleFor(x => x.Name).NotEmpty().MaximumLength(MaxNameLength);
-
-        RuleFor(x => x.Phone)
-            .MaximumLength(MaxPhoneLength)
-            .Matches(PhonePattern)
-            .WithMessage(_ => ValidationMessages.Get(ValidationMessages.Keys.PhoneCharacters))
-            .When(x => !string.IsNullOrWhiteSpace(x.Phone));
-
-        RuleFor(x => x.Email)
-            .MaximumLength(MaxEmailLength)
-            .EmailAddress()
-            .When(x => !string.IsNullOrWhiteSpace(x.Email));
-
+        RuleFor(x => x.Name).CustomerName();
+        RuleFor(x => x.Phone).CustomerPhone(x => x.Phone);
+        RuleFor(x => x.Email).CustomerEmail(x => x.Email);
         RuleFor(x => x.Address).MaximumLength(MaxAddressLength);
     }
 }
 
 public sealed class CustomerListQueryValidator() : PageQueryValidator<CustomerListQuery>(CustomerListQuery.SortFields);
+
+/// <summary>
+/// The rules of a customer's name, phone and e-mail, wherever a request carries them (the customer form, the customer of
+/// a webhook order). Phone and e-mail are optional: a blank one is not checked (it is stored as null).
+/// </summary>
+public static class CustomerRules
+{
+    public static IRuleBuilderOptions<T, string> CustomerName<T>(this IRuleBuilder<T, string> rule) =>
+        rule.NotEmpty().MaximumLength(CustomerRequestValidator.MaxNameLength);
+
+    /// <param name="phone">The phone of the validated object (the rule applies only when it is not blank).</param>
+    public static IRuleBuilderOptions<T, string?> CustomerPhone<T>(this IRuleBuilder<T, string?> rule, Func<T, string?> phone) =>
+        rule
+            .MaximumLength(CustomerRequestValidator.MaxPhoneLength)
+            .Matches(CustomerRequestValidator.PhonePattern)
+            .WithMessage(_ => ValidationMessages.Get(ValidationMessages.Keys.PhoneCharacters))
+            .When(x => !string.IsNullOrWhiteSpace(phone(x)));
+
+    /// <param name="email">The e-mail of the validated object (the rule applies only when it is not blank).</param>
+    public static IRuleBuilderOptions<T, string?> CustomerEmail<T>(this IRuleBuilder<T, string?> rule, Func<T, string?> email) =>
+        rule
+            .MaximumLength(CustomerRequestValidator.MaxEmailLength)
+            .EmailAddress()
+            .When(x => !string.IsNullOrWhiteSpace(email(x)));
+}
