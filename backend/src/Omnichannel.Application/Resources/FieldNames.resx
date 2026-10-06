@@ -192,4 +192,16 @@
     <value>Report</value>
     <comment>Export list filter.</comment>
   </data>
+  <data name="customer" xml:space="preserve">
+    <value>Customer</value>
+    <comment>Webhook order.</comment>
+  </data>
+  <data name="externalCustomerId" xml:space="preserve">
+    <value>External customer ID</value>
+    <comment>Webhook order: the channel's id of the customer.</comment>
+  </data>
+  <data name="quantity" xml:space="preserve">
+    <value>Quantity</value>
+    <comment>Webhook order line.</comment>
+  </data>
 </root>

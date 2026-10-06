@@ -34,6 +34,18 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
     // Test-only key, never used outside the test host (>= 32 bytes for HS256).
     private const string TestSigningKey = "integration-tests-signing-key-0123456789abcdef";
 
+    // Webhook secrets of the test host (task 023): test-only values, never used outside it. website has one secret, pos
+    // two (a channel that is changing its secret), digital-platform none (an Active channel without a webhook), and
+    // "webhook-off" belongs to a channel a test creates and switches off.
+    public const string WebsiteWebhookSecret = "integration-tests-webhook-secret-website-01";
+    public const string PosWebhookSecret = "integration-tests-webhook-secret-pos-new-02";
+    public const string PosPreviousWebhookSecret = "integration-tests-webhook-secret-pos-old-03";
+    public const string SwitchedOffWebhookSlug = "webhook-off";
+    public const string SwitchedOffWebhookSecret = "integration-tests-webhook-secret-off-04";
+
+    /// <summary>Webhooks per minute, client address and channel in this host (production default: 120).</summary>
+    public const int WebhookPermitsPerMinute = 20;
+
     private static int _nextRemoteIp;
 
     private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:17").Build();
@@ -128,6 +140,11 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         builder.UseSetting("ObjectStorage:AccessKeyId", _storage.AccessKeyId);
         builder.UseSetting("ObjectStorage:SecretAccessKey", _storage.SecretAccessKey);
         builder.UseSetting("ObjectStorage:RequestTimeout", StorageRequestTimeout.ToString("c"));
+        builder.UseSetting("Webhooks:PermitsPerMinute", WebhookPermitsPerMinute.ToString());
+        builder.UseSetting("Webhooks:Channels:website:Secrets:0", WebsiteWebhookSecret);
+        builder.UseSetting("Webhooks:Channels:pos:Secrets:0", PosWebhookSecret);
+        builder.UseSetting("Webhooks:Channels:pos:Secrets:1", PosPreviousWebhookSecret);
+        builder.UseSetting($"Webhooks:Channels:{SwitchedOffWebhookSlug}:Secrets:0", SwitchedOffWebhookSecret);
         // Log sources that see request URLs or the realtime traffic are captured at their most talkative level, so the
         // tests can show that the hub's access token (query string) is in none of them.
         builder.UseSetting("Serilog:MinimumLevel:Override:Microsoft.AspNetCore.Hosting.Diagnostics", "Information");

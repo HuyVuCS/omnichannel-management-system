@@ -58,6 +58,8 @@ public static class ValidationMessages
         public const string ExportTooLarge = nameof(ExportTooLarge);
         public const string ExportNotReady = nameof(ExportNotReady);
         public const string ExportExpired = nameof(ExportExpired);
+        public const string ItemIdentifierExactlyOne = nameof(ItemIdentifierExactlyOne);
+        public const string ItemNotSoldOnChannel = nameof(ItemNotSoldOnChannel);
     }
 
     /// <summary>The text of <paramref name="key"/> in the current UI culture, with <c>{Name}</c> placeholders replaced.</summary>

@@ -287,6 +287,47 @@ namespace Omnichannel.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Omnichannel.Domain.Entities.ChannelCustomer", b =>
+                {
+                    b.Property<Guid>("ChannelCustomerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ChannelId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<Guid>("CustomerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ExternalCustomerId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.HasKey("ChannelCustomerId");
+
+                    b.HasIndex("CustomerId");
+
+                    b.HasIndex("ChannelId", "ExternalCustomerId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_ChannelCustomers_ChannelId_ExternalCustomerId");
+
+                    b.ToTable("ChannelCustomers", (string)null);
+                });
+
             modelBuilder.Entity("Omnichannel.Domain.Entities.ChannelProduct", b =>
                 {
                     b.Property<Guid>("ChannelProductId")
@@ -1219,6 +1260,25 @@ namespace Omnichannel.Infrastructure.Persistence.Migrations
                     b.Navigation("Channel");
 
                     b.Navigation("Product");
+                });
+
+            modelBuilder.Entity("Omnichannel.Domain.Entities.ChannelCustomer", b =>
+                {
+                    b.HasOne("Omnichannel.Domain.Entities.Channel", "Channel")
+                        .WithMany()
+                        .HasForeignKey("ChannelId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Omnichannel.Domain.Entities.Customer", "Customer")
+                        .WithMany()
+                        .HasForeignKey("CustomerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Channel");
+
+                    b.Navigation("Customer");
                 });
 
             modelBuilder.Entity("Omnichannel.Domain.Entities.ChannelProduct", b =>

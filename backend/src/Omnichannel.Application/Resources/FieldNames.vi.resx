@@ -192,4 +192,16 @@
     <value>Báo cáo</value>
     <comment>Export list filter.</comment>
   </data>
+  <data name="customer" xml:space="preserve">
+    <value>Khách hàng</value>
+    <comment>Webhook order.</comment>
+  </data>
+  <data name="externalCustomerId" xml:space="preserve">
+    <value>Mã khách hàng trên kênh</value>
+    <comment>Webhook order: the channel's id of the customer.</comment>
+  </data>
+  <data name="quantity" xml:space="preserve">
+    <value>Số lượng</value>
+    <comment>Webhook order line.</comment>
+  </data>
 </root>

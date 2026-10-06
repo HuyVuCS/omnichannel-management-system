@@ -1,3 +1,5 @@
+using Omnichannel.Application.Channels;
+
 namespace Omnichannel.Infrastructure.ExternalChannels;
 
 /// <summary>
@@ -14,9 +16,6 @@ public sealed class SimulatedChannelStock
     public const int MaxExternalKeyLength = 140;
 
     public const int MaxRequestIdLength = 100;
-
-    private const string ExternalProductIdPrefix = "id:";
-    private const string ExternalSkuPrefix = "sku:";
 
     private SimulatedChannelStock()
     {
@@ -35,12 +34,8 @@ public sealed class SimulatedChannelStock
 
     /// <summary>
     /// How a channel identifies a product: by its external product id when the mapping has one, otherwise by its external
-    /// SKU. The one rule for writing and for reading.
+    /// SKU (<see cref="ChannelProductKey"/>). The one rule for writing and for reading.
     /// </summary>
     public static string ExternalKeyOf(string? externalProductId, string? externalSku) =>
-        externalProductId is not null
-            ? ExternalProductIdPrefix + externalProductId
-            : externalSku is not null
-                ? ExternalSkuPrefix + externalSku
-                : throw new ArgumentException("A mapped product has an external product id or an external SKU.", nameof(externalProductId));
+        ChannelProductKey.Of(externalProductId, externalSku);
 }

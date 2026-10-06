@@ -168,6 +168,34 @@ public sealed class ModelConfigurationTests : IDisposable
     }
 
     [Fact]
+    public void A_channel_knows_a_product_by_one_key_and_a_customer_by_one_id()
+    {
+        // Task 023: the keys a webhook resolves its items and its customer by are unique per channel in the database.
+        var mappings = Entity<ChannelProduct>().GetIndexes().ToDictionary(i => i.GetDatabaseName()!);
+        var byProductId = mappings[ExpectedUniqueViolations.ChannelProductExternalProductId];
+        Assert.Equal(
+            (true, "\"ExternalProductId\" IS NOT NULL"),
+            (byProductId.IsUnique, byProductId.GetFilter()));
+        var bySku = mappings[ExpectedUniqueViolations.ChannelProductExternalSku];
+        Assert.Equal("IX_ChannelProducts_ChannelId_ExternalSku", bySku.GetDatabaseName());
+        Assert.Equal([nameof(ChannelProduct.ChannelId), nameof(ChannelProduct.ExternalSku)], bySku.Properties.Select(p => p.Name));
+        // Only among the mappings a channel knows by their SKU; whatever their status.
+        Assert.Equal((true, "\"ExternalProductId\" IS NULL"), (bySku.IsUnique, bySku.GetFilter()));
+
+        var customer = Entity<ChannelCustomer>();
+        Assert.Equal("ChannelCustomers", customer.GetTableName());
+        Assert.Equal(128, customer.FindProperty(nameof(ChannelCustomer.ExternalCustomerId))!.GetMaxLength());
+        var unique = Assert.Single(customer.GetIndexes(), i => i.IsUnique);
+        Assert.Equal(ExpectedUniqueViolations.ChannelCustomerExternalId, unique.GetDatabaseName());
+        Assert.Equal("IX_ChannelCustomers_ChannelId_ExternalCustomerId", unique.GetDatabaseName());
+        Assert.Equal([nameof(ChannelCustomer.ChannelId), nameof(ChannelCustomer.ExternalCustomerId)], unique.Properties.Select(p => p.Name));
+        Assert.Null(unique.GetFilter());
+        Assert.Single(customer.GetIndexes(), i => !i.IsUnique && i.Properties.Single().Name == nameof(ChannelCustomer.CustomerId));
+        Assert.All(customer.GetForeignKeys(), key => Assert.Equal(Microsoft.EntityFrameworkCore.DeleteBehavior.Restrict, key.DeleteBehavior));
+        Assert.Equal(2, customer.GetForeignKeys().Count());
+    }
+
+    [Fact]
     public void Seeds_the_three_order_entry_channels()
     {
         var slugs = Entity<Channel>().GetSeedData()
