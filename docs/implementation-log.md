@@ -811,3 +811,42 @@ labels), as 020/021.
 33. `Invoices` table.
 34. Simulated invoice provider and e-mail sender behind interfaces (no external accounts).
 35. Hint `order.changed`; event types `order.paid`, `invoice.message_rejected`, `email.message_rejected`.
+
+## Task 024 result (reviewed 2026-10-09)
+
+Payment step `POST /api/orders/{orderId}/payment` (Manager/Admin): one transaction under the order row lock — payment
+columns on `Orders` (check constraint `CK_Orders_Payment_Consistent`), `order.paid` (reference never in the event), an
+`Invoice` task + `invoice.requested` and, only for a non-blank customer address, an `Email` task + `email.requested`;
+`Order.Status` and stock unchanged. Invoice Worker (`invoice.processing`) and Notification Worker
+(`notification.email`) on a shared base (`TaskRequestMessageHandler`, parser, `ITaskRequestProcessing`,
+`ProviderWorkerOptions`): attempt first, read without a lock, provider / sender call outside any transaction (timeout +
+breaker, no retry inside), completion in one transaction (task row locked; invoice inserted with `ON CONFLICT
+("OrderId") DO NOTHING`; alert resolved). Simulated invoice provider (deterministic number) and e-mail sender (masked
+address, vi/en confirmation from resources). `payment` / `invoice` on the detail, `paymentStatus` on the list, hint
+`order.changed`. Part A1: `SMOKE_SKIP_FRONTEND=1` only with `SMOKE_BASE_URL`. Migration `PaymentAndInvoices`
+(additive) applied on development as the migrator. Backend 1756/1756, 0 warnings, mutants 26/26; smoke 024 51/51
+(throwaway) and 52/52 (development). Doc deviations 32–35 confirmed. Review: `docs/tasks/024-*.review.md`.
+
+| Topic | Decision | Reason | Revisit when |
+| --- | --- | --- | --- |
+| Attempt number on provider contracts (review 024 q1) | `InvoiceRequest` / `EmailMessage` carry `AttemptNo` (as `ChannelStockUpdate`); it never enters the idempotency key | Stateless simulators; a real adapter may log it | — |
+| Payer as actor (review 024 q1) | `paidBy` is an actor field of the Logs API (`actorEmail`) | Same role as `requestedBy` / `acknowledgedBy` | — |
+| Shared base of `{ taskId }` workers (review 024 q1) | Invoice and Notification Workers share `TaskRequestMessageHandler` & co.; the Report Export Worker is **not** moved onto it as a refactor | Two concrete consumers justify it; moving working code has no benefit now | The export worker changes for another reason, or a third `{ taskId }` worker appears |
+| Simulated invoice number (review 024 q2) | 16 hex digits of SHA-256(key) instead of 8 (024b A1); no migration, stored numbers stay | 32 bits collide at a few thousand invoices a month and the deterministic number makes the task fail forever | A real invoice provider |
+| Confirmation e-mail delivery (review 024 q3) | **At-least-once**: a crash between the send and the completion commit sends again on redelivery; key `email:payment:{orderId}` passed to the sender | Exactly-once is impossible across a non-transactional sender; at-most-once would lose confirmations on the same crash | A real mail provider: map the key to its idempotency / dedup feature if it has one |
+| One invoice per order | `Invoices.OrderId` is the key; insert `ON CONFLICT DO NOTHING` in the completion transaction; provider key `invoice:{orderId}` | The key decides, not timing; nothing fails inside the transaction | Several invoices per order (credit notes) |
+| `order.changed` (review 024 q4) | Mapped in 024b to the order and the order lists | The payment seen from another session needs it; task hints cover only the open detail | — |
+| 409 order of checks | `order_already_paid` before `order_not_payable` | The specific answer once paid orders may have other statuses | — |
+
+## Task 024b plan — payment UI, invoice and confirmation status, labels (2026-10-09)
+
+| Topic | Decision | Reason | Revisit when |
+| --- | --- | --- | --- |
+| Where payment is made | Order detail only, "Mark as paid" for Manager/Admin while `Reserved` and `Unpaid`; a dialog with the total shown, method required **without default**, optional reference; the dialog is the confirmation | A financial record must be chosen explicitly; one place to act, next to the order's tasks | POS staff take payments (log "Task 024 plan") |
+| What the detail shows | A "Payment" card = doc §5.3 tree: payment (status, method, reference, paid at, recorded by), invoice (number or the invoice task's status + link), confirmation e-mail (task status + link, or "no address at payment time") — from the detail response only | The doc's example is exactly this view; retry stays on the task blocks / task page | — |
+| Attempt error codes | Raw everywhere (attempts tables, Logs `processing.failed`), as `channel_*` since 016; labels only for event types, payment status / method and the two 409 codes | Codes are the search key; the attempt message carries readable text; one convention | Users ask for readable failure reasons on the order detail |
+| Orders list | `paymentStatus` column after status; no filter | The API has no filter; adding one is backend work without a request | Users need "paid but no invoice" lists |
+| Realtime | `order.changed` → `{ Order, id }` + `{ Order, LIST }`; `all` → `Order`; not the dashboard summary | Payment from another session; the summary has no payment figure | A payment figure on the dashboard |
+| Mutation invalidation | As manual retry: any API answer but network/5xx refetches the order, the order lists, the task lists and the summary | A 409 means the screen is stale | — |
+| Client limit copy | Reference `maxLength` 100 next to its use, commented (log "Task 021 result") | Server stays the authority | — |
+| Verification | Five full `npm test` runs + one slow run (new dialog and mutation = new async behaviour); real-browser check on the production build | Rule of 016–021 for new async UI | — |
