@@ -204,4 +204,12 @@
     <value>Số lượng</value>
     <comment>Webhook order line.</comment>
   </data>
+  <data name="paymentMethod" xml:space="preserve">
+    <value>Phương thức thanh toán</value>
+    <comment>Order payment.</comment>
+  </data>
+  <data name="paymentReference" xml:space="preserve">
+    <value>Mã tham chiếu thanh toán</value>
+    <comment>Order payment.</comment>
+  </data>
 </root>

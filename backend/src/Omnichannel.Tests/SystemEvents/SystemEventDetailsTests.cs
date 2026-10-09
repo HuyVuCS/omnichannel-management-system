@@ -4,6 +4,8 @@ using Omnichannel.Application.Alerts;
 using Omnichannel.Application.Channels;
 using Omnichannel.Application.Common.Messaging;
 using Omnichannel.Application.Inventory;
+using Omnichannel.Application.Invoices;
+using Omnichannel.Application.Notifications;
 using Omnichannel.Application.Orders;
 using Omnichannel.Application.Processing;
 using Omnichannel.Application.Reports;
@@ -40,12 +42,12 @@ public sealed class SystemEventDetailsTests
         Assert.Equal(
             new[]
             {
-                typeof(AlertEvents), typeof(InventoryEvents), typeof(OrderProcessingEvents), typeof(OutboxEvents),
-                typeof(ProcessingEvents), typeof(ReconciliationEvents), typeof(ReportEvents), typeof(StockSyncEvents),
-                typeof(UserEvents)
+                typeof(AlertEvents), typeof(InventoryEvents), typeof(InvoiceEvents), typeof(NotificationEvents),
+                typeof(OrderPaymentEvents), typeof(OrderProcessingEvents), typeof(OutboxEvents), typeof(ProcessingEvents),
+                typeof(ReconciliationEvents), typeof(ReportEvents), typeof(StockSyncEvents), typeof(UserEvents)
             }.Select(t => t.Name),
             EventClasses.Select(t => t.Name).Order(StringComparer.Ordinal));
-        Assert.Equal(17, EventTypeConstants().Count());
+        Assert.Equal(20, EventTypeConstants().Count());
     }
 
     [Fact]

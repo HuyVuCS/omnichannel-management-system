@@ -112,21 +112,27 @@ dotnet run --project src/Omnichannel.Api --launch-profile http
 - Health: http://localhost:5080/health
 - Manual requests: `src/Omnichannel.Api/Omnichannel.Api.http`
 - Webhooks of the channels (`POST /api/webhooks/{slug}`): run `scripts\setup-webhook-secrets.ps1` once, section 9.
+- Paying an order (`POST /api/orders/{orderId}/payment`), its invoice and its confirmation e-mail: section 10.
 
 Run the API in Docker instead: `docker compose -f docker/docker-compose.yml --env-file docker/.env --profile app up -d --build` (port 8080).
 
-### 6. Workers (Outbox Publisher, Order Worker, Stock Sync Worker, Report Export Worker, Reconciliation)
+### 6. Workers (Outbox Publisher, Order Worker, Stock Sync Worker, Report Export Worker, Invoice Worker, Notification Worker, Reconciliation)
 
 The Workers host runs these background workers in one process:
 
-| Worker | What it does |
-| --- | --- |
-| Outbox Publisher | publishes pending outbox rows to RabbitMQ (exchange `omnichannel.topic`) |
-| Order Worker | consumes `order.processing`: stores the order and reserves the stock in one transaction |
-| Stock Sync Worker | consumes `stock.sync.website`, `stock.sync.pos`, `stock.sync.marketplace`: pushes stock to the channels (section 7) |
-| Report Export Worker | consumes `report.export`: builds the Excel file of an export and stores it in the object storage ("Reports and Excel export") |
-| Export retention sweep | every hour: deletes the files of exports older than 7 days |
-| Reconciliation | every 15 minutes (Development: every minute): compares the central stock with what the channels show and starts a stock sync where they differ (section 8) |
+| Worker | Queue (routing key) | What it does |
+| --- | --- | --- |
+| Outbox Publisher | - | publishes pending outbox rows to RabbitMQ (exchange `omnichannel.topic`) |
+| Order Worker | `order.processing` (`order.created`) | stores the order and reserves the stock in one transaction |
+| Stock Sync Worker | `stock.sync.website`, `stock.sync.pos`, `stock.sync.marketplace` (`inventory.changed`, and each queue's own name for a directed `stock.sync.requested`) | pushes stock to the channels (section 7) |
+| Report Export Worker | `report.export` (`report.export.requested`) | builds the Excel file of an export and stores it in the object storage ("Reports and Excel export") |
+| Invoice Worker | `invoice.processing` (`invoice.requested`) | issues the invoice of a paid order at the invoice provider and stores it (section 10) |
+| Notification Worker | `notification.email` (`email.requested`) | sends the payment confirmation of a paid order to its customer (section 10) |
+| Export retention sweep | - | every hour: deletes the files of exports older than 7 days |
+| Reconciliation | - | every 15 minutes (Development: every minute): compares the central stock with what the channels show and starts a stock sync where they differ (section 8) |
+
+Every queue has its dead-letter queue `<queue>.dlq`; a task that fails for good ends there, with its `processing.failed`
+event and its alert.
 
 It uses the **runtime** database role and the RabbitMQ user from `docker/.env` (secrets via user-secrets, never appsettings),
 and the keys of the object storage, which `scripts\setup-object-storage.ps1` (section 1) stores in its user-secrets:
@@ -149,6 +155,8 @@ dotnet run --project src/Omnichannel.Workers
 - Optional settings: `OutboxPublisher:BatchSize` (100), `PollInterval` (1 s), `MaxAttempts` (10), `InitialBackoff` (1 s),
   `MaxBackoff` (5 min), `ConfirmTimeout` (10 s); `Worker:InstanceId` (default `{MachineName}-{ProcessId}`).
 - Stock Sync Worker (queues `stock.sync.*`): see section 7.
+- Invoice Worker (queue `invoice.processing`) and Notification Worker (queue `notification.email`): see section 10.
+  Their provider and mail server are simulated; they need no secret.
 - Report Export Worker (queue `report.export`) and the retention sweep: see "Reports and Excel export". The host needs
   the `ObjectStorage` settings to start (endpoint and bucket are in `appsettings.Development.json`, the keys in its
   user-secrets); a broker that already exists gets the new queue and its `.dlq` at the next start of the host.
@@ -425,6 +433,120 @@ intake as an order of the Order Entry page: 202 with a task, processed by the Or
 - **Scripted check**: `powershell -ExecutionPolicy Bypass -File scripts\smoke\task-023.ps1` (needs the migrations
   `ChannelProductExternalSku` and `ChannelCustomers`, section 4, the webhook secrets, and a running API / Workers
   host or it starts them).
+
+### 10. Payment, invoices and e-mails (Invoice Worker, Notification Worker)
+
+Architecture doc 8.4: "Payment Succeeded -> `invoice.requested` -> Invoice Worker; `email.requested` -> Notification
+Worker. Each task has independent status and attempts. One failed email must not make the whole Order Failed."
+
+- **The payment step** is simulated: no payment provider exists, so **a Manager or Admin records that an order was
+  paid** - that is "Payment Succeeded". `POST /api/orders/{orderId}/payment` with
+  `{ "paymentMethod": "Cash" | "BankTransfer" | "Card" | "EWallet", "paymentReference": "optional, at most 100 characters" }`
+  (the reference is trimmed; blank = none).
+  - **200** `{ orderId, paymentStatus: "Paid", paidAt, invoiceTaskId, emailTaskId }` - `emailTaskId` is `null` when the
+    customer has no e-mail address.
+  - 400 `validation_failed` on `paymentMethod` / `paymentReference` (messages in vi / en); 403 for Staff; 404
+    `order_not_found`; **409 `order_not_payable`** unless the order is `Reserved`; **409 `order_already_paid`** - an order
+    is paid once and in full (no partial payment, no refund, no cancelling a payment).
+- **What a payment changes - and what it does not.** It fills the payment fields of the order (`PaymentStatus`
+  `Unpaid` -> `Paid`, `PaidAt`, `PaidBy`, `PaymentMethod`, `PaymentReference`; a check constraint keeps them all or
+  none). **`Order.Status` stays `Reserved` and no stock moves**: one status must not stand for payment, invoice, e-mail
+  and sync (doc 14), and fulfilment is a later step.
+- **What is queued, and when.** In the **same transaction** as the payment fields, under the lock of the order row:
+  - the audit event `order.paid` (who, how, how much - never the reference);
+  - a task `Invoice` (idempotency key `invoice:{orderId}`) and its outbox message `invoice.requested`;
+  - a task `Email` (key `email:payment:{orderId}`) and its outbox message `email.requested` - **only when the customer
+    has an e-mail address** (a task that can never succeed is not created).
+
+  Nothing is published by the API: the Outbox Publisher sends both messages, also when RabbitMQ was down at the moment
+  of the payment. Two payments of one order at the same time are serialised by the row lock - one is answered 200, the
+  other 409 `order_already_paid` - and the keys make a second invoice or e-mail task impossible. Both messages carry
+  `{ taskId }` only: the workers read the order from the database.
+- **Invoice Worker** (queue `invoice.processing`): attempt first; the order, its lines and the customer are read
+  without a lock; an order whose invoice is stored already completes the task **without a call**; an unpaid order fails
+  for good (`invoice_order_not_paid`); the **provider is called outside any transaction** with the key
+  `invoice:{orderId}`; then one transaction stores the invoice (table `Invoices`: `OrderId` is the key - one invoice
+  per order, inserted with `ON CONFLICT DO NOTHING`), completes attempt and task and resolves the task's
+  `ProcessingFailed` alert. A redelivery after the call and before that commit calls the provider again with the same
+  key and gets the same invoice.
+- **Notification Worker** (queue `notification.email`): the same steps, but it sends the **payment confirmation** to
+  the customer's **current** address (none any more -> `email_no_recipient`, permanent). The text - external order id,
+  lines (SKU, name, quantity, unit price, line total), total, paid at - is built when it is sent, from
+  `Resources/NotificationTexts*.resx`, in `Notifications:Language` and the time zone `Notifications:TimeZone`. Nothing
+  of an e-mail is stored: the task and its attempts are its record.
+- **Independence.** The two tasks never wait for, read or change each other: the Notification Worker never reads or
+  writes `Invoices`, the Invoice Worker never looks at the e-mail task. A refused e-mail ends as a `Failed` e-mail task
+  with its alert; **the invoice of the same order is issued, and the order stays `Reserved` and `Paid`** (and the other
+  way round). Neither worker ever writes the order.
+- **Failures** follow every other worker: a temporary error (provider timeout, unavailable, open circuit breaker,
+  temporary database error) is retried after 5 s / 30 s / 2 min / 10 min up to `MaxAttempts`; a refusal fails at once.
+  A failed task is `Failed`, writes `processing.failed`, opens a `ProcessingFailed` alert (with the order) and its
+  message goes to `invoice.processing.dlq` / `notification.email.dlq`. **Manual retry** is the one of every task
+  (`POST /api/processing/tasks/{id}/retry`, Manager/Admin): a copy of the message, a fresh attempt budget; the task
+  that then succeeds resolves its alert. A message that can never be processed is rejected with a `reasonCode`
+  (`invoice.message_rejected` / `email.message_rejected`, "System events").
+
+  | `errorCode` of an attempt | Meaning | Retried |
+  | --- | --- | --- |
+  | `invoice_provider_timeout`, `email_timeout` | no answer within `CallTimeout` | yes |
+  | `invoice_provider_unavailable`, `email_unavailable` | the provider is down | yes |
+  | `invoice_provider_circuit_open`, `email_circuit_open` | not called: the breaker is open after repeated failures | yes |
+  | `invoice_provider_rejected`, `email_rejected` | the provider refused | no |
+  | `invoice_order_not_paid`, `email_order_not_paid` | the order of the task is not paid | no |
+  | `email_no_recipient` | the customer has no e-mail address (any more) | no |
+
+- **Calls** go through a timeout and a circuit breaker per provider (only temporary failures and timeouts count), and
+  there is **no retry inside a call**: every retry is an attempt in the task's history.
+- **The provider and the mail server are simulated** (`SimulatedInvoiceProviderClient`, `SimulatedEmailSender`; no
+  accounts and no mail infrastructure exist). A real adapter implements `IInvoiceProviderClient` / `IEmailSender` and
+  replaces the simulator without touching a worker. The sections `InvoiceSimulation` and `EmailSimulation` of the
+  Workers host are read on every call, so a change of `src/Omnichannel.Workers/appsettings.Development.json` applies
+  **without restarting** the host:
+
+  ```json
+  "InvoiceSimulation": { "Mode": "Succeed", "LatencyMs": 0, "Rules": true },
+  "EmailSimulation": { "Mode": "TransientError", "LatencyMs": 0, "Rules": true }
+  ```
+
+  `Mode`: `Succeed` (default), `TransientError` (unavailable: retried, `Failed` + DLQ after the last attempt),
+  `PermanentError` (refused: `Failed` + DLQ at once), `Timeout` (never answers: the timeout code after `CallTimeout`).
+  `LatencyMs` delays every answer. **`Rules`** (on in `appsettings.Development.json` only, off by default) adds
+  failures for single orders and recipients:
+
+  | Rule | Effect |
+  | --- | --- |
+  | external order id starts with `SIM-INV-PERM-` | the invoice is refused (`invoice_provider_rejected`) |
+  | external order id starts with `SIM-INV-TEMP-` | `invoice_provider_unavailable` on attempt 1, issued from attempt 2 |
+  | recipient at `@sim-reject.test` | the e-mail is refused (`email_rejected`) |
+  | recipient at `@sim-temp.test` | `email_unavailable` on attempt 1, sent from attempt 2 |
+
+  - The simulated provider keeps **no state**: the number of an invoice is `SIM-{yyyyMM of the payment, UTC}-{first 8
+    hex digits of SHA-256 of the key}`, so a second call for one order answers with the same number. (Eight hex digits
+    can collide between two orders of one month; the unique index on `InvoiceNumber` then fails that task - a property
+    of the simulator, not of a real provider.)
+  - The simulated sender "sends" by writing one log line with the **subject and a masked address** (`a***@example.com`)
+    - never the text, never the full address. The workers and their error messages mask the address the same way.
+- **Settings** (Workers host, checked at start-up):
+
+  | Setting | Default | Meaning |
+  | --- | --- | --- |
+  | `InvoiceWorker:Concurrency`, `NotificationWorker:Concurrency` | `1` | messages handled in parallel per instance (1 to 16) |
+  | `InvoiceWorker:MaxAttempts`, `NotificationWorker:MaxAttempts` | `5` | attempts before a temporary failure is final (1 to 20) |
+  | `InvoiceWorker:CallTimeout`, `NotificationWorker:CallTimeout` | `00:00:10` | longest time one call to the provider may take (100 ms to 5 min) |
+  | `…:CircuitBreaker:FailureRatio` / `MinimumThroughput` / `SamplingDuration` / `BreakDuration` | `0.5` / `5` / `00:00:30` / `00:00:30` | the breaker of that provider (the ranges of `StockSyncWorker:CircuitBreaker`) |
+  | `Notifications:Language` | `vi` | language of every e-mail to a customer: `vi` or `en` |
+  | `Notifications:TimeZone` | `Asia/Ho_Chi_Minh` | IANA id of the zone the times in an e-mail are shown in |
+
+- **Reading it back.** `GET /api/orders/{id}` carries `payment { status, paidAt, paidByEmail, method, reference }`
+  (the fields but `status` are null while `Unpaid`; `paidByEmail` is the address of the user who recorded the payment;
+  the reference is shown to every role that reads orders) and `invoice { number, issuedAt }` - `null` until the invoice
+  task succeeded. `GET /api/orders` has `paymentStatus` per order (no filter by it). The two tasks are in the order's
+  `tasks` and on *Sync & Processing* (`taskType=Invoice` / `Email`); the payment is a `order.changed` hint
+  ("Realtime hints"). The frontend shows the new task types and events raw and has no payment button yet (task 024b).
+- **Scripted check**: `powershell -ExecutionPolicy Bypass -File scripts\smoke\task-024.ps1` (needs the migration
+  `PaymentAndInvoices`, section 4, and a running API / Workers host or it starts them, the Workers host in
+  Development): three orders - a customer with an address, one without, one at `sim-reject.test` - paid by a smoke
+  Manager; the refused e-mail is retried at the end with a corrected address.
 
 ## Smoke scripts
 
@@ -735,6 +857,7 @@ npm run dev     # http://localhost:5173 - needs the API on http://localhost:5080
   ```json
   { "events": [
       { "type": "order.created", "orderId": "...", "channelId": "...", "status": "Reserved" },
+      { "type": "order.changed", "orderId": "..." },
       { "type": "inventory.changed", "productIds": ["..."] },
       { "type": "processing.task.changed", "taskId": "...", "taskType": "StockSync", "status": "Failed",
         "channelId": "...", "productId": "..." } ],
@@ -744,6 +867,7 @@ npm run dev     # http://localhost:5173 - needs the API on http://localhost:5080
   | `type` | When | Members |
   | --- | --- | --- |
   | `order.created` | an order was stored (Order Worker) | `orderId`, `channelId`, `status` |
+  | `order.changed` | a stored order changed - today: it was paid (one hint per saved order; what changed is read through the API) | `orderId` |
   | `inventory.changed` | stock changed (import, reservation) | `productIds`, or `all: true` when more than 100 products changed |
   | `processing.task.changed` | a task was created or its status changed | `taskId`, `taskType`, `status`, `orderId`, `channelId`, `productId` (those that apply) |
   | `alert.changed` | an alert was opened, refreshed, acknowledged or resolved | `alertId`, `alertType`, `status`, `productId`, `channelId` (those that apply) |
@@ -753,7 +877,7 @@ npm run dev     # http://localhost:5173 - needs the API on http://localhost:5080
   a value are left out. `all: true` on an event means "more changed than is listed: refetch everything of this type".
 - **`resync: true`** means hints may have been missed (the API lost and re-established its database listener, or a burst
   was too large to list): refetch everything that is on screen. A client must do the same after its own reconnect.
-- **How a hint gets there:** every `SaveChanges` that stores an order, a stock movement or a task change (API and Workers
+- **How a hint gets there:** every `SaveChanges` that stores or changes an order, or stores a stock movement or a task change (API and Workers
   alike, `RealtimeHintInterceptor`) sends one `pg_notify('omnichannel_ui', ...)` on its connection: inside a transaction
   PostgreSQL delivers it at the commit and drops it on a rollback, otherwise it is sent right after the save was
   committed. Alert hints are sent by the alert writer itself, always inside the transaction of the change that causes the
@@ -792,7 +916,7 @@ lifecycle `Open` → `Acknowledged` → `Resolved`; `SystemEventLog` stays the e
 | `LowStock` | product (`low_stock:{productId}`) | a stock or threshold change that leaves the product low (`AvailableStock <= LowStockThreshold`, the rule of the inventory list) | a stock or threshold change that leaves it not low |
 | `InsufficientStock` | product (`insufficient_stock:{productId}`) | an order stored as `InsufficientStock`, for each product that was short | the next stock import of the product |
 | `StockSyncFailed` | channel and product (`stock_sync_failed:{channelId}:{productId}`) | a stock-sync task that failed for good | any stock-sync task of the same channel and product that succeeds, or the mapping of the pair being switched off (`Active` → `Inactive`) |
-| `ProcessingFailed` | task (`processing_failed:{taskId}`) | a task of another type that failed for good | that task succeeding (after a manual retry) |
+| `ProcessingFailed` | task (`processing_failed:{taskId}`) | a task of another type that failed for good (order processing, export, invoice, e-mail) | that task succeeding (after a manual retry) |
 
 - **Refresh:** a condition that occurs again while its alert is unresolved updates that row (`lastOccurredAt`,
   `occurrenceCount` + 1, latest `taskId` / `orderId` / `errorCode`) and keeps its status - an acknowledged alert stays
@@ -858,6 +982,9 @@ page; nothing in the API writes, changes or deletes an event.
   | `order.insufficient_stock` | Warning | `orderId`, `taskId`, `items` (`productId`, `requested`, `available` per line) |
   | `order.already_exists` | Warning | `taskId`, `orderId`, `externalOrderId` |
   | `order.message_rejected` | Error | `messageId`, `reasonCode` |
+  | `order.paid` | Information | `orderId`, `paymentMethod`, `amount`, `paidBy` (the payment reference is neither returned nor stored in the event: it may be a bank or card reference) - section 10 |
+  | `invoice.message_rejected` | Error | `messageId`, `reasonCode` |
+  | `email.message_rejected` | Error | `messageId`, `reasonCode` |
   | `stock_sync.message_rejected` | Error | `messageId`, `reasonCode`, `queue` |
   | `report_export.message_rejected` | Error | `messageId`, `reasonCode` |
   | `report.export_requested` | Information | `reportType`, `requestedBy` (the task is the event's `taskId`; never the filters of the export) |
@@ -870,7 +997,7 @@ page; nothing in the API writes, changes or deletes an event.
   | `user.role_changed` | Information | `targetUserId`, `actorUserId`, `from`, `to` |
   | `user.locked`, `user.unlocked`, `user.password_reset` | Information | `targetUserId`, `actorUserId` |
 
-  Never returned: `lastError` of `outbox.publish_failed` (broker or exception text) and `reason` of the three
+  Never returned: `lastError` of `outbox.publish_failed` (broker or exception text) and `reason` of the five
   `…message_rejected` events (it can quote the JSON parser's exception and values of the rejected message). Both stay
   in the database and in the Workers log for whoever operates the system.
 - **`reasonCode` of a rejected message** (`MessageRejectionCodes` in `Omnichannel.Application`, stored next to the
@@ -882,7 +1009,7 @@ page; nothing in the API writes, changes or deletes an event.
   | `invalid_json` | is not JSON, or not the JSON of an envelope | all |
   | `empty_body` | is the JSON value `null` | all |
   | `unexpected_event_type` | has an event type the queue does not handle | all |
-  | `missing_task_id` | names no task (`order.created`, `stock.sync.requested`, `report.export.requested`) | all |
+  | `missing_task_id` | names no task (`order.created`, `stock.sync.requested`, `report.export.requested`, `invoice.requested`, `email.requested`) | all |
   | `missing_message_ids` | has no `messageId` or no `correlationId` | all |
   | `message_ids_too_long` | has a `messageId` or `correlationId` of more than 100 characters | stock sync |
   | `payload_not_object` | has a payload that is not a JSON object | all |
@@ -896,14 +1023,15 @@ page; nothing in the API writes, changes or deletes an event.
   | `missing_product_id` | is an inventory change without a product | stock sync |
   | `missing_sync_target` | is a stock-sync request without channel or product | stock sync |
   | `unknown_task` | names a task that does not exist | all |
-  | `task_mismatch` | names a task that is not a stock-sync task for its product and channel, or not an export task with its export row | stock sync, export |
+  | `task_mismatch` | names a task that is not a stock-sync task for its product and channel, not an export task with its export row, or not an invoice / e-mail task with its order | stock sync, export, invoice, e-mail |
   | `task_of_other_channel` | names a task of another channel than the queue it arrived on | stock sync |
 
-  "all" = Order Worker, Stock Sync Worker and Report Export Worker (task 020 added no code of its own). A new
+  "all" = Order Worker, Stock Sync Worker, Report Export Worker, Invoice Worker and Notification Worker (tasks 020
+  and 024 added no code of their own). A new
   rejection path gets its own constant (listed in `MessageRejectionCodes.All`), a case in
   `MessageRejectionTests` and a label in `vi.json` / `en.json` + `REJECTION_CODES` (`features/logs/eventSummary.ts`).
-- **`actorEmail` / `targetEmail`:** the e-mail address of the user named by `actorUserId`, `requestedBy` or
-  `acknowledgedBy`, and by `targetUserId`. A value that is no user id (`system`, `system:order-worker`) or names a
+- **`actorEmail` / `targetEmail`:** the e-mail address of the user named by `actorUserId`, `requestedBy`,
+  `acknowledgedBy` or `paidBy`, and by `targetUserId`. A value that is no user id (`system`, `system:order-worker`) or names a
   user that does not exist is null. Read from the returned `details` only.
 - **Cost:** one `COUNT`, one page query and - only when the page names users - one user lookup for all of them
   (`WHERE Id IN (…)`), whatever the page size. The list uses the existing indexes (`CreatedAt`, `CorrelationId`,
@@ -913,14 +1041,14 @@ page; nothing in the API writes, changes or deletes an event.
   order; `GET /api/processing/tasks?correlationId=…` its tasks.
 - **Adding an event type:**
   1. a constant in the `…Events` class of its feature in `Omnichannel.Application` (`InventoryEvents`,
-     `OrderProcessingEvents`, `ProcessingEvents`, `StockSyncEvents`, `ReconciliationEvents`, `ReportEvents`, `OutboxEvents`, `AlertEvents`,
-     `UserEvents`; a new
+     `OrderProcessingEvents`, `OrderPaymentEvents`, `InvoiceEvents`, `NotificationEvents`, `ProcessingEvents`,
+     `StockSyncEvents`, `ReconciliationEvents`, `ReportEvents`, `OutboxEvents`, `AlertEvents`, `UserEvents`; a new
      class must be public, static and named `…Events`), used by the code that writes the event;
   2. an entry in `SystemEventDetails.AllowedFields` with the fields that are safe to show: the application's own ids,
      codes, counts and names - never exception or broker text, never a fragment of a message the application did not
      write. A unit test fails for a constant without an entry;
-  3. an actor or a target is resolved only from the fields `actorUserId` / `requestedBy` / `acknowledgedBy` and
-     `targetUserId`: name them that way;
+  3. an actor or a target is resolved only from the fields `actorUserId` / `requestedBy` / `acknowledgedBy` /
+     `paidBy` and `targetUserId`: name them that way;
   4. a type that only an Admin may read starts with `user.`;
   5. in the frontend: the type in `EVENT_TYPES` (`features/logs/systemEventsApi.ts`), its label and its summary line
      in `vi.json` / `en.json` (`logs.eventTypes`, `logs.summary`) and its case in `eventSummary.ts`. Until then the

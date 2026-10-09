@@ -4,6 +4,8 @@ using Omnichannel.Application.Alerts;
 using Omnichannel.Application.Channels;
 using Omnichannel.Application.Common.Messaging;
 using Omnichannel.Application.Inventory;
+using Omnichannel.Application.Invoices;
+using Omnichannel.Application.Notifications;
 using Omnichannel.Application.Orders;
 using Omnichannel.Application.Processing;
 using Omnichannel.Application.Reports;
@@ -24,7 +26,7 @@ namespace Omnichannel.Application.SystemEvents;
 public static class SystemEventDetails
 {
     /// <summary>Payload fields that hold the id of the user who did it (one per event type at most).</summary>
-    public static readonly IReadOnlyList<string> ActorFields = ["actorUserId", "requestedBy", "acknowledgedBy"];
+    public static readonly IReadOnlyList<string> ActorFields = ["actorUserId", "requestedBy", "acknowledgedBy", "paidBy"];
 
     /// <summary>Payload field that holds the id of the user it was done to.</summary>
     public const string TargetField = "targetUserId";
@@ -40,6 +42,10 @@ public static class SystemEventDetails
             // Not "reason": it can quote the JSON parser's exception and values of the rejected message (its event type).
             // "reasonCode" is one of MessageRejectionCodes; rows written before task 019 have none.
             [OrderProcessingEvents.MessageRejected] = ["messageId", "reasonCode"],
+            // Never "paymentReference": it may be a bank or card reference. It is not in the payload either.
+            [OrderPaymentEvents.Paid] = ["orderId", "paymentMethod", "amount", "paidBy"],
+            [InvoiceEvents.MessageRejected] = ["messageId", "reasonCode"],
+            [NotificationEvents.MessageRejected] = ["messageId", "reasonCode"],
             [StockSyncEvents.MessageRejected] = ["messageId", "reasonCode", "queue"],
             // Counts of the run; "unreadable" lists the application's own channel names, error codes and counts.
             [ReconciliationEvents.Completed] =

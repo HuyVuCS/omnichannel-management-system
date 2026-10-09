@@ -9,7 +9,8 @@ namespace Omnichannel.Infrastructure.Persistence.Orders;
 
 /// <summary>
 /// Orders for the dashboard. The list is one COUNT plus one page query (channel/customer joined, line count as a subquery);
-/// the detail is a single SQL statement (lines with product, tasks with attempts).
+/// the detail is a single SQL statement (lines with product, tasks with attempts, the payment with the e-mail address of
+/// who recorded it, the invoice).
 /// </summary>
 internal sealed class OrderQueryService(OmnichannelDbContext dbContext) : IOrderQueryService
 {
@@ -49,7 +50,8 @@ internal sealed class OrderQueryService(OmnichannelDbContext dbContext) : IOrder
                 o.Items.Count,
                 new OrderChannelResponse(o.ChannelId, o.Channel.Slug, o.Channel.Name),
                 new OrderCustomerResponse(o.CustomerId, o.Customer.Name),
-                o.CreatedAt))
+                o.CreatedAt,
+                o.PaymentStatus))
             .ToListAsync(cancellationToken);
 
         return new PagedResult<OrderSummaryResponse>(items, query.Page, query.PageSize, totalCount);
@@ -95,7 +97,18 @@ internal sealed class OrderQueryService(OmnichannelDbContext dbContext) : IOrder
                         t.CreatedAt,
                         t.UpdatedAt,
                         t.Attempts.AsQueryable().OrderBy(a => a.AttemptNo).Select(ProcessingProjections.ToAttempt).ToList()))
-                    .ToList()))
+                    .ToList(),
+                new OrderPaymentResponse(
+                    o.PaymentStatus,
+                    o.PaidAt,
+                    // Compared as text, like the actor of a stock movement: the column is not a uuid.
+                    dbContext.Users.Where(u => u.Id.ToString() == o.PaidBy).Select(u => u.Email).FirstOrDefault(),
+                    o.PaymentMethod,
+                    o.PaymentReference),
+                dbContext.Invoices
+                    .Where(i => i.OrderId == o.OrderId)
+                    .Select(i => new OrderInvoiceResponse(i.InvoiceNumber, i.IssuedAt))
+                    .FirstOrDefault()))
             .SingleOrDefaultAsync(cancellationToken)
         ?? throw new NotFoundException(nameof(Order), orderId, OrderErrorCodes.OrderNotFound);
 }

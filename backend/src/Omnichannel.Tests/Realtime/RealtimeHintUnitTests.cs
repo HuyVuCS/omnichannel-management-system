@@ -129,6 +129,51 @@ public sealed class RealtimeHintCaptureTests
     }
 
     [Fact]
+    public void A_modified_order_gives_one_order_changed_with_its_id_and_an_unchanged_one_gives_nothing()
+    {
+        using var context = NewContext();
+        var order = new Order(Guid.NewGuid(), Guid.NewGuid(), "EXT-1", OrderStatus.Reserved);
+        context.Orders.Attach(order); // as loaded from the database: unchanged
+
+        Assert.Empty(RealtimeHintInterceptor.Capture(context));
+
+        // Paid: several fields of the one order change.
+        order.MarkPaid(PaymentMethod.Cash, "R-1", "user-1", Now);
+        var hint = Assert.Single(RealtimeHintInterceptor.Capture(context));
+
+        Assert.Equal(RealtimeHint.OrderChanged(order.OrderId), hint);
+        Assert.Equal((RealtimeEventTypes.OrderChanged, (Guid?)order.OrderId), (hint.Type, hint.OrderId));
+        // Ids only: what changed is read through the API.
+        Assert.Equal((null, null, null), (hint.Status, hint.ChannelId, hint.TaskId));
+        Assert.Equal($$"""{"events":[{"type":"order.changed","orderId":"{{order.OrderId}}"}]}""", new RealtimeHintBatch([hint]).ToPayload());
+
+        // Saved: nothing more to say about it.
+        context.ChangeTracker.AcceptAllChanges();
+        Assert.Empty(RealtimeHintInterceptor.Capture(context));
+    }
+
+    [Fact]
+    public void A_payment_lists_the_changed_order_before_its_two_new_tasks()
+    {
+        using var context = NewContext();
+        var order = new Order(Guid.NewGuid(), Guid.NewGuid(), "EXT-1", OrderStatus.Reserved);
+        var other = new Order(Guid.NewGuid(), Guid.NewGuid(), "EXT-2", OrderStatus.Reserved);
+        context.Orders.AttachRange(order, other);
+
+        order.MarkPaid(PaymentMethod.Card, null, "user-1", Now);
+        context.ProcessingTasks.Add(new ProcessingTask(ProcessingTaskType.Invoice, order.OrderId, "corr", "msg-1"));
+        context.ProcessingTasks.Add(new ProcessingTask(ProcessingTaskType.Email, order.OrderId, "corr", "msg-2"));
+
+        var hints = RealtimeHintInterceptor.Capture(context);
+
+        // One hint for the order that changed, none for the one that did not.
+        Assert.Equal(
+            [(RealtimeEventTypes.OrderChanged, null), (RealtimeEventTypes.ProcessingTaskChanged, "Invoice"), (RealtimeEventTypes.ProcessingTaskChanged, "Email")],
+            hints.Select(h => (h.Type, h.TaskType)));
+        Assert.All(hints, h => Assert.Equal(order.OrderId, h.OrderId));
+    }
+
+    [Fact]
     public void One_unit_of_work_lists_orders_then_inventory_then_tasks_and_ignores_everything_else()
     {
         using var context = NewContext();

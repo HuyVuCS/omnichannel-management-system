@@ -8,8 +8,16 @@ public static class EventTypes
 {
     public const string OrderCreated = "order.created";
     public const string InventoryChanged = "inventory.changed";
+
+    /// <summary>Issue the invoice of a paid order (queue <c>invoice.processing</c>); written when the order is paid.</summary>
     public const string InvoiceRequested = "invoice.requested";
+
+    /// <summary>
+    /// Send the payment confirmation of a paid order (queue <c>notification.email</c>); written when the order is paid
+    /// and its customer has an e-mail address.
+    /// </summary>
     public const string EmailRequested = "email.requested";
+
     public const string ProcessingRetry = "processing.retry";
 
     /// <summary>

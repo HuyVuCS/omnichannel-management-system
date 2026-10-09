@@ -9,6 +9,8 @@ using Omnichannel.Application.Channels;
 using Omnichannel.Application.Common.Messaging;
 using Omnichannel.Application.Common.Paging;
 using Omnichannel.Application.Inventory;
+using Omnichannel.Application.Invoices;
+using Omnichannel.Application.Notifications;
 using Omnichannel.Application.Orders;
 using Omnichannel.Application.Processing;
 using Omnichannel.Application.Reports;
@@ -339,6 +341,22 @@ public sealed class SystemEventEndpointsTests(ApiFactory factory)
             OrderProcessingEvents.MessageRejected,
             """{"messageId":"m-1","reasonCode":"invalid_json","reason":"Body is not a valid message envelope: 'p' is an invalid start of a value. Path: $ | LineNumber: 0 | BytePositionInLine: 0."}""",
             """{"messageId":"m-1","reasonCode":"invalid_json"}"""
+        },
+        {
+            // The payment reference is not part of the event; if it ever were, it would not be returned.
+            OrderPaymentEvents.Paid,
+            """{"orderId":"01a10000-0000-7000-8000-000000000001","paymentMethod":"BankTransfer","amount":150000.00,"paidBy":"system","paymentReference":"FT26100912345"}""",
+            """{"orderId":"01a10000-0000-7000-8000-000000000001","paymentMethod":"BankTransfer","amount":150000.00,"paidBy":"system"}"""
+        },
+        {
+            InvoiceEvents.MessageRejected,
+            """{"messageId":"m-6","reasonCode":"task_mismatch","reason":"Task 01a10000-0000-7000-8000-000000000002 is not a task of type Invoice with its order."}""",
+            """{"messageId":"m-6","reasonCode":"task_mismatch"}"""
+        },
+        {
+            NotificationEvents.MessageRejected,
+            """{"messageId":"m-7","reasonCode":"invalid_payload","reason":"Payload is not a valid task request: The JSON value could not be converted to System.Guid. anna@example.com"}""",
+            """{"messageId":"m-7","reasonCode":"invalid_payload"}"""
         },
         {
             StockSyncEvents.MessageRejected,

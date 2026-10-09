@@ -23,6 +23,7 @@ public sealed class OmnichannelDbContext(DbContextOptions<OmnichannelDbContext> 
     public DbSet<SystemEventLog> SystemEventLogs => Set<SystemEventLog>();
     public DbSet<Alert> Alerts => Set<Alert>();
     public DbSet<ReportExport> ReportExports => Set<ReportExport>();
+    public DbSet<Invoice> Invoices => Set<Invoice>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {

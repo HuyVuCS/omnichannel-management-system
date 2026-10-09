@@ -9,7 +9,7 @@ namespace Omnichannel.Application.Common.Messaging;
 /// </summary>
 /// <param name="TaskId">
 /// The processing task the message drives, when it already exists (<c>order.created</c>, <c>stock.sync.requested</c>,
-/// <c>report.export.requested</c>); otherwise null.
+/// <c>report.export.requested</c>, <c>invoice.requested</c>, <c>email.requested</c>); otherwise null.
 /// </param>
 /// <param name="OccurredAt">When the business change happened (<c>OutboxEvent.CreatedAt</c>), not when it was published.</param>
 /// <param name="Payload">The event payload as a JSON object (not a string).</param>
@@ -35,11 +35,13 @@ public sealed record MessageEnvelope(
     }
 
     /// <summary>
-    /// <c>order.created</c>, <c>stock.sync.requested</c> and <c>report.export.requested</c> rows use the task id as
-    /// aggregate id. <c>inventory.changed</c> has no task yet: stock-sync tasks are created per channel by the consumer.
+    /// <c>order.created</c>, <c>stock.sync.requested</c>, <c>report.export.requested</c>, <c>invoice.requested</c> and
+    /// <c>email.requested</c> rows use the task id as aggregate id. <c>inventory.changed</c> has no task yet: stock-sync
+    /// tasks are created per channel by the consumer.
     /// </summary>
     private static Guid? TaskIdOf(OutboxEvent outboxEvent) =>
         outboxEvent.EventType is EventTypes.OrderCreated or EventTypes.StockSyncRequested or EventTypes.ReportExportRequested
+            or EventTypes.InvoiceRequested or EventTypes.EmailRequested
         && Guid.TryParse(outboxEvent.AggregateId, out var taskId)
             ? taskId
             : null;

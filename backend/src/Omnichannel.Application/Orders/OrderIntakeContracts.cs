@@ -23,4 +23,10 @@ public static class OrderErrorCodes
 
     /// <summary><c>GET /api/orders/{id}</c>: no such order.</summary>
     public const string OrderNotFound = "order_not_found";
+
+    /// <summary>Payment: the order is not <c>Reserved</c>, so there is nothing to pay for.</summary>
+    public const string OrderNotPayable = "order_not_payable";
+
+    /// <summary>Payment: the order was paid before (an order is paid once).</summary>
+    public const string OrderAlreadyPaid = "order_already_paid";
 }
