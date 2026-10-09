@@ -744,7 +744,7 @@ with our GUIDs (no normalisation, mappings unused); channel product ids with our
 | --- | --- | --- | --- |
 | Authentication | `POST /api/webhooks/{slug}` is anonymous to JWT; the caller proves itself with **HMAC-SHA256** over `"{timestamp}.{raw body}"` with the channel's secret: headers `X-Webhook-Timestamp` (Unix seconds) and `X-Webhook-Signature: v1=<hex>` (several comma-separated `v1=` values allowed); constant-time comparison; timestamp within ±5 min of the API clock | Doc §6 "verify signature/secret"; the scheme of common webhook providers; the timestamp bounds replays, the order idempotency makes a replay inside the window a duplicate | A real channel prescribes its own scheme (then one verifier per channel kind) |
 | Secrets | Per channel slug in configuration (`Webhooks:Channels:{slug}:Secrets`, one or two for rotation, ≥ 32 characters), from user-secrets / environment only; never logged; a slug without a secret has no webhook (404 like an unknown channel). Key helper `scripts/setup-webhook-secrets.ps1` | Doc §6 secrets in environment/secret manager; no secret in the database; rotation without downtime | Channels are created at runtime and need webhooks (then a secret store) |
-| Identity of a webhook | After a valid signature the request acts as `webhook:{slug}` (audit fields, `CreatedBy` of task and outbox row), with **no role**: it can reach nothing but this endpoint | Audit must say who wrote; a webhook is not staff | — |
+| Identity of a webhook | After a valid signature the request acts as `webhook:{slug}` (audit fields of what it writes; the order's submitter as `receivedBy` — corrected in "Task 023 result": tasks and outbox rows have no `CreatedBy`), with **no role**: it can reach nothing but this endpoint | Audit must say who wrote; a webhook is not staff | — |
 | Rate limit | Fixed window per (client IP, slug), 120 per minute, 429; applied before anything else; body limit 64 KiB (413) | Doc §6 rate limit for public/webhook endpoints; IP alone would let one sender exhaust every channel | Behind a proxy: ForwardedHeaders (025) |
 | Body | `{ externalOrderId, customer { externalCustomerId, name, phone?, email? }, items [ { externalProductId? \| externalSku?, quantity } ] }`; exactly one identifier per item; same limits as the order intake (128-character order id, ≤ 100 items, quantity 1–10,000) | A channel speaks in its own ids and words; our limits stay one set | — |
 | Item resolution | The key rule of the simulator: an item names a mapping by its external product id, or — for a mapping without one — by its external SKU; the mapping and its channel must be Active; anything else is a 400 on the item | One rule for "how a channel knows a product" (`SimulatedChannelStock.ExternalKeyOf`); unique since 023 A3 | — |
@@ -758,3 +758,25 @@ with our GUIDs (no normalisation, mappings unused); channel product ids with our
 29. Webhook contract: HMAC-SHA256 signature headers, timestamp window, channel-shaped body (doc §11 names only the route).
 30. `ChannelCustomers` table (the ERD has no customer mapping per channel).
 31. Webhook secrets per channel in configuration; the webhook acts as `webhook:{slug}` without a role.
+
+## Task 023 result (reviewed 2026-10-09)
+
+`POST /api/webhooks/{slug}`: rate limit per client address and configured slug → raw body ≤ 64 KiB → Active channel
+with a secret → timestamp window and HMAC-SHA256 over `"{timestamp}.{raw bytes}"` (constant time, every secret and
+signature compared) in a resource filter before model binding → role-less, unauthenticated principal
+`webhook:{slug}` → JSON + validation → items through Active mappings (`ChannelProductKey`) → customer through
+`ChannelCustomers` (migration; created on first sight, never updated) → the order intake unchanged. Key helper
+`setup-webhook-secrets.ps1`, signing helper `send-webhook.ps1`. Part A: an unexpected read failure ends only its
+channel (`unexpected`), in-sync pairs with a transient final failure get one task (`failedRetried`), one external SKU
+per channel among mappings without an external product id (migration `ChannelProductExternalSku`, 409
+`external_sku_taken`). Backend 1559/1559, 0 warnings, mutants 19/19 and 37/37; frontend 455 tests, 2 of 2 full runs and
+the slow run green, first-load set unchanged; both migrations and the secrets applied on development; smoke 34/34 on
+development. Doc deviations 29–31 confirmed. Review: `docs/tasks/023-*.review.md`.
+
+| Topic | Decision | Reason | Revisit when |
+| --- | --- | --- | --- |
+| Webhook identity mechanism | A resource filter on the one webhook action sets a principal with only `sub` = `webhook:{slug}`, no authentication type, no role; not an authentication scheme | No policy (the fallback included) can accept it; nothing outside that action can create it; a bearer token never acts through a webhook | — |
+| Submitter of an order (review 023 q1, corrects "Task 023 plan") | Recorded as `receivedBy` in the `order.created` payload for every input path; `ProcessingTasks` / `OutboxEvents` keep timestamps only. A webhook's rows that have audit fields (customer, `ChannelCustomers`) carry `webhook:{slug}` | The plan assumed `CreatedBy` columns that never existed; adding audit columns to processing tables answers no question a user has asked | Users need to see who submitted an order → `ReceivedBy` on `Orders`, set by the Order Worker from the payload |
+| 404 timing (review 023 q2) | An unconfigured slug is answered without a query, an inactive configured one after one; accepted | Slugs are not secrets; equal timing would cost a query per made-up slug | — |
+| Rate-limit scope | In-memory fixed windows per API instance; unknown slugs share one window per address | No shared limiter without new infrastructure; made-up slugs must not multiply limiters | 025: several instances, `ForwardedHeaders` behind a proxy |
+| Error codes | `webhook_signature_invalid`, `webhook_timestamp_invalid`, `webhook_body_too_large`, `webhook_rate_limited`, `channel_not_found`, plus the intake's | One ProblemDetails contract for every refusal | — |
