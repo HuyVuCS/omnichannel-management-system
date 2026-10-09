@@ -204,4 +204,12 @@
     <value>Quantity</value>
     <comment>Webhook order line.</comment>
   </data>
+  <data name="paymentMethod" xml:space="preserve">
+    <value>Payment method</value>
+    <comment>Order payment.</comment>
+  </data>
+  <data name="paymentReference" xml:space="preserve">
+    <value>Payment reference</value>
+    <comment>Order payment.</comment>
+  </data>
 </root>

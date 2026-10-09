@@ -2,11 +2,15 @@ using Microsoft.Extensions.Options;
 using Omnichannel.Application;
 using Omnichannel.Application.Channels;
 using Omnichannel.Application.Common.Abstractions;
+using Omnichannel.Application.Notifications;
 using Omnichannel.Infrastructure;
 using Omnichannel.Infrastructure.ExternalChannels;
+using Omnichannel.Infrastructure.ExternalProviders;
 using Omnichannel.Infrastructure.Persistence.Channels;
 using Omnichannel.Infrastructure.RabbitMQ;
 using Omnichannel.Infrastructure.S3;
+using Omnichannel.Workers.InvoiceWorker;
+using Omnichannel.Workers.NotificationWorker;
 using Omnichannel.Workers.OrderWorker;
 using Omnichannel.Workers.OutboxPublisher;
 using Omnichannel.Workers.ReconciliationWorker;
@@ -70,12 +74,46 @@ public static class WorkerHostSetup
         services.AddSingleton<IValidateOptions<ReportExportWorkerOptions>, ReportExportWorkerOptionsValidator>();
         services.AddScoped<ReportExportMessageHandler>();
 
+        // Payment follow-up (doc §8.4): the invoice and the confirmation e-mail of a paid order, two independent
+        // workers. Their providers are simulated, each behind its own timeout and circuit breaker. Workers host only.
+        services.AddOptions<InvoiceWorkerOptions>()
+            .Bind(configuration.GetSection(InvoiceWorkerOptions.SectionName))
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<InvoiceWorkerOptions>, InvoiceWorkerOptionsValidator>();
+        services.AddScoped<InvoiceMessageHandler>();
+
+        services.AddOptions<NotificationWorkerOptions>()
+            .Bind(configuration.GetSection(NotificationWorkerOptions.SectionName))
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<NotificationWorkerOptions>, NotificationWorkerOptionsValidator>();
+        services.AddOptions<NotificationsOptions>()
+            .Bind(configuration.GetSection(NotificationsOptions.SectionName))
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<NotificationsOptions>, NotificationsOptionsValidator>();
+        services.AddScoped<EmailMessageHandler>();
+
+        services.AddSimulatedPaymentProviders(configuration);
+        services.AddOptions<ProviderResilienceOptions>(ProviderResilienceOptions.InvoiceProvider)
+            .Configure<IOptions<InvoiceWorkerOptions>>((resilience, worker) =>
+            {
+                resilience.CallTimeout = worker.Value.CallTimeout;
+                resilience.CircuitBreaker = worker.Value.CircuitBreaker;
+            });
+        services.AddOptions<ProviderResilienceOptions>(ProviderResilienceOptions.EmailSender)
+            .Configure<IOptions<NotificationWorkerOptions>>((resilience, worker) =>
+            {
+                resilience.CallTimeout = worker.Value.CallTimeout;
+                resilience.CircuitBreaker = worker.Value.CircuitBreaker;
+            });
+
         // Order matters: the topology is declared before any publisher/consumer starts.
         services.AddHostedService<RabbitMqTopologyInitializer>();
         services.AddHostedService<OutboxPublisherService>();
         services.AddHostedService<OrderWorkerService>();
         services.AddHostedService<StockSyncWorkerService>();
         services.AddHostedService<ReportExportWorkerService>();
+        services.AddHostedService<InvoiceWorkerService>();
+        services.AddHostedService<NotificationWorkerService>();
         services.AddHostedService<ReportExportCleanupService>();
         services.AddHostedService<ReconciliationService>();
 

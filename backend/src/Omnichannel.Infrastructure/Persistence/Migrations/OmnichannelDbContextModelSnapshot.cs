@@ -542,6 +542,53 @@ namespace Omnichannel.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Omnichannel.Domain.Entities.Invoice", b =>
+                {
+                    b.Property<Guid>("OrderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("InvoiceNumber")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset>("IssuedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ProviderReference")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<decimal>("TotalAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.HasKey("OrderId");
+
+                    b.HasIndex("InvoiceNumber")
+                        .IsUnique();
+
+                    b.ToTable("Invoices", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_Invoices_TotalAmount_NonNegative", "\"TotalAmount\" >= 0");
+                        });
+                });
+
             modelBuilder.Entity("Omnichannel.Domain.Entities.Order", b =>
                 {
                     b.Property<Guid>("OrderId")
@@ -564,6 +611,28 @@ namespace Omnichannel.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(128)
                         .HasColumnType("character varying(128)");
+
+                    b.Property<DateTimeOffset?>("PaidAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("PaidBy")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("PaymentMethod")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("PaymentReference")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("PaymentStatus")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasDefaultValue("Unpaid");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -595,6 +664,8 @@ namespace Omnichannel.Infrastructure.Persistence.Migrations
 
                     b.ToTable("Orders", null, t =>
                         {
+                            t.HasCheckConstraint("CK_Orders_Payment_Consistent", "(\"PaymentStatus\" = 'Unpaid' AND \"PaidAt\" IS NULL AND \"PaidBy\" IS NULL AND \"PaymentMethod\" IS NULL AND \"PaymentReference\" IS NULL) OR (\"PaymentStatus\" = 'Paid' AND \"PaidAt\" IS NOT NULL AND \"PaidBy\" IS NOT NULL AND \"PaymentMethod\" IS NOT NULL)");
+
                             t.HasCheckConstraint("CK_Orders_TotalAmount_NonNegative", "\"TotalAmount\" >= 0");
                         });
                 });
@@ -1320,6 +1391,17 @@ namespace Omnichannel.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("Product");
+                });
+
+            modelBuilder.Entity("Omnichannel.Domain.Entities.Invoice", b =>
+                {
+                    b.HasOne("Omnichannel.Domain.Entities.Order", "Order")
+                        .WithOne()
+                        .HasForeignKey("Omnichannel.Domain.Entities.Invoice", "OrderId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Order");
                 });
 
             modelBuilder.Entity("Omnichannel.Domain.Entities.Order", b =>

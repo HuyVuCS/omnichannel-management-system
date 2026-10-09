@@ -11,7 +11,8 @@ namespace Omnichannel.Api.Controllers;
 [Authorize(Policy = AuthorizationPolicies.AnyStaff)]
 public sealed class OrdersController(
     IOrderIntakeService orderIntakeService,
-    IOrderQueryService orderQueryService) : ControllerBase
+    IOrderQueryService orderQueryService,
+    IOrderPaymentService orderPaymentService) : ControllerBase
 {
     [HttpGet]
     [ProducesResponseType<PagedResult<OrderSummaryResponse>>(StatusCodes.Status200OK)]
@@ -38,4 +39,20 @@ public sealed class OrdersController(
         SubmitOrderRequest request,
         CancellationToken cancellationToken) =>
         Accepted(await orderIntakeService.SubmitAsync(slug, request, cancellationToken));
+
+    /// <summary>
+    /// Records that a <c>Reserved</c> order was paid and queues its invoice and - when the customer has an e-mail
+    /// address - its payment confirmation. The order's status and the stock do not change.
+    /// </summary>
+    [HttpPost("{orderId:guid}/payment")]
+    [Authorize(Policy = AuthorizationPolicies.ManagerOrAdmin)]
+    [ProducesResponseType<PayOrderResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<PayOrderResponse>> Pay(
+        Guid orderId,
+        PayOrderRequest request,
+        CancellationToken cancellationToken) =>
+        Ok(await orderPaymentService.PayAsync(orderId, request, cancellationToken));
 }

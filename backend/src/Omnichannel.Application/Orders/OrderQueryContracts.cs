@@ -9,6 +9,7 @@ public sealed record OrderChannelResponse(Guid ChannelId, string Slug, string Na
 public sealed record OrderCustomerResponse(Guid CustomerId, string Name);
 
 /// <param name="ItemCount">Number of order lines.</param>
+/// <param name="PaymentStatus">Independent of <paramref name="Status"/>: a paid order keeps its status.</param>
 public sealed record OrderSummaryResponse(
     Guid OrderId,
     string ExternalOrderId,
@@ -17,9 +18,13 @@ public sealed record OrderSummaryResponse(
     int ItemCount,
     OrderChannelResponse Channel,
     OrderCustomerResponse Customer,
-    DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt,
+    PaymentStatus PaymentStatus);
 
-/// <summary>An order with its lines and every processing task (with all attempts) tied to it.</summary>
+/// <summary>
+/// An order with its lines, its payment, its invoice and every processing task (with all attempts) tied to it.
+/// </summary>
+/// <param name="Invoice">Null until the invoice task of the order has succeeded.</param>
 public sealed record OrderDetailResponse(
     Guid OrderId,
     string ExternalOrderId,
@@ -30,7 +35,22 @@ public sealed record OrderDetailResponse(
     OrderCustomerResponse Customer,
     DateTimeOffset CreatedAt,
     IReadOnlyList<OrderItemResponse> Items,
-    IReadOnlyList<OrderTaskResponse> Tasks);
+    IReadOnlyList<OrderTaskResponse> Tasks,
+    OrderPaymentResponse Payment,
+    OrderInvoiceResponse? Invoice);
+
+/// <summary>The payment of an order; every field but <paramref name="Status"/> is null while it is <c>Unpaid</c>.</summary>
+/// <param name="PaidByEmail">The e-mail address of the user who recorded the payment; null when that user is gone.</param>
+/// <param name="Reference">The optional reference entered with the payment.</param>
+public sealed record OrderPaymentResponse(
+    PaymentStatus Status,
+    DateTimeOffset? PaidAt,
+    string? PaidByEmail,
+    PaymentMethod? Method,
+    string? Reference);
+
+/// <param name="Number">The number the invoice provider issued.</param>
+public sealed record OrderInvoiceResponse(string Number, DateTimeOffset IssuedAt);
 
 /// <param name="Stock">Ordered quantity.</param>
 /// <param name="UnitPrice">Price snapshot taken at intake.</param>

@@ -152,4 +152,12 @@
     <value>This item is not sold on this channel.</value>
     <comment>Webhook order line: no Active mapping of the channel has this external product id / external SKU.</comment>
   </data>
+  <data name="OrderNotPayable" xml:space="preserve">
+    <value>Only an order whose stock is reserved can be paid.</value>
+    <comment>Payment, 409 order_not_payable.</comment>
+  </data>
+  <data name="OrderAlreadyPaid" xml:space="preserve">
+    <value>This order has already been paid.</value>
+    <comment>Payment, 409 order_already_paid.</comment>
+  </data>
 </root>

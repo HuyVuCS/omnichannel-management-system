@@ -27,6 +27,12 @@ public static class RealtimeEventTypes
     /// <summary>An order was stored (<c>orderId</c>, <c>channelId</c>, <c>status</c>).</summary>
     public const string OrderCreated = "order.created";
 
+    /// <summary>
+    /// A stored order changed (<c>orderId</c>): today, it was paid. What changed is not in the hint; the client refetches
+    /// the order.
+    /// </summary>
+    public const string OrderChanged = "order.changed";
+
     /// <summary>Stock of some products changed (<c>productIds</c>, or <c>all</c> when there are too many to list).</summary>
     public const string InventoryChanged = "inventory.changed";
 
@@ -66,6 +72,8 @@ public sealed record RealtimeHint(string Type)
 
     public static RealtimeHint OrderCreated(Guid orderId, Guid channelId, OrderStatus status) =>
         new(RealtimeEventTypes.OrderCreated) { OrderId = orderId, ChannelId = channelId, Status = status.ToString() };
+
+    public static RealtimeHint OrderChanged(Guid orderId) => new(RealtimeEventTypes.OrderChanged) { OrderId = orderId };
 
     /// <summary>At most <see cref="RealtimeHintBatch.MaxProductIds"/> ids are listed; beyond that the hint says <c>all</c>.</summary>
     public static RealtimeHint InventoryChanged(IReadOnlyCollection<Guid> productIds) =>

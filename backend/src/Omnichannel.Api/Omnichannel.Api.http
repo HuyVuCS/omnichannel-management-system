@@ -57,6 +57,48 @@ X-Correlation-Id: webhook-sample-1
   ]
 }
 
+### ---- Payment, invoice and e-mail (task 024; paying: Manager/Admin) ----
+### A Reserved order is marked as paid; in the same transaction its invoice and - when the customer has an e-mail
+### address - its payment confirmation are queued as two independent tasks. The order's status and stock do not change.
+
+### Orders that can be paid (pick an orderId; paymentStatus is in every row)
+GET {{baseUrl}}/api/orders?status=Reserved
+Authorization: Bearer {{login.response.body.accessToken}}
+
+### Pay it: paymentMethod = Cash | BankTransfer | Card | EWallet; paymentReference optional (at most 100 characters)
+### 200 { orderId, paymentStatus, paidAt, invoiceTaskId, emailTaskId | null }; 400 on a field; 403 for Staff;
+### 404 order_not_found; 409 order_not_payable (not Reserved); 409 order_already_paid
+# @name payment
+POST {{baseUrl}}/api/orders/00000000-0000-0000-0000-000000000000/payment
+Authorization: Bearer {{login.response.body.accessToken}}
+Content-Type: application/json
+Accept-Language: en
+
+{
+  "paymentMethod": "BankTransfer",
+  "paymentReference": "FT26100912345"
+}
+
+### The invoice task: attempts, worker (InvoiceWorker), error code
+GET {{baseUrl}}/api/processing/tasks/{{payment.response.body.invoiceTaskId}}
+Authorization: Bearer {{login.response.body.accessToken}}
+
+### The e-mail task (NotificationWorker); emailTaskId is null when the customer has no address
+GET {{baseUrl}}/api/processing/tasks/{{payment.response.body.emailTaskId}}
+Authorization: Bearer {{login.response.body.accessToken}}
+
+### The order: payment { status, paidAt, paidByEmail, method, reference } and invoice { number, issuedAt } | null
+GET {{baseUrl}}/api/orders/{{payment.response.body.orderId}}
+Authorization: Bearer {{login.response.body.accessToken}}
+
+### The audit event of the payment (Manager/Admin): orderId, paymentMethod, amount, paidBy - never the reference
+GET {{baseUrl}}/api/system-events?eventType=order.paid&orderId={{payment.response.body.orderId}}
+Authorization: Bearer {{login.response.body.accessToken}}
+
+### Retry a failed invoice or e-mail task (Manager/Admin) - 202; 409 task_not_failed
+POST {{baseUrl}}/api/processing/tasks/{{payment.response.body.invoiceTaskId}}/retry
+Authorization: Bearer {{login.response.body.accessToken}}
+
 ### ---- Channel product mappings (task 014) and realtime / dashboard (task 015) ----
 # Run "Login" first: the requests below take the token from its response. Ids are placeholders: copy them from the
 # responses of "Channels" and "Products" (or set the variables here). No secrets in this file.

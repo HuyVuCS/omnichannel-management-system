@@ -11,6 +11,8 @@ using Omnichannel.Application.Common.Abstractions;
 using Omnichannel.Application.Customers;
 using Omnichannel.Application.Dashboard;
 using Omnichannel.Application.Inventory;
+using Omnichannel.Application.Invoices;
+using Omnichannel.Application.Notifications;
 using Omnichannel.Application.Orders;
 using Omnichannel.Application.Processing;
 using Omnichannel.Application.Products;
@@ -26,6 +28,8 @@ using Omnichannel.Infrastructure.Persistence.Customers;
 using Omnichannel.Infrastructure.Persistence.Dashboard;
 using Omnichannel.Infrastructure.Persistence.Interceptors;
 using Omnichannel.Infrastructure.Persistence.Inventories;
+using Omnichannel.Infrastructure.Persistence.Invoices;
+using Omnichannel.Infrastructure.Persistence.Notifications;
 using Omnichannel.Infrastructure.Persistence.Orders;
 using Omnichannel.Infrastructure.Persistence.Processing;
 using Omnichannel.Infrastructure.Persistence.Products;
@@ -88,6 +92,10 @@ public static class DependencyInjection
         services.AddScoped<IWebhookOrderService, WebhookOrderService>();
         services.AddScoped<IOrderReservationService, OrderReservationService>();
         services.AddScoped<IOrderQueryService, OrderQueryService>();
+        services.AddScoped<IOrderPaymentService, OrderPaymentService>();
+        // The persistence of the Invoice Worker and the Notification Worker (the providers they call are the host's).
+        services.AddScoped<IInvoiceProcessingService, InvoiceProcessingService>();
+        services.AddScoped<IEmailProcessingService, EmailProcessingService>();
         services.AddScoped<IProcessingTaskService, ProcessingTaskService>();
         services.AddScoped<IDashboardService, DashboardService>();
         services.AddScoped<ISystemEventService, SystemEventService>();

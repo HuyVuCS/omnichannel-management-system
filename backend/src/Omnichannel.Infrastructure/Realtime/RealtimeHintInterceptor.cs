@@ -10,7 +10,8 @@ namespace Omnichannel.Infrastructure.Realtime;
 /// Produces the realtime hints of every unit of work, for the API and the Workers alike (registered in
 /// <c>AddInfrastructure</c>), so no service can forget one:
 /// <list type="number">
-/// <item><b>capture</b> before the save, from the change tracker: added <see cref="Order"/> → <c>order.created</c>; added
+/// <item><b>capture</b> before the save, from the change tracker: added <see cref="Order"/> → <c>order.created</c>; a
+/// modified <see cref="Order"/> → <c>order.changed</c> (one per saved order, whatever changed); added
 /// <see cref="InventoryMovement"/> → <c>inventory.changed</c> (every stock change writes a movement, also the raw-SQL
 /// updates); added <see cref="ProcessingTask"/> or a changed task status → <c>processing.task.changed</c>;</item>
 /// <item><b>send</b> after the save succeeded, as one <c>pg_notify</c> on the context's connection. Inside the caller's
@@ -120,6 +121,10 @@ public sealed class RealtimeHintInterceptor(ILogger<RealtimeHintInterceptor> log
             {
                 case Order order when entry.State == EntityState.Added:
                     orders.Add(RealtimeHint.OrderCreated(order.OrderId, order.ChannelId, order.Status));
+                    break;
+
+                case Order order when entry.State == EntityState.Modified:
+                    orders.Add(RealtimeHint.OrderChanged(order.OrderId));
                     break;
 
                 case InventoryMovement movement when entry.State == EntityState.Added:

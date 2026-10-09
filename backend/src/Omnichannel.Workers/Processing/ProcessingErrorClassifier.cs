@@ -3,6 +3,8 @@ using System.Text.RegularExpressions;
 using Npgsql;
 using Omnichannel.Application.Channels;
 using Omnichannel.Application.Common.Exceptions;
+using Omnichannel.Application.Invoices;
+using Omnichannel.Application.Notifications;
 using Omnichannel.Application.Processing;
 
 namespace Omnichannel.Workers.Processing;
@@ -21,7 +23,9 @@ public sealed record ProcessingError(string ErrorCode, string ErrorMessage, bool
 /// <item>Permanent → no retry: PostgreSQL class 22 (data exception), 23514 (check), 23502 (not null), 23503 (foreign key).
 /// 23505 (unique) is handled explicitly where it is expected and otherwise treated as unexpected.</item>
 /// <item>A channel call (<see cref="ChannelApiException"/>) keeps its own code and message; it says itself whether trying again
-/// can help: timeout, unavailable, rate limited and open circuit → retry; rejected by the channel → permanent.</item>
+/// can help: timeout, unavailable, rate limited and open circuit → retry; rejected by the channel → permanent. The same
+/// holds for a call to the invoice provider (<see cref="InvoiceProviderException"/>) and for sending an e-mail
+/// (<see cref="EmailSendException"/>).</item>
 /// </list>
 /// Shared by every worker, so all task types follow the same retry/DLQ model.
 /// </summary>
@@ -50,6 +54,16 @@ public static partial class ProcessingErrorClassifier
         if (FindInChain<ChannelApiException>(exception) is { } channel)
         {
             return new ProcessingError(channel.ErrorCode, Sanitize(channel.Message), IsPermanent: !channel.IsTransient);
+        }
+
+        if (FindInChain<InvoiceProviderException>(exception) is { } invoice)
+        {
+            return new ProcessingError(invoice.ErrorCode, Sanitize(invoice.Message), IsPermanent: !invoice.IsTransient);
+        }
+
+        if (FindInChain<EmailSendException>(exception) is { } email)
+        {
+            return new ProcessingError(email.ErrorCode, Sanitize(email.Message), IsPermanent: !email.IsTransient);
         }
 
         var code = CodeOf(exception);
