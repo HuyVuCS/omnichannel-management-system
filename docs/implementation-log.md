@@ -780,3 +780,34 @@ development. Doc deviations 29–31 confirmed. Review: `docs/tasks/023-*.review.
 | 404 timing (review 023 q2) | An unconfigured slug is answered without a query, an inactive configured one after one; accepted | Slugs are not secrets; equal timing would cost a query per made-up slug | — |
 | Rate-limit scope | In-memory fixed windows per API instance; unknown slugs share one window per address | No shared limiter without new infrastructure; made-up slugs must not multiply limiters | 025: several instances, `ForwardedHeaders` behind a proxy |
 | Error codes | `webhook_signature_invalid`, `webhook_timestamp_invalid`, `webhook_body_too_large`, `webhook_rate_limited`, `channel_not_found`, plus the intake's | One ProblemDetails contract for every refusal | — |
+
+## Task 024 plan — payment step, Invoice Worker, Notification Worker (2026-10-09)
+
+**Decision (user, 2026-10-09: "the recommended option"):** "Payment Succeeded" (doc §8.4) comes from a **simulated
+payment step**: a Manager/Admin marks a `Reserved` order as paid on its detail page; in the same transaction the
+`invoice.requested` and `email.requested` work is queued as two independent tasks. Alternatives: a payment field set
+by webhooks or users (no defined moment that triggers §8.4); no payment (invoice and email at reservation — skips the
+doc's trigger). Roadmap change: the work is split — **024** backend, **024b** frontend (payment on the order detail,
+labels), as 020/021.
+
+| Topic | Decision | Reason | Revisit when |
+| --- | --- | --- | --- |
+| Where payment lives | Columns on `Orders`: `PaymentStatus` (`Unpaid` default / `Paid`), `PaidAt`, `PaidBy`, `PaymentMethod` (`Cash`, `BankTransfer`, `Card`, `EWallet`), `PaymentReference` (≤ 100, optional); check: all set when `Paid`, none when `Unpaid`. **`Order.Status` is not changed by payment** | Doc §14: one status must not stand for payment, invoice, email and sync; one full payment per order needs no table | Partial payments, refunds, several payments per order → a `Payments` table |
+| Who and when | `POST /api/orders/{orderId}/payment` (Manager/Admin), only for `Status = Reserved` and `Unpaid` (409 `order_not_payable` / `order_already_paid`), decided by a conditional update under the row lock | Payment is a financial, audited action (as manual retry); an order without reserved stock cannot be paid | POS staff need to take payments → widen to AnyStaff |
+| One transaction | Payment columns + `SystemEventLog` `order.paid` + `ProcessingTask(Invoice)` + `invoice.requested` + (only when the customer has an e-mail address) `ProcessingTask(Email)` + `email.requested`; idempotency keys `invoice:{orderId}`, `email:payment:{orderId}` | Decision A for every queued work: nothing is lost if the broker is down; one invoice and one confirmation per order even under a race | — |
+| No e-mail address | No e-mail task (the response says so); an address removed after payment → the task fails permanently `email_no_recipient` | A task that can never succeed should not exist; a later removal is the operator's to see | Customers get other channels (SMS) |
+| Stock | Payment changes no stock (no `Ship`, no `Completed`) | Fulfilment is a separate step the doc does not describe | A fulfilment / completion task |
+| Invoice | `Invoices` table, `OrderId` PK/FK (1:1): provider number, issued at, total amount snapshot, audit. Invoice Worker on `invoice.processing`: attempt first, order read without a lock, **provider call outside any transaction** with the idempotency key `invoice:{orderId}`, then one transaction: invoice row + task `Succeeded` (an existing invoice of the order completes the task without a call) | The pattern of every worker; a provider that is called twice for one order returns the same invoice | — |
+| Invoice provider | `IInvoiceProviderClient` with a **simulated** provider (no accounts exist; as the channels): modes `Succeed` / `TransientError` / `PermanentError` / `Timeout`, latency, Development-only rules by external order id prefix (`SIM-INV-PERM-`, `SIM-INV-TEMP-`); the number is derived deterministically from the key (`SIM-{yyyyMM}-{8 hex}`), so a repeated call returns the same number without stored state; Polly timeout + circuit breaker, no retry inside | Same reasoning as log "Task 014 plan": retry/DLQ demonstrable without code changes; a real e-invoice provider replaces the adapter | A real provider |
+| E-mail | `IEmailSender` with a **simulated** sender: modes and latency as above, Development-only rules by recipient domain (`@sim-reject.test` → rejected, `@sim-temp.test` → transient on attempt 1); logs subject and a masked address, never the body; nothing stored besides task and attempts. Notification Worker on `notification.email`: payment confirmation built at send time (order lines, total, paid at) in `Notifications:Language` (default `vi`) | No mail infrastructure in the stack; a real SMTP/API adapter replaces it; the task history is the record | A real mail provider (025/026) |
+| Independence | Invoice and e-mail tasks never wait for, read or change each other; a failed e-mail leaves the invoice and the order untouched (doc §8.4, §5.3) | The doc's central example | — |
+| Failures | Every final failure as for every worker: task / attempt `Failed`, `processing.failed`, `ProcessingFailed` alert, DLQ; manual retry unchanged (generic copy of the message); rejected messages `invoice.message_rejected` / `email.message_rejected` with `reasonCode` | One contract for all workers | — |
+| Realtime | The hint interceptor also captures a **modified** `Order` → `order.changed` (`orderId`); task hints unchanged | Orders change after creation now (log 013 "Revisit when") | — |
+| Audit | `order.paid` (Information): `orderId`, `paymentMethod`, `amount`, `paidBy` allowlisted; the payment reference is stored but not in the event | Financial action; the reference may be a bank or card reference | — |
+
+### Deviations / additions to the architecture document
+32. Payment columns on `Orders` and `POST /api/orders/{orderId}/payment` (no Payment entity in the ERD; "Payment
+    Succeeded" of §8.4 is this step).
+33. `Invoices` table.
+34. Simulated invoice provider and e-mail sender behind interfaces (no external accounts).
+35. Hint `order.changed`; event types `order.paid`, `invoice.message_rejected`, `email.message_rejected`.
