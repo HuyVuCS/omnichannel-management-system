@@ -426,6 +426,24 @@ intake as an order of the Order Entry page: 202 with a task, processed by the Or
   `ChannelProductExternalSku` and `ChannelCustomers`, section 4, the webhook secrets, and a running API / Workers
   host or it starts them).
 
+## Smoke scripts
+
+`scripts\smoke\task-NNN.ps1` checks a task end to end over HTTP and ends with a table (one row per check, `OK` first)
+and exit code 0 / 1. Run one from the repository root: `powershell -ExecutionPolicy Bypass -File scripts\smoke\task-023.ps1`.
+
+- **Local default** (no variable set): the script uses a running API / Workers host or builds and starts them
+  (Development, with the user-secrets), stops what it started, and - when it has a frontend step - runs
+  `npm run build` and `npm test` after stopping its hosts. The admin comes from `backend/src/Omnichannel.Api/.env`;
+  test users get random passwords and are locked at the end.
+- **Another environment** (a throwaway database, another port): set `SMOKE_BASE_URL`, `SMOKE_ADMIN_EMAIL` and
+  `SMOKE_ADMIN_PASSWORD`. Nothing is started for it: its API and Workers host must already be running.
+- **`SMOKE_SKIP_FRONTEND=1`** - only together with `SMOKE_BASE_URL`: the frontend build and tests are not run and the
+  table shows one step `frontend checks skipped (SMOKE_SKIP_FRONTEND)`. Next to the hosts of another environment the
+  frontend tests are slow and say nothing about that environment. On the local default the variable is refused: the
+  script stops at its start with a message that names both variables.
+- `scripts\smoke\_assert-selftest.ps1` checks the helpers themselves (strict comparison, the table, the skip switch);
+  it needs no API.
+
 ## Frontend
 
 React dashboard in `frontend/` (Vietnamese by default, English switchable in the header).

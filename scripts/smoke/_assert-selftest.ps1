@@ -1,4 +1,5 @@
-# Self-test of the strict Assert-Step of _common.ps1. Needs no API, no database and no secrets.
+# Self-test of the strict Assert-Step, the result table and the SMOKE_SKIP_FRONTEND switch of _common.ps1. Needs no
+# API, no database and no secrets.
 # Usage (repository root):  powershell -ExecutionPolicy Bypass -File scripts\smoke\_assert-selftest.ps1
 . (Join-Path $PSScriptRoot '_common.ps1')
 
@@ -108,6 +109,29 @@ Add-Case 'table: every step starts its row with its verdict' (
     (@($lines | Where-Object { $_ -cmatch '^False\s+03 after the long one' }).Count -eq 1))
 # Both values of step 02 are in the table completely: 2 x 150 characters, spread over several lines.
 Add-Case 'table: a long value is wrapped, not cut' (($table.ToCharArray() | Where-Object { $_ -ceq [char]'Z' }).Count -eq 300)
+$script:Results.Clear()
+
+# SMOKE_SKIP_FRONTEND: only the value 1, only for another environment (SMOKE_BASE_URL); refused on the local default.
+function Get-SkipVerdict([string]$Skip, [bool]$Foreign) {
+    try { return "$(Test-SkipFrontend $Skip $Foreign)" } catch { return 'throw' }
+}
+Add-Case 'skip: not set, local default -> the checks run' ((Get-SkipVerdict '' $false) -ceq 'False')
+Add-Case 'skip: not set, another environment -> the checks run' ((Get-SkipVerdict '' $true) -ceq 'False')
+Add-Case 'skip: 1 with another environment -> skipped' ((Get-SkipVerdict '1' $true) -ceq 'True')
+Add-Case 'skip: 1 on the local default -> refused' ((Get-SkipVerdict '1' $false) -ceq 'throw')
+Add-Case 'skip: 0 on the local default -> the checks run' ((Get-SkipVerdict '0' $false) -ceq 'False')
+Add-Case 'skip: another value than 1 -> the checks run' ((Get-SkipVerdict 'true' $true) -ceq 'False')
+Add-Case 'skip: the refusal names both variables' ($(try { [void](Test-SkipFrontend '1' $false); $false } catch { ($_.Exception.Message -clike '*SMOKE_SKIP_FRONTEND*') -and ($_.Exception.Message -clike '*SMOKE_BASE_URL*') }))
+# A skipped run records exactly one passed step that names the variable, and starts no npm.
+$savedSkip = $script:SkipFrontend
+$script:SkipFrontend = $true
+$script:Results.Clear()
+Invoke-FrontendChecks 7
+Add-Case 'skip: one step in the table' ($script:Results.Count -eq 1)
+Add-Case 'skip: the step is numbered, names the variable and passes' (
+    ($script:Results[0].Step -ceq '07 frontend checks skipped (SMOKE_SKIP_FRONTEND)') -and ($script:Results[0].OK -eq $true) -and
+    ($script:Results[0].Expected -ceq 'skipped') -and ($script:Results[0].Actual -ceq 'skipped'))
+$script:SkipFrontend = $savedSkip
 $script:Results.Clear()
 
 $script:Cases | Format-Table -AutoSize | Out-String -Width 200 | Write-Host

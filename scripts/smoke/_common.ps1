@@ -5,10 +5,24 @@
 # Hosts are started only for the local default (SMOKE_BASE_URL not set): a host started here runs with the development
 # user-secrets, so it must never be started on behalf of another environment. With SMOKE_BASE_URL set, the API and the
 # Workers host of that environment must already be running.
+# SMOKE_SKIP_FRONTEND=1 (only together with SMOKE_BASE_URL): the frontend build and tests of Invoke-FrontendChecks are
+# skipped and recorded as one step - next to the hosts of another environment they are slow and say nothing about it.
 
 $ErrorActionPreference = 'Stop'
+
+# Whether the frontend checks are skipped: only the value 1 asks for it, and only for another environment. On the local
+# default the script stops its own hosts before the frontend checks, so there is no reason to skip them: refused.
+function Test-SkipFrontend([string]$Skip, [bool]$ForeignEnvironment) {
+    if ($Skip -ne '1') { return $false }
+    if (-not $ForeignEnvironment) {
+        throw 'SMOKE_SKIP_FRONTEND=1 is allowed only together with SMOKE_BASE_URL (another environment). Remove the variable: on the local default the frontend checks are part of the smoke run.'
+    }
+    return $true
+}
+
 $script:RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $script:ForeignEnvironment = [bool]$env:SMOKE_BASE_URL
+$script:SkipFrontend = Test-SkipFrontend $env:SMOKE_SKIP_FRONTEND $script:ForeignEnvironment
 $script:BaseUrl  = if ($env:SMOKE_BASE_URL) { $env:SMOKE_BASE_URL } else { 'http://localhost:5080' }
 $script:Results  = New-Object System.Collections.Generic.List[object]
 $script:StartedApi = $null
@@ -241,8 +255,14 @@ function Invoke-Npm([string]$Arguments) {
 # Frontend production build and tests, recorded as the steps $FirstStep (npm ci, only when packages are missing),
 # $FirstStep + 1 (build) and $FirstStep + 2 (tests). Call it after the API checks and the clean-up, right before
 # Complete-Smoke: the hosts this script started are stopped first, because the test suite is memory-bound and times out
-# next to them. A host this script did not start is left alone.
+# next to them. A host this script did not start is left alone. With SMOKE_SKIP_FRONTEND=1 (another environment only)
+# nothing runs and the table gets one step that says so.
 function Invoke-FrontendChecks([int]$FirstStep, [string[]]$RequiredPackages = @()) {
+    if ($script:SkipFrontend) {
+        Write-Host 'Frontend checks skipped (SMOKE_SKIP_FRONTEND=1).' -ForegroundColor Yellow
+        Assert-Step ('{0:00} frontend checks skipped (SMOKE_SKIP_FRONTEND)' -f $FirstStep) 'skipped' 'skipped'
+        return
+    }
     try {
         Stop-Smoke
         if ((([uri]$script:BaseUrl).IsLoopback -and (Test-ApiUp)) -or (Test-WorkersRunning)) {
