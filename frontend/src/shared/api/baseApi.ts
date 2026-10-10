@@ -8,17 +8,10 @@ import {
 } from '@reduxjs/toolkit/query/react';
 import { loggedOut, selectAccessToken, type StateWithAuth } from '@/features/auth/authSlice';
 import { currentLanguage } from '@/shared/i18n';
+import { apiUrl } from './apiOrigin';
 import type { ApiError, ProblemDetails } from './types';
 
 export const CORRELATION_HEADER = 'X-Correlation-Id';
-
-/**
- * Same origin as the page, path `/api` (the dev server proxies it to the API). Absolute because fetch outside a browser
- * (tests) cannot resolve relative URLs.
- */
-function apiBaseUrl(): string {
-  return new URL('/api', window.location.origin).href;
-}
 
 function newCorrelationId(): string {
   if (typeof crypto.randomUUID === 'function') {
@@ -31,7 +24,8 @@ function newCorrelationId(): string {
 }
 
 const rawBaseQuery = fetchBaseQuery({
-  baseUrl: apiBaseUrl(),
+  // The origin of the page (the dev server proxies `/api`), or the API's own origin when the build names one.
+  baseUrl: apiUrl('/api'),
   prepareHeaders: (headers, { getState }) => {
     const token = selectAccessToken(getState() as StateWithAuth);
     if (token) {

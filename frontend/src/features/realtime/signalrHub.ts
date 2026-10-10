@@ -1,10 +1,14 @@
 // Types only: they are erased, so the library itself stays behind the dynamic import below.
 import type { HttpRequest, HttpResponse, ILogger } from '@microsoft/signalr';
+import { apiUrl } from '@/shared/api/apiOrigin';
 import { HubUnauthorizedError, type HintBatch, type HubFactory } from './hub';
 
-/** Same origin as the page (the dev server proxies `/api`, WebSockets included). */
-function hubUrl(): string {
-  return new URL('/api/hubs/notifications', window.location.origin).href;
+/**
+ * On the origin of the API: the page's own by default (the dev server proxies `/api`, WebSockets included), or the one
+ * the build names (`VITE_API_BASE_URL`).
+ */
+export function hubUrl(): string {
+  return apiUrl('/api/hubs/notifications');
 }
 
 /**
