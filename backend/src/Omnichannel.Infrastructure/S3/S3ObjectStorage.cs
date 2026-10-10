@@ -13,6 +13,11 @@ namespace Omnichannel.Infrastructure.S3;
 /// <see cref="IObjectStorage"/> over the S3 API (<c>AWSSDK.S3</c> as client library only: endpoint, addressing style and
 /// keys are configuration, see <see cref="ObjectStorageOptions"/>). One client for the process; it is thread-safe.
 /// <para>
+/// With <see cref="ObjectStorageOptions.PublicServiceUrl"/> there is a second client that is used for nothing but
+/// computing presigned links: they are signed for the origin the browsers reach, while every request this host sends
+/// itself goes to <see cref="ObjectStorageOptions.ServiceUrl"/>. The presign client never sends a request.
+/// </para>
+/// <para>
 /// A failure of the storage becomes <see cref="ObjectStorageException"/> and one warning that names the operation and
 /// the kind of failure (HTTP status and S3 error code, or the exception type) - never the exception itself, whose text
 /// can carry the endpoint. Links and credentials are never logged.
@@ -21,30 +26,29 @@ namespace Omnichannel.Infrastructure.S3;
 internal sealed class S3ObjectStorage : IObjectStorage, IDisposable
 {
     private readonly AmazonS3Client _client;
+    private readonly AmazonS3Client _presignClient;
     private readonly string _bucket;
-    private readonly Protocol _protocol;
+    private readonly Protocol _presignProtocol;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<S3ObjectStorage> _logger;
 
     public S3ObjectStorage(IOptions<ObjectStorageOptions> options, TimeProvider timeProvider, ILogger<S3ObjectStorage> logger)
     {
         var settings = options.Value;
-        var useHttp = settings.ServiceUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase);
 
-        _client = new AmazonS3Client(
-            new BasicAWSCredentials(settings.AccessKeyId, settings.SecretAccessKey),
-            new AmazonS3Config
-            {
-                ServiceURL = settings.ServiceUrl,
-                ForcePathStyle = settings.ForcePathStyle,
-                AuthenticationRegion = settings.Region,
-                UseHttp = useHttp,
-                Timeout = settings.RequestTimeout,
-                // The caller is a user waiting for an answer: one more try, then 503.
-                MaxErrorRetry = 1
-            });
+        _client = CreateClient(settings, settings.ServiceUrl);
+        if (string.IsNullOrWhiteSpace(settings.PublicServiceUrl))
+        {
+            _presignClient = _client;
+            _presignProtocol = ProtocolOf(settings.ServiceUrl);
+        }
+        else
+        {
+            _presignClient = CreateClient(settings, settings.PublicServiceUrl);
+            _presignProtocol = ProtocolOf(settings.PublicServiceUrl);
+        }
+
         _bucket = settings.BucketName;
-        _protocol = useHttp ? Protocol.HTTP : Protocol.HTTPS;
         _timeProvider = timeProvider;
         _logger = logger;
     }
@@ -139,9 +143,35 @@ internal sealed class S3ObjectStorage : IObjectStorage, IDisposable
         }
     }
 
-    public void Dispose() => _client.Dispose();
+    public void Dispose()
+    {
+        if (!ReferenceEquals(_presignClient, _client))
+        {
+            _presignClient.Dispose();
+        }
 
-    /// <summary>Computed locally from the secret key: no request is sent.</summary>
+        _client.Dispose();
+    }
+
+    private static bool IsHttp(string serviceUrl) => serviceUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase);
+
+    private static Protocol ProtocolOf(string serviceUrl) => IsHttp(serviceUrl) ? Protocol.HTTP : Protocol.HTTPS;
+
+    private static AmazonS3Client CreateClient(ObjectStorageOptions settings, string serviceUrl) =>
+        new(
+            new BasicAWSCredentials(settings.AccessKeyId, settings.SecretAccessKey),
+            new AmazonS3Config
+            {
+                ServiceURL = serviceUrl,
+                ForcePathStyle = settings.ForcePathStyle,
+                AuthenticationRegion = settings.Region,
+                UseHttp = IsHttp(serviceUrl),
+                Timeout = settings.RequestTimeout,
+                // The caller is a user waiting for an answer: one more try, then 503.
+                MaxErrorRetry = 1
+            });
+
+    /// <summary>Computed locally from the secret key, for the origin the browsers reach: no request is sent.</summary>
     private PresignedUrl Presign(HttpVerb verb, string key, TimeSpan lifetime, string? contentType)
     {
         var expiresAt = _timeProvider.GetUtcNow().Add(lifetime);
@@ -151,7 +181,7 @@ internal sealed class S3ObjectStorage : IObjectStorage, IDisposable
             Key = key,
             Verb = verb,
             Expires = expiresAt.UtcDateTime,
-            Protocol = _protocol
+            Protocol = _presignProtocol
         };
         if (contentType is not null)
         {
@@ -159,7 +189,7 @@ internal sealed class S3ObjectStorage : IObjectStorage, IDisposable
             request.ContentType = contentType;
         }
 
-        return new PresignedUrl(_client.GetPreSignedURL(request), expiresAt);
+        return new PresignedUrl(_presignClient.GetPreSignedURL(request), expiresAt);
     }
 
     /// <summary>

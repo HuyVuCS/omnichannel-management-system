@@ -67,6 +67,7 @@ try
     builder.Services.AddRbacAuthorization();
     builder.Services.AddWebhooks(builder.Configuration);
     builder.Services.AddApiRateLimiting();
+    builder.Services.AddReverseProxySupport(builder.Configuration);
 
     var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
     builder.Services.AddCors(options => options.AddPolicy(FrontendCorsPolicy, policy => policy
@@ -107,7 +108,10 @@ try
 
     var app = builder.Build();
 
-    // Pipeline order matters: correlation id first so request logs and error bodies carry it.
+    // Pipeline order matters. Behind a reverse proxy the client's address and scheme come first: the request log, the
+    // rate limits, HTTPS redirection and HSTS below all depend on them. Then the correlation id, so request logs and
+    // error bodies carry it.
+    app.UseReverseProxySupport();
     app.UseMiddleware<CorrelationIdMiddleware>();
     app.UseSerilogRequestLogging();
     app.UseExceptionHandler();
@@ -135,7 +139,7 @@ try
         options.ApplyCurrentCultureToResponseHeaders = true;
     });
 
-    app.UseHttpsRedirection();
+    app.UseHttpsRedirectionBehindProxy();
     app.UseCors(FrontendCorsPolicy);
     app.UseRateLimiter();
     app.UseAuthentication();
@@ -144,7 +148,7 @@ try
     app.MapControllers();
     // A connection is closed when its token expires; the client reconnects with a new one (and is checked again).
     app.MapHub<NotificationsHub>(NotificationsHub.Path, options => options.CloseOnAuthenticationExpiration = true);
-    app.MapHealthChecks("/health").AllowAnonymous();
+    app.MapHealthChecks(ReverseProxySetup.HealthPath).AllowAnonymous();
 
     await using (var scope = app.Services.CreateAsyncScope())
     {

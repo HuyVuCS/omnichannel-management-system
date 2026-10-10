@@ -16,8 +16,9 @@ public static class RateLimitPolicies
     private static readonly TimeSpan WebhookWindow = TimeSpan.FromMinutes(1);
 
     /// <remarks>
-    /// Partitioned by client IP. Behind a reverse proxy/load balancer, configure
-    /// ForwardedHeaders first, otherwise every client shares the proxy's IP.
+    /// Partitioned by client IP. Behind a reverse proxy the proxy's address must be configured
+    /// (<c>ReverseProxy:KnownProxies</c>, see <see cref="Middleware.ReverseProxySetup"/>), otherwise every client
+    /// shares the proxy's IP.
     /// </remarks>
     public static IServiceCollection AddApiRateLimiting(this IServiceCollection services)
     {

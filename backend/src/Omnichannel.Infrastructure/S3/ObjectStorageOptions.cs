@@ -11,10 +11,18 @@ public sealed class ObjectStorageOptions
     public const string SectionName = "ObjectStorage";
 
     /// <summary>
-    /// Endpoint of the S3 API, e.g. <c>http://127.0.0.1:8333</c>. Presigned links are built on it, so it must be the address
-    /// the browsers of the users reach as well.
+    /// Endpoint of the S3 API as this host reaches it, e.g. <c>http://127.0.0.1:8333</c> or, inside a compose network,
+    /// <c>http://objectstorage:8333</c>. Presigned links are built on it too unless <see cref="PublicServiceUrl"/> is set.
     /// </summary>
     public string ServiceUrl { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Optional: the endpoint of the same storage as the browsers of the users reach it (its public origin behind a
+    /// reverse proxy), e.g. <c>https://files.example.com</c>. When set, every presigned link is signed for this origin -
+    /// a signature covers the host, so a link cannot be rewritten afterwards - and the requests of this host itself keep
+    /// going to <see cref="ServiceUrl"/>. Not set: links are built on <see cref="ServiceUrl"/>.
+    /// </summary>
+    public string? PublicServiceUrl { get; set; }
 
     /// <summary>Region the requests are signed for. Emulators and most S3-compatible providers accept any; some name their own.</summary>
     public string Region { get; set; } = "us-east-1";
@@ -61,12 +69,16 @@ public sealed class ObjectStorageOptionsValidator : IValidateOptions<ObjectStora
     {
         var failures = new List<string>();
 
-        if (!Uri.TryCreate(options.ServiceUrl, UriKind.Absolute, out var endpoint)
-            || (endpoint.Scheme != Uri.UriSchemeHttp && endpoint.Scheme != Uri.UriSchemeHttps)
-            || !string.IsNullOrEmpty(endpoint.UserInfo))
+        if (!IsEndpoint(options.ServiceUrl))
         {
             // Never include the value itself: a mistyped one may carry credentials.
             failures.Add("ObjectStorage:ServiceUrl must be an absolute http or https URL without credentials.");
+        }
+
+        // Blank counts as not set: an environment variable that is passed on empty must not stop the host.
+        if (!string.IsNullOrWhiteSpace(options.PublicServiceUrl) && !IsEndpoint(options.PublicServiceUrl))
+        {
+            failures.Add("ObjectStorage:PublicServiceUrl must be an absolute http or https URL without credentials, or not set.");
         }
 
         if (string.IsNullOrWhiteSpace(options.Region))
@@ -111,4 +123,9 @@ public sealed class ObjectStorageOptionsValidator : IValidateOptions<ObjectStora
 
         return failures.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failures);
     }
+
+    private static bool IsEndpoint(string? value) =>
+        Uri.TryCreate(value, UriKind.Absolute, out var endpoint)
+        && (endpoint.Scheme == Uri.UriSchemeHttp || endpoint.Scheme == Uri.UriSchemeHttps)
+        && string.IsNullOrEmpty(endpoint.UserInfo);
 }
