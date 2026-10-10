@@ -1,6 +1,12 @@
 export const ORDER_ENTRY_PATH = '/order-entry';
 export const ORDERS_PATH = '/orders';
 
+/**
+ * The API lets Manager and Admin record the payment of an order; everyone signed in may read it. Kept next to the
+ * paths, like the roles of a manual retry.
+ */
+export const PAYMENT_ROLES = ['Admin', 'Manager'] as const;
+
 /** Route pattern of the order detail page. */
 export const ORDER_DETAIL_ROUTE = `${ORDERS_PATH}/:orderId`;
 

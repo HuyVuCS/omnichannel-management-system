@@ -92,6 +92,8 @@
     "stock_limit_exceeded": "The import would take the stock beyond the allowed maximum.",
     "order_conflict": "This order ID was already used on this channel with different content. Use a new number for this order.",
     "order_not_found": "The order does not exist.",
+    "order_not_payable": "Only an order whose stock is reserved can be paid.",
+    "order_already_paid": "This order has already been paid.",
     "storage_unavailable": "The file storage cannot be reached at the moment. Please try again in a moment.",
     "task_not_found": "The processing task does not exist.",
     "task_not_failed": "The task is not failed any more, so it cannot be retried.",
@@ -523,6 +525,7 @@
       "channel": "Channel",
       "customer": "Customer",
       "status": "Status",
+      "payment": "Payment",
       "itemCount": "Lines",
       "totalAmount": "Total amount"
     },
@@ -532,6 +535,16 @@
       "InsufficientStock": "Insufficient stock",
       "Cancelled": "Cancelled",
       "Completed": "Completed"
+    },
+    "paymentStatuses": {
+      "Unpaid": "Unpaid",
+      "Paid": "Paid"
+    },
+    "paymentMethods": {
+      "Cash": "Cash",
+      "BankTransfer": "Bank transfer",
+      "Card": "Card",
+      "EWallet": "E-wallet"
     },
     "filters": {
       "channel": "Channel",
@@ -572,6 +585,32 @@
       "quantity": "Quantity",
       "unitPrice": "Unit price",
       "lineTotal": "Line total"
+    },
+    "payment": {
+      "title": "Payment",
+      "status": "Payment status",
+      "method": "Payment method",
+      "reference": "Payment reference",
+      "paidAt": "Paid at",
+      "paidBy": "Recorded by",
+      "invoice": "Invoice",
+      "invoiceIssuedAt": "Issued at {{at}}",
+      "email": "Confirmation e-mail",
+      "noEmail": "Not sent — the customer had no e-mail address when the order was paid",
+      "taskLink": "Task detail",
+      "markPaid": "Mark as paid",
+      "notPayable": "Only orders with reserved stock can be paid"
+    },
+    "payModal": {
+      "title": "Mark order as paid",
+      "order": "Order",
+      "total": "Total amount",
+      "method": "Payment method",
+      "methodPlaceholder": "Choose a method",
+      "reference": "Payment reference",
+      "referenceHint": "Receipt or transfer number",
+      "paidWithEmail": "Payment recorded. Invoice requested; confirmation e-mail requested.",
+      "paidWithoutEmail": "Payment recorded. Invoice requested; no confirmation e-mail (the customer has no e-mail address)."
     },
     "tasks": {
       "title": "Processing",
@@ -790,6 +829,9 @@
       "user_password_reset": "Password reset",
       "report_export_requested": "Export requested",
       "report_export_message_rejected": "Export message rejected",
+      "order_paid": "Order paid",
+      "invoice_message_rejected": "Invoice message rejected",
+      "email_message_rejected": "E-mail message rejected",
       "reconciliation_completed": "Stock reconciliation"
     },
     "channelErrors": {
@@ -841,6 +883,9 @@
       "user_password_reset": "Temporary password set",
       "report_export_requested": "Report: {{reportType}}",
       "report_export_message_rejected": "Message {{messageId}} rejected: {{reason}}",
+      "order_paid": "{{method}} · {{amount}}",
+      "invoice_message_rejected": "Message {{messageId}} rejected: {{reason}}",
+      "email_message_rejected": "Message {{messageId}} rejected: {{reason}}",
       "reconciliation_completed": {
         "drift": "{{drifted}} of {{checked}} products differ",
         "tasks": "{{tasksCreated}} sync tasks created",

@@ -13,7 +13,14 @@ import {
   openOptions,
   serveCustomerCatalog,
 } from '@/test/catalog';
-import { chooseOption, columnTexts, expectLanguageSwitchChangesTextOnly, rowOf, settled } from '@/test/interactions';
+import {
+  chooseOption,
+  columnTexts,
+  expectLanguageSwitchChangesTextOnly,
+  rowOf,
+  settled,
+  switchLanguage,
+} from '@/test/interactions';
 import { ORDER_ID, orderDetail, orderSummary, serveChannels } from '@/test/orders';
 import { renderApp } from '@/test/renderApp';
 import { serveExportRequests, serveExports } from '@/test/reports';
@@ -88,6 +95,7 @@ describe('orders list', () => {
     expect(columnTexts('Kênh bán')).toEqual(['Website', 'POS']);
     expect(columnTexts('Khách hàng')).toEqual(['Nguyễn Văn An', 'Trần Thị Bình']);
     expect(columnTexts('Trạng thái')).toEqual(['Đã giữ hàng', 'Không đủ hàng']);
+    expect(columnTexts('Thanh toán')).toEqual(['Chưa thanh toán', 'Chưa thanh toán']);
     expect(columnTexts('Số dòng')).toEqual(['2', '1']);
     expect(columnTexts('Tổng tiền')).toEqual(['1.234.567 ₫', '45.000 ₫']);
 
@@ -116,6 +124,7 @@ describe('orders list', () => {
       'Ngày tạo',
       'Mã đơn hàng bên ngoài',
       'Trạng thái',
+      'Thanh toán',
       'Tổng tiền',
       'Khách hàng',
       'Kênh bán',
@@ -132,6 +141,33 @@ describe('orders list', () => {
     const upToTotal = widths.slice(0, headers.indexOf('Tổng tiền') + 1).reduce((sum, width) => sum + width, 0);
     expect(upToStatus).toBeLessThanOrEqual(992);
     expect(upToTotal).toBeLessThanOrEqual(992);
+  });
+
+  it('shows the payment of each order next to its status: paid, unpaid, and a value of a newer API as it is', async () => {
+    serveOrderList([
+      orderSummary({ paymentStatus: 'Paid' }),
+      insufficient,
+      orderSummary({
+        orderId: '0199a1b2-0000-7000-8000-000000000003',
+        externalOrderId: 'WEB-20261001-REFUND',
+        // Not a value this client knows.
+        paymentStatus: 'Refunded' as OrderSummary['paymentStatus'],
+      }),
+    ]);
+    const { user } = renderOrders();
+    await screen.findByText('WEB-20261001-ABC123');
+
+    expect(columnTexts('Thanh toán')).toEqual(['Đã thanh toán', 'Chưa thanh toán', 'Refunded']);
+    // The order status is independent of the payment: a paid order is still "reserved".
+    expect(columnTexts('Trạng thái')).toEqual(['Đã giữ hàng', 'Không đủ hàng', 'Đã giữ hàng']);
+    const tagOf = (order: string, text: string) => within(rowOf(order)).getByText(text).closest('.ant-tag');
+    expect(tagOf('WEB-20261001-ABC123', 'Đã thanh toán')).toHaveClass('ant-tag-success');
+    expect(tagOf('POS-20260930-ZZ9911', 'Chưa thanh toán')).toHaveClass('ant-tag-default');
+    expect(tagOf('WEB-20261001-REFUND', 'Refunded')).toHaveClass('ant-tag-default');
+
+    await switchLanguage(user, 'EN');
+    await screen.findByText('Unpaid');
+    expect(columnTexts('Payment')).toEqual(['Paid', 'Unpaid', 'Refunded']);
   });
 
   it('restores search, sort, every filter and the page from the address (reload) and sends the local day range with its offset', async () => {
@@ -431,6 +467,9 @@ describe('customer picker', () => {
     const selected = filter('Khách hàng').closest('.ant-select')!.querySelector('.ant-select-content');
     await waitFor(() => expect(selected).toHaveTextContent(longName));
     expect(selected).toHaveAttribute('title', `${longName} — ${longEmail}`);
+
+    // The chosen customer filters the list: that request is answered before the test ends.
+    await settled();
   });
 
   it('shows the full name as the title of a value that came from the address', async () => {

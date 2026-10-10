@@ -445,7 +445,9 @@ Worker. Each task has independent status and attempts. One failed email must not
   (the reference is trimmed; blank = none).
   - **200** `{ orderId, paymentStatus: "Paid", paidAt, invoiceTaskId, emailTaskId }` - `emailTaskId` is `null` when the
     customer has no e-mail address.
-  - 400 `validation_failed` on `paymentMethod` / `paymentReference` (messages in vi / en); 403 for Staff; 404
+  - 400 `validation_failed` on `paymentMethod` / `paymentReference` (messages in vi / en; a `paymentMethod` text that
+    is none of the four is refused earlier, by the JSON binder: the error keys are `$.paymentMethod` and `request`,
+    the texts the binder's English ones); 403 for Staff; 404
     `order_not_found`; **409 `order_not_payable`** unless the order is `Reserved`; **409 `order_already_paid`** - an order
     is paid once and in full (no partial payment, no refund, no cancelling a payment).
 - **What a payment changes - and what it does not.** It fills the payment fields of the order (`PaymentStatus`
@@ -541,11 +543,33 @@ Worker. Each task has independent status and attempts. One failed email must not
   the reference is shown to every role that reads orders) and `invoice { number, issuedAt }` - `null` until the invoice
   task succeeded. `GET /api/orders` has `paymentStatus` per order (no filter by it). The two tasks are in the order's
   `tasks` and on *Sync & Processing* (`taskType=Invoice` / `Email`); the payment is a `order.changed` hint
-  ("Realtime hints"). The frontend shows the new task types and events raw and has no payment button yet (task 024b).
+  ("Realtime hints").
+- **On the order detail** (frontend, task 024b). The page has a **Payment** card between the summary and the lines,
+  for every role, built from `GET /api/orders/{id}` alone:
+  - *Payment*: the status; once paid the method, the reference, when it was paid and who recorded it.
+  - *Invoice* (paid orders): the number (with a copy button) and when it was issued - or, until the invoice exists, the
+    status of the order's `Invoice` task with a link to the task.
+  - *Confirmation e-mail* (paid orders): the status of the order's `Email` task with a link to it - or "Not sent - the
+    customer had no e-mail address when the order was paid" when the order has no such task.
+  - **"Mark as paid"** is offered to **Manager and Admin** while the order is `Reserved` and unpaid (for another
+    status they read that only orders with reserved stock can be paid; Staff sees the status only). The dialog shows
+    the order number and the total, asks for the payment method **without a default** and takes an optional reference
+    (the input stops at 100 characters: `MAX_PAYMENT_REFERENCE_LENGTH` in
+    `frontend/src/features/orders/components/PayOrderModal.tsx`, a copy of `Order.MaxPaymentReferenceLength` - the
+    server stays the authority). The dialog is the confirmation; a 409 is said in the dialog and the page behind it is
+    read again.
+  - **Live**: after a payment the card changes without "Refresh" - the paying session reads the order again, every
+    other session gets the `order.changed` hint, and the invoice and e-mail statuses follow their tasks'
+    `processing.task.changed` hints. A failed invoice or e-mail task is retried where every task is: in the task
+    blocks below the card or on the task's page. The orders list has a **Payment** column (no filter).
+  - The Logs page names `order.paid` (method, amount; the payer is the "who" column) and the two rejected-message
+    types; the error codes of attempts (`invoice_provider_*`, `email_*`) are shown as they are.
 - **Scripted check**: `powershell -ExecutionPolicy Bypass -File scripts\smoke\task-024.ps1` (needs the migration
   `PaymentAndInvoices`, section 4, and a running API / Workers host or it starts them, the Workers host in
   Development): three orders - a customer with an address, one without, one at `sim-reject.test` - paid by a smoke
-  Manager; the refused e-mail is retried at the end with a corrected address.
+  Manager; the refused e-mail is retried at the end with a corrected address. `scripts\smoke\task-024b.ps1` checks
+  what the payment card reads: one order paid with a reference, the invoice-number format, `paymentStatus` in the
+  list, and the 400 of an unknown payment method.
 
 ## Smoke scripts
 
@@ -648,6 +672,8 @@ npm run dev     # http://localhost:5173 - needs the API on http://localhost:5080
     the end of that second. What is on screen is fetched again through the API, a cached list nobody shows is dropped.
     No page polls.
   - Event → tags (`tagsForEvent`; `all: true` = the same types without ids): `order.created` → order lists, summary;
+    `order.changed` → that order, order lists (a payment recorded in another session; not the summary, which has no
+    payment figure);
     `inventory.changed` → stock, movements, product lists, **alert lists** (a low-stock alert shows the stock of now),
     summary; `processing.task.changed` → that task, task lists, its order, summary; `alert.changed` → that alert,
     alert lists, summary; `low_stock.created` → alert lists, summary (it arrives with an `alert.changed` in the same

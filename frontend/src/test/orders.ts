@@ -89,6 +89,7 @@ export function orderSummary(overrides: Partial<OrderSummary> = {}): OrderSummar
     orderId: ORDER_ID,
     externalOrderId: 'WEB-20261001-ABC123',
     status: 'Reserved',
+    paymentStatus: 'Unpaid',
     totalAmount: 1234567,
     itemCount: 2,
     channel: { channelId: 'channel-website', slug: 'website', name: 'Website' },
@@ -119,6 +120,8 @@ export function orderDetail(overrides: Partial<OrderDetail> = {}): OrderDetail {
         attempts: [attempt()],
       },
     ],
+    payment: { status: 'Unpaid', paidAt: null, paidByEmail: null, method: null, reference: null },
+    invoice: null,
     ...overrides,
   };
 }

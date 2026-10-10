@@ -38,6 +38,16 @@ export function tagsForEvent(event: HintEvent): RealtimeTag[] {
     case 'order.created':
       return [event.all ? 'Order' : { type: 'Order', id: LIST }, 'DashboardSummary'];
 
+    // An order changed after it was created (a payment, possibly recorded in another session). The summary has no
+    // payment figure, so it is left alone.
+    case 'order.changed':
+      return event.all || typeof event.orderId !== 'string'
+        ? ['Order']
+        : [
+            { type: 'Order', id: event.orderId },
+            { type: 'Order', id: LIST },
+          ];
+
     case 'inventory.changed':
       return [
         'Inventory',
