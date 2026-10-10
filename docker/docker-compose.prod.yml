@@ -19,6 +19,10 @@ x-logging: &logging
     max-size: "10m"
     max-file: "5"
 
+# The commit an image was built from (release: set GIT_COMMIT before "build"); the backup manifest records it.
+x-revision: &revision
+  org.opencontainers.image.revision: ${GIT_COMMIT:-unknown}
+
 x-object-storage: &object-storage
   ObjectStorage__ServiceUrl: http://objectstorage:8333
   ObjectStorage__BucketName: ${OBJECT_STORAGE_BUCKET:?OBJECT_STORAGE_BUCKET is required}
@@ -101,6 +105,7 @@ services:
     build:
       context: ../backend
       dockerfile: ../docker/migrate.Dockerfile
+      labels: *revision
     image: omnichannel-migrate:local
     restart: "no"
     depends_on:
@@ -116,6 +121,7 @@ services:
     build:
       context: ../backend
       dockerfile: ../docker/api.Dockerfile
+      labels: *revision
     image: omnichannel-api:local
     restart: unless-stopped
     depends_on:
@@ -154,11 +160,15 @@ services:
     mem_limit: 768m
     logging: *logging
 
-  # Scale with: up -d --scale workers=2. Every instance has its own id in the attempt history (its container host name).
+  # WORKERS_REPLICAS instances (up -d --scale workers=N overrides it for that one command). Every instance has its own
+  # id in the attempt history (its container host name).
   workers:
+    deploy:
+      replicas: ${WORKERS_REPLICAS:-1}
     build:
       context: ../backend
       dockerfile: ../docker/workers.Dockerfile
+      labels: *revision
     image: omnichannel-workers:local
     restart: unless-stopped
     depends_on:

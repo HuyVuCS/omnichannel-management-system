@@ -59,6 +59,9 @@ Commit: <hash> (or "not committed" + reason)
 ## Development steps (applied)
 <each step run on development: command (no secret), result>
 
+## Production steps (applied)
+<only when the task has production steps: command (no secret), result>
+
 ## Manual steps for the user
 <none / only what Claude Code could not apply, with the reason>
 ```
@@ -92,6 +95,21 @@ step into "Manual steps for the user". The rule "never read, print or commit sec
 
 One-time setup by the user (outside this repository): the persistent user environment variable
 `OMNICHANNEL_MIGRATOR_CONNECTION`, then a restart of the editor / Claude app so Claude Code inherits it.
+
+## Production steps
+Rule since task 025b (go-live). Production is the compose project `omnichannel-prod` on the user's machine, the Vercel
+project and the branch `production`; procedures are in `docs/runbook.md`.
+
+- Until go-live production was empty: Claude Code built, migrated, started and smoke-tested it in task 025b.
+- **From the first login of the user, production holds real state.** A production step (release, migration, restore,
+  secret rotation, scaling) is run only when a task or the user asks for it, by the runbook, **after a backup** of
+  that moment (`scripts\deploy\backup-prod.ps1`).
+- Never `down -v`, never removing a volume of `omnichannel-prod`, never `--force` / `-Force` over `docker/.env.prod`.
+  Migrations: listed before applying, additive only - the rules of "Development steps" unchanged.
+- Smoke scripts against production only when the task says so (they leave smoke data); `task-025b.ps1` is read-only
+  and may run after every release.
+- A push to `production` is a release of the frontend: only as the last step of the runbook's release procedure.
+- The report gets a section "Production steps (applied)": each step with its command (no secret) and its result.
 
 ## Moving to a fresh chat
 Long chats cost tokens. The repository documents are the memory, so a new chat loses nothing:
