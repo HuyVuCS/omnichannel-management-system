@@ -850,3 +850,23 @@ address, vi/en confirmation from resources). `payment` / `invoice` on the detail
 | Mutation invalidation | As manual retry: any API answer but network/5xx refetches the order, the order lists, the task lists and the summary | A 409 means the screen is stale | — |
 | Client limit copy | Reference `maxLength` 100 next to its use, commented (log "Task 021 result") | Server stays the authority | — |
 | Verification | Five full `npm test` runs + one slow run (new dialog and mutation = new async behaviour); real-browser check on the production build | Rule of 016–021 for new async UI | — |
+
+## Task 024b result (reviewed 2026-10-10)
+
+Order detail: "Payment" card (doc §5.3 tree — payment status, method, reference, paid at, recorded by; invoice number
+with issue time on one row, or the `Invoice` task's status + link; `Email` task status + link, or "not sent — no address
+at payment time"); "Mark as paid" dialog for Manager/Admin while `Reserved` and `Unpaid` (number and total read-only,
+method required without default, optional reference, in-flight guard, 409 above the form with the page refetched);
+`payOrder` invalidates as manual retry; "Payment" column in the orders list; `order.changed` → order + order lists;
+Logs labels for `order.paid`, `invoice.message_rejected`, `email.message_rejected`. Part A: 16-hex simulated invoice
+numbers (27 characters), the binder's 400 of an unknown method text pinned (keys `$.paymentMethod`, `request`),
+`unexpected` labelled. Backend 1759/1759, 0 warnings; frontend 486 tests, five consecutive green full runs and the slow
+run green; first-load set 969.84 kB raw (+0.29); smoke 024b 24/24 on development; production-build browser check incl.
+a payment from another session reaching a Staff page live. Review: `docs/tasks/024b-*.review.md`.
+
+| Topic | Decision | Reason | Revisit when |
+| --- | --- | --- | --- |
+| Binder errors (review 024b q1) | Unchanged for now: a malformed JSON value answers with the binder's English text (CLR type name included) under `$…` and `request`; recorded for 026 | Pre-existing on every endpoint, no client of ours triggers it; the fix changes the validation pipeline everywhere | 026 |
+| Required-field text (review 024b q2) | AntD's default ("Please enter …") stays until one application-wide `validateMessages` in 026 | Affects every form | 026 |
+| Invoice on the card (review 024b q3) | Number (copyable) and issue time on one row | The number with its copy button does not fit a two-column value cell at 1280 px | — |
+| Dialog submission | `applyProblemToForm` directly instead of `useFormSubmission` (two success texts by `emailTaskId`) | The hook has one fixed success text | A second dialog needs result-dependent texts → extend the hook |
