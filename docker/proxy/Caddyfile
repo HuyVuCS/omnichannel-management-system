@@ -1,0 +1,74 @@
+# Reverse proxy of the production stack (docker-compose.prod.yml): the only entry from outside.
+#
+# Two sites on two origins:
+#   API      {$API_SITE_ADDRESS}      -> api:8080            /api/* and /health only
+#   storage  {$STORAGE_SITE_ADDRESS}  -> objectstorage:8333  the S3 API, for presigned links
+#
+# A site address that is a host name (api.example.com) gets HTTPS with an automatic certificate; the defaults
+# (http://:8080, http://:8081) are plain HTTP for a tunnel that ends TLS in front of this proxy.
+{
+	# No admin endpoint: the configuration is this file.
+	admin off
+
+	servers {
+		# Who may say on whose behalf a request arrives (X-Forwarded-For / -Proto): the tunnel in front of this proxy,
+		# when there is one. From everybody else these headers are overwritten. The default trusts nobody that can
+		# reach this container.
+		trusted_proxies static {$PROXY_TRUSTED_PROXIES:127.0.0.1/32}
+	}
+}
+
+# Access log of both sites: no query string - the realtime hub carries the access token there and a presigned link
+# its signature - and no credential header.
+(access_log) {
+	log {
+		output stdout
+		format filter {
+			wrap json
+			fields {
+				request>uri regexp "\?.*" ""
+				request>headers>Authorization delete
+				request>headers>Cookie delete
+				request>headers>Referer delete
+				resp_headers>Location regexp "\?.*" ""
+			}
+		}
+	}
+}
+
+{$API_SITE_ADDRESS:http://:8080} {
+	import access_log
+
+	@api path /api/* /health
+	handle @api {
+		# Kestrel's own limit for a request body (28.6 MB), rounded up: the proxy does not add a rule of its own.
+		request_body {
+			max_size 30MB
+		}
+
+		# WebSocket upgrades of /api/hubs/* pass through as they are. The API gets exactly one client address: the
+		# one this proxy determined (the peer, or what a trusted tunnel reported).
+		reverse_proxy api:8080 {
+			header_up X-Forwarded-For {client_ip}
+		}
+	}
+
+	# Nothing else is served here.
+	handle {
+		respond 404
+	}
+}
+
+{$STORAGE_SITE_ADDRESS:http://:8081} {
+	import access_log
+
+	# The Host header is passed on unchanged (Caddy's default) and the path is not rewritten: a presigned link is
+	# signed for exactly this host and path. Bodies are streamed, not buffered: an upload of several megabytes goes
+	# straight through.
+	reverse_proxy objectstorage:8333
+}
+
+# For the container health check only; not published.
+http://:8090 {
+	respond /healthz 200
+}

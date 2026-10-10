@@ -1,0 +1,233 @@
+# Production stack: everything on one machine, one entry (the reverse proxy). README "Production deployment".
+#
+#   powershell -ExecutionPolicy Bypass -File scripts\deploy\new-prod-env.ps1 -AdminEmail you@example.com   # once: docker/.env.prod
+#   docker compose --env-file docker/.env.prod -f docker/docker-compose.prod.yml build
+#   docker compose --env-file docker/.env.prod -f docker/docker-compose.prod.yml up -d --wait postgres
+#   docker compose --env-file docker/.env.prod -f docker/docker-compose.prod.yml --profile migrate run --rm migrate
+#   docker compose --env-file docker/.env.prod -f docker/docker-compose.prod.yml up -d --wait
+#
+# Without TLS (default): the proxy listens on 127.0.0.1 only, API on API_PORT and storage on STORAGE_PORT, plain HTTP;
+# a tunnel on this machine ends TLS in front of it. With TLS on a machine that has public names: add
+# -f docker/docker-compose.prod.tls.yml and set API_SITE_ADDRESS / STORAGE_SITE_ADDRESS to the two host names.
+#
+# No value in this file is a secret: every password and key comes from the environment file, which is never committed.
+name: omnichannel-prod
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+x-object-storage: &object-storage
+  ObjectStorage__ServiceUrl: http://objectstorage:8333
+  ObjectStorage__BucketName: ${OBJECT_STORAGE_BUCKET:?OBJECT_STORAGE_BUCKET is required}
+  ObjectStorage__AccessKeyId: ${OBJECT_STORAGE_ACCESS_KEY_ID:?OBJECT_STORAGE_ACCESS_KEY_ID is required}
+  ObjectStorage__SecretAccessKey: ${OBJECT_STORAGE_SECRET_ACCESS_KEY:?OBJECT_STORAGE_SECRET_ACCESS_KEY is required}
+
+services:
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      OMNI_DB_NAME: omnichannel
+      OMNI_MIGRATOR_PASSWORD: ${OMNI_MIGRATOR_PASSWORD:?OMNI_MIGRATOR_PASSWORD is required}
+      OMNI_APP_PASSWORD: ${OMNI_APP_PASSWORD:?OMNI_APP_PASSWORD is required}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    networks: [backend]
+    healthcheck:
+      # -h localhost forces TCP, so the check only passes after init scripts finished.
+      test: ["CMD-SHELL", "pg_isready -h localhost -U postgres -d omnichannel"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    mem_limit: 1g
+    logging: *logging
+
+  rabbitmq:
+    # The management UI is in the image but no port of this service is published.
+    image: rabbitmq:4-management
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?RABBITMQ_USER is required}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    networks: [backend]
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+    mem_limit: 1g
+    logging: *logging
+
+  # S3-compatible object storage (SeaweedFS, everything in one process): product images and export files. The bucket is
+  # private - every request needs a signature. Browsers reach it through the proxy's storage site only.
+  objectstorage:
+    image: chrislusf/seaweedfs:4.48
+    restart: unless-stopped
+    command:
+      - mini
+      - -dir=/data
+      - -bucket=${OBJECT_STORAGE_BUCKET}
+      # Browsers upload and read with presigned links from the frontend: its origin, exactly as the browser sends it.
+      - -s3.allowedOrigins=${FRONTEND_ORIGIN:?FRONTEND_ORIGIN is required}
+      - -admin.ui=false
+      - -webdav=false
+      - -s3.port.iceberg=0
+    environment:
+      AWS_ACCESS_KEY_ID: ${OBJECT_STORAGE_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${OBJECT_STORAGE_SECRET_ACCESS_KEY}
+    volumes:
+      - objectstorage-data:/data
+    networks: [backend, edge]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8333/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    mem_limit: 1g
+    logging: *logging
+
+  # One-shot: applies the pending migrations as the migrator role and exits. Run it before "up" (see the top of this file).
+  migrate:
+    profiles: ["migrate"]
+    build:
+      context: ../backend
+      dockerfile: ../docker/migrate.Dockerfile
+    image: omnichannel-migrate:local
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      OMNICHANNEL_MIGRATOR_CONNECTION: "Host=postgres;Port=5432;Database=omnichannel;Username=omnichannel_migrator;Password=${OMNI_MIGRATOR_PASSWORD}"
+    networks: [backend]
+    mem_limit: 512m
+    logging: *logging
+
+  api:
+    build:
+      context: ../backend
+      dockerfile: ../docker/api.Dockerfile
+    image: omnichannel-api:local
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      objectstorage:
+        condition: service_healthy
+    environment:
+      <<: *object-storage
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__Default: "Host=postgres;Port=5432;Database=omnichannel;Username=omnichannel_app;Password=${OMNI_APP_PASSWORD}"
+      Jwt__SigningKey: ${JWT_SIGNING_KEY:?JWT_SIGNING_KEY is required}
+      BootstrapAdmin__Email: ${BOOTSTRAP_ADMIN_EMAIL:-}
+      BootstrapAdmin__Password: ${BOOTSTRAP_ADMIN_PASSWORD:-}
+      # Presigned links are signed for the origin the browsers reach (the proxy's storage site).
+      ObjectStorage__PublicServiceUrl: ${STORAGE_PUBLIC_URL:?STORAGE_PUBLIC_URL is required}
+      # The one origin the browsers call this API from.
+      Cors__AllowedOrigins__0: ${FRONTEND_ORIGIN}
+      # Client address and scheme are taken from the proxy, and from nobody else.
+      ReverseProxy__KnownProxies__0: ${PROXY_IP:-172.30.250.2}
+      # TLS ends at the edge. A request that got there without TLS is redirected to HTTPS; API_HTTPS_REDIRECT=false is
+      # for a stack that has no TLS anywhere (a local run).
+      ASPNETCORE_HTTPS_PORT: "443"
+      ReverseProxy__RedirectToHttps: ${API_HTTPS_REDIRECT:-true}
+      Webhooks__Channels__website__Secrets__0: ${WEBHOOK_SECRET_WEBSITE:?WEBHOOK_SECRET_WEBSITE is required}
+      Webhooks__Channels__pos__Secrets__0: ${WEBHOOK_SECRET_POS:?WEBHOOK_SECRET_POS is required}
+      Webhooks__Channels__digital-platform__Secrets__0: ${WEBHOOK_SECRET_DIGITAL_PLATFORM:?WEBHOOK_SECRET_DIGITAL_PLATFORM is required}
+    networks: [backend, edge]
+    healthcheck:
+      # The image has neither curl nor wget: bash opens the socket itself.
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /health HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3 && head -n 1 <&3 | grep -q ' 200 '"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    mem_limit: 768m
+    logging: *logging
+
+  # Scale with: up -d --scale workers=2. Every instance has its own id in the attempt history (its container host name).
+  workers:
+    build:
+      context: ../backend
+      dockerfile: ../docker/workers.Dockerfile
+    image: omnichannel-workers:local
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      objectstorage:
+        condition: service_healthy
+    environment:
+      <<: *object-storage
+      DOTNET_ENVIRONMENT: Production
+      ConnectionStrings__Default: "Host=postgres;Port=5432;Database=omnichannel;Username=omnichannel_app;Password=${OMNI_APP_PASSWORD}"
+      RabbitMq__HostName: rabbitmq
+      RabbitMq__UserName: ${RABBITMQ_USER}
+      RabbitMq__Password: ${RABBITMQ_PASSWORD}
+    networks: [backend]
+    mem_limit: 768m
+    logging: *logging
+
+  # The only service with host ports.
+  proxy:
+    image: caddy:2.11
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+      objectstorage:
+        condition: service_healthy
+    environment:
+      API_SITE_ADDRESS: ${API_SITE_ADDRESS:-http://:8080}
+      STORAGE_SITE_ADDRESS: ${STORAGE_SITE_ADDRESS:-http://:8081}
+      PROXY_TRUSTED_PROXIES: ${PROXY_TRUSTED_PROXIES:-127.0.0.1/32}
+    ports:
+      - "${PROXY_BIND:-127.0.0.1}:${API_PORT:-8080}:8080"
+      - "${PROXY_BIND:-127.0.0.1}:${STORAGE_PORT:-8081}:8081"
+    volumes:
+      - ./proxy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # Certificates and their account key (TLS mode); nothing is stored without TLS.
+      - proxy-data:/data
+      - proxy-config:/config
+    networks:
+      edge:
+        ipv4_address: ${PROXY_IP:-172.30.250.2}
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8090/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    mem_limit: 128m
+    logging: *logging
+
+networks:
+  # Database, broker, storage and the two hosts: no way out and no host port.
+  backend:
+    internal: true
+  # The proxy and what it serves. The proxy has a fixed address, which is the only one the API believes forwarded
+  # headers from; the other containers get theirs from the upper half of the subnet.
+  edge:
+    ipam:
+      config:
+        - subnet: ${EDGE_SUBNET:-172.30.250.0/28}
+          # What reaches the proxy through its host ports (a tunnel on this machine) arrives from this address.
+          gateway: ${EDGE_GATEWAY:-172.30.250.1}
+          ip_range: ${EDGE_DYNAMIC_RANGE:-172.30.250.8/29}
+
+volumes:
+  postgres-data:
+  rabbitmq-data:
+  objectstorage-data:
+  proxy-data:
+  proxy-config:
