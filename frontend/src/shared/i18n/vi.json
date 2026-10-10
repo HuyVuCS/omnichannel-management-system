@@ -92,6 +92,8 @@
     "stock_limit_exceeded": "Số lượng nhập làm tồn kho vượt quá giới hạn cho phép.",
     "order_conflict": "Mã đơn hàng này đã được dùng trên kênh này với nội dung khác. Hãy tạo số mới cho đơn hàng này.",
     "order_not_found": "Đơn hàng không tồn tại.",
+    "order_not_payable": "Chỉ có thể thanh toán đơn hàng đã giữ hàng.",
+    "order_already_paid": "Đơn hàng này đã được thanh toán.",
     "storage_unavailable": "Hiện không kết nối được kho lưu trữ tệp. Vui lòng thử lại sau giây lát.",
     "task_not_found": "Tác vụ xử lý không tồn tại.",
     "task_not_failed": "Tác vụ không còn ở trạng thái thất bại nên không thể thử lại.",
@@ -523,6 +525,7 @@
       "channel": "Kênh bán",
       "customer": "Khách hàng",
       "status": "Trạng thái",
+      "payment": "Thanh toán",
       "itemCount": "Số dòng",
       "totalAmount": "Tổng tiền"
     },
@@ -532,6 +535,16 @@
       "InsufficientStock": "Không đủ hàng",
       "Cancelled": "Đã huỷ",
       "Completed": "Hoàn tất"
+    },
+    "paymentStatuses": {
+      "Unpaid": "Chưa thanh toán",
+      "Paid": "Đã thanh toán"
+    },
+    "paymentMethods": {
+      "Cash": "Tiền mặt",
+      "BankTransfer": "Chuyển khoản",
+      "Card": "Thẻ",
+      "EWallet": "Ví điện tử"
     },
     "filters": {
       "channel": "Kênh bán",
@@ -572,6 +585,32 @@
       "quantity": "Số lượng",
       "unitPrice": "Đơn giá",
       "lineTotal": "Thành tiền"
+    },
+    "payment": {
+      "title": "Thanh toán",
+      "status": "Trạng thái thanh toán",
+      "method": "Phương thức thanh toán",
+      "reference": "Mã tham chiếu thanh toán",
+      "paidAt": "Thanh toán lúc",
+      "paidBy": "Người ghi nhận",
+      "invoice": "Hoá đơn",
+      "invoiceIssuedAt": "Xuất lúc {{at}}",
+      "email": "E-mail xác nhận",
+      "noEmail": "Không gửi — khách hàng chưa có địa chỉ e-mail khi đơn được thanh toán",
+      "taskLink": "Chi tiết tác vụ",
+      "markPaid": "Ghi nhận thanh toán",
+      "notPayable": "Chỉ đơn hàng đã giữ hàng mới thanh toán được"
+    },
+    "payModal": {
+      "title": "Ghi nhận thanh toán đơn hàng",
+      "order": "Đơn hàng",
+      "total": "Tổng tiền",
+      "method": "Phương thức thanh toán",
+      "methodPlaceholder": "Chọn phương thức",
+      "reference": "Mã tham chiếu thanh toán",
+      "referenceHint": "Số biên lai hoặc mã giao dịch chuyển khoản",
+      "paidWithEmail": "Đã ghi nhận thanh toán. Đã yêu cầu xuất hoá đơn; đã yêu cầu gửi e-mail xác nhận.",
+      "paidWithoutEmail": "Đã ghi nhận thanh toán. Đã yêu cầu xuất hoá đơn; không gửi e-mail xác nhận (khách hàng không có địa chỉ e-mail)."
     },
     "tasks": {
       "title": "Xử lý",
@@ -790,6 +829,9 @@
       "user_password_reset": "Đặt lại mật khẩu",
       "report_export_requested": "Yêu cầu xuất tệp",
       "report_export_message_rejected": "Thông điệp xuất tệp bị từ chối",
+      "order_paid": "Thanh toán đơn hàng",
+      "invoice_message_rejected": "Thông điệp hoá đơn bị từ chối",
+      "email_message_rejected": "Thông điệp e-mail bị từ chối",
       "reconciliation_completed": "Đối soát tồn kho"
     },
     "channelErrors": {
@@ -841,6 +883,9 @@
       "user_password_reset": "Đã đặt mật khẩu tạm thời",
       "report_export_requested": "Báo cáo: {{reportType}}",
       "report_export_message_rejected": "Thông điệp {{messageId}} bị từ chối: {{reason}}",
+      "order_paid": "{{method}} · {{amount}}",
+      "invoice_message_rejected": "Thông điệp {{messageId}} bị từ chối: {{reason}}",
+      "email_message_rejected": "Thông điệp {{messageId}} bị từ chối: {{reason}}",
       "reconciliation_completed": {
         "drift": "{{drifted}}/{{checked}} sản phẩm lệch tồn",
         "tasks": "đã tạo {{tasksCreated}} tác vụ đồng bộ",

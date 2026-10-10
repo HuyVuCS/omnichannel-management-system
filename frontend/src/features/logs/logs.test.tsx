@@ -33,6 +33,8 @@ import {
 } from '@/test/systemEvents';
 import type { SystemEvent } from './systemEventsApi';
 
+const PAID_ORDER_ID = '0199a1b2-0000-7000-8000-000000000001';
+
 /** A fixed start of "the last 24 hours", as the page writes it to the address. */
 const SINCE = '2026-10-02T01:05:09Z';
 const WINDOW = `since=${encodeURIComponent(SINCE)}`;
@@ -133,6 +135,9 @@ describe('logs: who may read them', () => {
       'Yêu cầu xuất tệp',
       'Thông điệp xuất tệp bị từ chối',
       'Đối soát tồn kho',
+      'Thanh toán đơn hàng',
+      'Thông điệp hoá đơn bị từ chối',
+      'Thông điệp e-mail bị từ chối',
     ]);
   });
 
@@ -142,8 +147,8 @@ describe('logs: who may read them', () => {
     await loaded();
 
     const options = await offeredOptions(user, 'Loại sự kiện');
-    expect(options).toHaveLength(17);
-    expect(options.slice(12)).toEqual([
+    expect(options).toHaveLength(20);
+    expect(options.slice(15)).toEqual([
       'Tạo người dùng',
       'Đổi vai trò',
       'Khoá người dùng',
@@ -533,6 +538,69 @@ describe('logs: rows', () => {
       'Message m-3 rejected on stock.sync.pos: task does not match the message',
       'Message m-2 rejected on stock.sync.pos: quota_exceeded',
       'Message m-1 rejected on stock.sync.pos: —',
+    ]);
+  });
+
+  it('says how an order was paid and by whom, and why an invoice or e-mail message was rejected, in both languages', async () => {
+    const paid = systemEvent({
+      logId: 143,
+      eventType: 'order.paid',
+      orderId: PAID_ORDER_ID,
+      details: { orderId: PAID_ORDER_ID, paymentMethod: 'BankTransfer', amount: 1234567, paidBy: 'user-manager' },
+      actorEmail: 'manager@example.com',
+    });
+    // A method of a newer API, and an amount that is none.
+    const paidOtherwise = systemEvent({
+      logId: 142,
+      eventType: 'order.paid',
+      details: { paymentMethod: 'Voucher', amount: '5' },
+    });
+    const invoiceRejected = systemEvent({
+      logId: 141,
+      level: 'Error',
+      eventType: 'invoice.message_rejected',
+      workerName: 'InvoiceWorker',
+      details: { messageId: 'msg-51', reasonCode: 'task_mismatch' },
+    });
+    const emailRejected = systemEvent({
+      logId: 140,
+      level: 'Error',
+      eventType: 'email.message_rejected',
+      workerName: 'NotificationWorker',
+      details: { messageId: 'msg-52', reasonCode: 'unknown_task' },
+    });
+    serveSystemEvents([paid, paidOtherwise, invoiceRejected, emailRejected]);
+    const { user } = renderLogs();
+    await screen.findByText('Chuyển khoản · 1.234.567 ₫');
+
+    expect(columnTexts('Sự kiện')).toEqual([
+      'Thanh toán đơn hàng',
+      'Thanh toán đơn hàng',
+      'Thông điệp hoá đơn bị từ chối',
+      'Thông điệp e-mail bị từ chối',
+    ]);
+    expect(columnTexts('Nội dung')).toEqual([
+      'Chuyển khoản · 1.234.567 ₫',
+      'Voucher · —',
+      'Thông điệp msg-51 bị từ chối: tác vụ không khớp với thông điệp',
+      'Thông điệp msg-52 bị từ chối: tác vụ không tồn tại',
+    ]);
+    // Who recorded the payment is the actor of the event.
+    expect(rowOfEvent(paid)).toHaveTextContent('manager@example.com');
+
+    await switchLanguage(user, 'EN');
+    await screen.findByText('Bank transfer · 1.234.567 ₫');
+    expect(columnTexts('Event')).toEqual([
+      'Order paid',
+      'Order paid',
+      'Invoice message rejected',
+      'E-mail message rejected',
+    ]);
+    expect(columnTexts('Summary')).toEqual([
+      'Bank transfer · 1.234.567 ₫',
+      'Voucher · —',
+      'Message msg-51 rejected: task does not match the message',
+      'Message msg-52 rejected: task does not exist',
     ]);
   });
 

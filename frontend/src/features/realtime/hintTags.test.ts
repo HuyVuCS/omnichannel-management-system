@@ -20,6 +20,18 @@ describe('hints → cache tags', () => {
     ]);
   });
 
+  it('order.changed makes that order and the order lists stale - not the summary, which has no payment figure', () => {
+    expect(tagsForEvent({ type: 'order.changed', orderId: ORDER })).toEqual([
+      { type: 'Order', id: ORDER },
+      { type: 'Order', id: 'LIST' },
+    ]);
+    // More orders changed than are listed, or the hint names none: every order entry.
+    expect(tagsForEvent({ type: 'order.changed', all: true })).toEqual(['Order']);
+    expect(tagsForEvent({ type: 'order.changed', orderId: ORDER, all: true })).toEqual(['Order']);
+    expect(tagsForEvent({ type: 'order.changed' })).toEqual(['Order']);
+    expect(tagsForEvent({ type: 'order.changed', orderId: 7 as unknown as string })).toEqual(['Order']);
+  });
+
   it('inventory.changed makes stock, movements, the product lists, the alert lists and the summary stale', () => {
     expect(tagsForEvent({ type: 'inventory.changed', productIds: ['p1', 'p2'] })).toEqual([
       'Inventory',

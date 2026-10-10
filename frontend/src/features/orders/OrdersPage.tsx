@@ -26,6 +26,7 @@ import { readLocalDayRange } from '@/shared/utils/dateRange';
 import { API_DATE_FORMAT, DATE_FORMAT, formatDateTime, formatMoney, formatNumber } from '@/shared/utils/format';
 import { isGuid } from '@/shared/utils/guid';
 import { OrderStatusTag } from './components/OrderStatusTag';
+import { PaymentStatusTag } from './components/PaymentStatusTag';
 import {
   ORDER_SORT_FIELDS,
   ORDER_STATUSES,
@@ -34,6 +35,7 @@ import {
   type OrderCustomer,
   type OrderStatus,
   type OrderSummary,
+  type PaymentStatus,
 } from './ordersApi';
 import { orderPath, type OrderDetailLocationState } from './paths';
 
@@ -41,10 +43,11 @@ import { orderPath, type OrderDetailLocationState } from './paths';
 const FILTER_PARAMS = ['channel', 'status', 'customerId', 'from', 'to'] as const;
 
 /**
- * Sum of the column widths without the action column. The columns users scan (created, order id, status, total) come
- * first and fit into the content area of the smallest supported window (1280 px wide: 992 px); the rest scrolls.
+ * Sum of the column widths without the action column. The columns users scan (created, order id, status, payment,
+ * total: 810 px) come first and fit into the content area of the smallest supported window (1280 px wide: 992 px, 976
+ * next to a scrollbar); the rest scrolls.
  */
-const COLUMNS_WIDTH = 1140;
+const COLUMNS_WIDTH = 1270;
 
 /**
  * Orders (every role), newest first unless the user sorts. Paging, sorting, search and filters live in the address;
@@ -53,7 +56,7 @@ const COLUMNS_WIDTH = 1140;
  * local days (see `dateRange.ts`).
  *
  * Orders are created in the background by the Order Worker, so the list is fetched again whenever the page is opened
- * and on "Refresh"; realtime updates come with SignalR in a later task.
+ * and on "Refresh", and when a realtime hint says that an order was created or changed (a payment).
  */
 export function OrdersPage() {
   const { t } = useTranslation();
@@ -152,6 +155,14 @@ export function OrdersPage() {
         width: 160,
         ellipsis: true,
         render: (orderStatus: OrderStatus) => <OrderStatusTag status={orderStatus} />,
+      },
+      {
+        key: 'paymentStatus',
+        dataIndex: 'paymentStatus',
+        title: t('orders.columns.payment'),
+        width: 130,
+        ellipsis: true,
+        render: (paymentStatus: PaymentStatus) => <PaymentStatusTag status={paymentStatus} />,
       },
       {
         key: 'totalAmount',

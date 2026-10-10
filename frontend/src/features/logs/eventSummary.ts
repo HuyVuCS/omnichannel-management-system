@@ -1,9 +1,10 @@
 import type { TFunction } from 'i18next';
 import { ALERT_TYPES } from '@/features/alerts/alertsApi';
 import { ROLES } from '@/features/auth/session';
+import { PAYMENT_METHODS } from '@/features/orders/ordersApi';
 import { TASK_TYPES } from '@/features/processing/processingApi';
 import { REPORT_TYPES } from '@/features/reports/reportsApi';
-import { formatNumber } from '@/shared/utils/format';
+import { formatMoney, formatNumber } from '@/shared/utils/format';
 import { isKnownEventType, type KnownEventType, type SystemEvent } from './systemEventsApi';
 
 /** What a summary shows for a field the details do not have. */
@@ -72,6 +73,10 @@ export function eventTypeLabel(t: TFunction, eventType: string): string {
 
 function text(value: unknown): string {
   return typeof value === 'string' && value !== '' ? value : EMPTY;
+}
+
+function money(value: unknown): string {
+  return typeof value === 'number' && Number.isFinite(value) ? formatMoney(value) : EMPTY;
 }
 
 function count(value: unknown): string {
@@ -179,6 +184,8 @@ export function eventSummary(t: TFunction, event: SystemEvent): EventSummary | n
       return { text: t(key, { reportType: label(t, 'reports.types', REPORT_TYPES, details.reportType) }) };
 
     case 'report_export.message_rejected':
+    case 'invoice.message_rejected':
+    case 'email.message_rejected':
       return {
         text: t(key, {
           messageId: text(details.messageId),
@@ -213,6 +220,16 @@ export function eventSummary(t: TFunction, event: SystemEvent): EventSummary | n
 
       return { text: parts.join(PART_SEPARATOR) };
     }
+
+    // Who recorded it is the actor of the event (the "who" column): the API resolves it from `paidBy`. The payment
+    // reference is not part of the event.
+    case 'order.paid':
+      return {
+        text: t(key, {
+          method: label(t, 'orders.paymentMethods', PAYMENT_METHODS, details.paymentMethod),
+          amount: money(details.amount),
+        }),
+      };
 
     case 'user.created':
       return { text: t(key, { role: label(t, 'roles', ROLES, details.role) }) };

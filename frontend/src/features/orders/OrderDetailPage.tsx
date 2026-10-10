@@ -33,6 +33,7 @@ import { PageHeader } from '@/shared/components/PageHeader';
 import { TruncatedText } from '@/shared/components/TruncatedText';
 import { formatDateTime, formatMoney, formatNumber } from '@/shared/utils/format';
 import { isGuid } from '@/shared/utils/guid';
+import { OrderPaymentCard } from './components/OrderPaymentCard';
 import { OrderStatusTag } from './components/OrderStatusTag';
 import { useGetOrderQuery, type OrderItem, type OrderTask } from './ordersApi';
 import { orderListAddress, ORDERS_PATH } from './paths';
@@ -47,10 +48,11 @@ function Copyable({ text }: { text: string }) {
 }
 
 /**
- * One order (every role): its summary, its lines and every processing task with all attempts - which worker instance
- * ran it, when, and what went wrong. Everything is shown as the API sends it; no amount is computed here. The order
- * is fetched again whenever the page is opened, on "Refresh" and when a realtime hint names one of its tasks (they
- * change in the background). Manager and Admin can retry a failed task here, as on the task's own page.
+ * One order (every role): its summary, its payment with the invoice and the confirmation e-mail that follow from it,
+ * its lines and every processing task with all attempts - which worker instance ran it, when, and what went wrong.
+ * Everything is shown as the API sends it; no amount is computed here. The order is fetched again whenever the page
+ * is opened, on "Refresh" and when a realtime hint names it or one of its tasks (they change in the background, and a
+ * payment can be recorded in another session). Manager and Admin can record the payment and retry a failed task here.
  *
  * An id in the address that is no GUID is not sent; it and an order the API does not know end on the not-found view.
  */
@@ -235,6 +237,8 @@ export function OrderDetailPage() {
               { key: 'orderId', label: t('orderDetail.summary.orderId'), children: <Copyable text={order.orderId} /> },
             ]}
           />
+
+          <OrderPaymentCard order={order} />
 
           <Card title={t('orderDetail.lines.title')} size="small">
             <Table<OrderItem>
