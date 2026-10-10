@@ -13,9 +13,11 @@ backend/            .NET 10 solution (Omnichannel.slnx)
   src/Omnichannel.Infrastructure  EF Core/PostgreSQL, Identity, (later) RabbitMQ, S3
   src/Omnichannel.Workers         .NET Worker Service host (workers added from step 6)
   src/Omnichannel.Tests           xUnit tests
-docker/             docker-compose (PostgreSQL, RabbitMQ, API), DB init scripts, Dockerfiles
+docker/             docker-compose for development and for production, DB init scripts, Dockerfiles, proxy configuration
 frontend/           React + TypeScript dashboard (Vite, Redux Toolkit / RTK Query, Ant Design 6, i18next)
 scripts/smoke/      Scripted manual checks per task (PowerShell)
+scripts/deploy/     Environment file of the production stack
+.github/workflows/  CI (build, tests, image builds; no deployment)
 ```
 
 ## Prerequisites
@@ -571,6 +573,100 @@ Worker. Each task has independent status and attempts. One failed email must not
   what the payment card reads: one order paid with a reference, the invoice-number format, `paymentStatus` in the
   list, and the 400 of an unknown payment method.
 
+## Production deployment
+
+Everything but the frontend runs as **one docker compose stack on one machine**: PostgreSQL, RabbitMQ, the object
+storage (SeaweedFS), the API, the Workers and a reverse proxy (Caddy). The frontend is a static build served from
+another origin (Vercel). The same files run on an amd64 machine (Windows with Docker Desktop, Linux) and on an arm64
+one; the images are built on the machine itself, no registry is involved. Going live - the accounts, the tunnel or the
+VM, backups - is task 025b; this section is what exists and is verified locally.
+
+| File | |
+| --- | --- |
+| `docker/docker-compose.prod.yml` | the stack; **only the proxy has host ports** |
+| `docker/docker-compose.prod.tls.yml` | adds TLS mode: the proxy on ports 80 / 443 of every interface |
+| `docker/proxy/Caddyfile` | the two sites of the proxy |
+| `docker/api.Dockerfile`, `workers.Dockerfile`, `migrate.Dockerfile` | the images (multi-stage, non-root, `linux/amd64` and `linux/arm64`) |
+| `docker/prod.env.example` | every variable of the stack by name and purpose, without values |
+| `scripts/deploy/new-prod-env.ps1` | writes `docker/.env.prod` (git-ignored) with fresh random secrets |
+
+**1. Environment file (once).**
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\deploy\new-prod-env.ps1 -AdminEmail you@example.com `
+    -FrontendOrigin https://your-app.vercel.app -StoragePublicUrl https://files.example.com
+```
+
+It generates every password and key (PostgreSQL roles, RabbitMQ, the JWT signing key, the storage key pair, the
+webhook secrets of the three channels) and prints none of them - except the password of the first Admin, shown once
+at the end (`-PromptAdminPassword` asks for it instead). An existing file is kept (`-Force` replaces it: only for a
+stack that is created from nothing, because PostgreSQL and RabbitMQ keep the passwords of their first start in their
+volumes). No secret is in an image, a compose file or `appsettings*.json`.
+
+**2. Migrate, then up.** The order matters: the application role cannot change the schema.
+
+```powershell
+$stack = '--env-file', 'docker/.env.prod', '-f', 'docker/docker-compose.prod.yml'
+docker compose @stack --profile migrate build
+docker compose @stack up -d --wait postgres
+docker compose @stack --profile migrate run --rm migrate     # applies the pending migrations as omnichannel_migrator, then exits
+docker compose @stack up -d --wait
+```
+
+`migrate` is an EF Core migration bundle in its own image: it applies what is pending and nothing else. The rules of
+`docs/tasks/README.md` stay as they are for a database with data - additive migrations only, and look before applying:
+`docker compose @stack exec postgres psql -U postgres -d omnichannel -c 'select "MigrationId" from "__EFMigrationsHistory" order by 1'`
+shows what is applied. After a new version of the code: `build`, `run --rm migrate`, `up -d --wait`.
+
+**3. Two origins behind the proxy.**
+
+| Site | Serves | Default without TLS |
+| --- | --- | --- |
+| API (`API_SITE_ADDRESS`) | `/api/*` (the realtime hub with WebSockets included) and `/health` -> `api:8080`; anything else 404 | `http://127.0.0.1:8080` |
+| Storage (`STORAGE_SITE_ADDRESS`) | the S3 API of the object storage -> `objectstorage:8333`, Host header and path unchanged | `http://127.0.0.1:8081` |
+
+The storage has its own origin because a presigned link is signed for its host and path: it cannot live under a path
+of the API site. `STORAGE_PUBLIC_URL` is that origin as the browsers reach it; the API signs every link for it
+(`ObjectStorage:PublicServiceUrl`) and talks to the storage itself inside the network. `FRONTEND_ORIGIN` is the one
+origin the API answers with CORS headers and the one the bucket allows.
+
+- **Without TLS (default):** plain HTTP on `127.0.0.1` - for a tunnel on the same machine that ends TLS, or a local
+  run. A tunnel arrives at the proxy from the gateway of the edge network: set `PROXY_TRUSTED_PROXIES=172.30.250.1/32`
+  so the proxy believes the tunnel's `X-Forwarded-For` / `X-Forwarded-Proto` (the default believes nobody and
+  overwrites them). **A stack without TLS anywhere** (a local run) sets `API_HTTPS_REDIRECT=false`; otherwise the API
+  redirects every request that reached the edge without TLS to HTTPS.
+- **With TLS** (a machine with public names): set `API_SITE_ADDRESS=api.example.com` and
+  `STORAGE_SITE_ADDRESS=files.example.com` and add `-f docker/docker-compose.prod.tls.yml`. The proxy gets its
+  certificates by itself (ports 80 and 443 reachable from the internet) and redirects HTTP to HTTPS.
+- The API believes forwarded headers **from the proxy only** (`ReverseProxy:KnownProxies` = the proxy's fixed address
+  `PROXY_IP`), and only its own entry. That is where the client address of the rate limits and of the logs comes from.
+- The proxy's access log has no query string (the hub's `access_token`, the signature of a presigned link) and no
+  `Authorization`, `Cookie` or `Referer` header.
+
+**4. What runs how.**
+
+- `ASPNETCORE_ENVIRONMENT` / `DOTNET_ENVIRONMENT` = `Production`: no Swagger, compact JSON logs, the Development-only
+  rules of the simulators off. **The channels, the invoice provider and the e-mail sender are still simulated**
+  (sections 7 and 10): no real accounts exist. They answer "succeeded" by default.
+- **More Workers:** `docker compose @stack up -d --wait --scale workers=2`. Every instance has its own
+  `WorkerInstanceId` (`{container host name}-{process id}`) in the attempt history; a task is still processed once.
+- Health checks and `depends_on` order the start; every service restarts unless stopped; logs rotate (5 x 10 MB per
+  container). Memory limits (sized for a 12 GB machine): PostgreSQL, RabbitMQ and storage 1 GB each, API and each
+  Workers instance 768 MB, proxy 128 MB. Measured idle on the development machine (amd64): API 179 MB, Workers
+  129 - 144 MB each, storage 150 MB, RabbitMQ 131 MB, PostgreSQL 91 MB, proxy 16 MB - about 0.85 GB with two Workers.
+- Data: the volumes `postgres-data`, `rabbitmq-data`, `objectstorage-data` (and `proxy-data` for certificates).
+  `docker compose down` keeps them; **`down -v` deletes them**. Backups: task 025b.
+- **Check a running stack:** `scripts\smoke\task-025.ps1` with `SMOKE_BASE_URL` (the API origin), `SMOKE_STORAGE_ORIGIN`,
+  `SMOKE_ADMIN_EMAIL` / `SMOKE_ADMIN_PASSWORD` and, when it is not `http://localhost:4173`, `SMOKE_FRONTEND_ORIGIN`. It
+  needs two Workers instances and leaves smoke data behind (described at the top of the script).
+
+**5. Frontend build for the stack.** `VITE_API_BASE_URL=<API origin>` at build time ("Frontend"); the result is static
+files. `vercel.json` and the Vercel project are task 025b.
+
+**CI** (`.github/workflows/ci.yml`): on every push to `master` and on pull requests - backend build and all tests
+(Testcontainers on the runner's Docker), frontend typecheck / lint / tests / build, and a build of the three images for
+`linux/amd64` (`linux/arm64` only when started by hand). No job needs a secret, nothing is pushed or deployed.
+
 ## Smoke scripts
 
 `scripts\smoke\task-NNN.ps1` checks a task end to end over HTTP and ends with a table (one row per check, `OK` first)
@@ -601,6 +697,12 @@ npm run dev     # http://localhost:5173 - needs the API on http://localhost:5080
 
 - `npm run dev` proxies `/api` to the API - WebSockets included (the notifications hub) -, so the browser only talks to
   its own origin (no CORS involved).
+- **An API on another origin** (a deployment, "Production deployment"): build with `VITE_API_BASE_URL` set to the
+  origin of the API, e.g. `VITE_API_BASE_URL=https://api.example.com npm run build`. Requests and the hub then go
+  there (`shared/api/apiOrigin.ts`); the API must list the frontend's origin in `Cors:AllowedOrigins`. The value is an
+  origin - a trailing slash is accepted, a path or anything that is no absolute http(s) URL stops the application at
+  start with a message that names the variable. Not set (the default): the origin of the page, as before. The access
+  token still travels in the `Authorization` header and, for the hub only, in `access_token`.
 - Sign in with a user of the API (the bootstrap admin, or one created on the Users page).
 - Other scripts: `npm run typecheck`, `npm run lint` (ESLint + Prettier check), `npm test` (Vitest, no API needed: requests
   are answered by MSW; **a test that ends with a request still unanswered fails**, see "Tests" below), `npm run test:slow`
@@ -1141,7 +1243,8 @@ uses a local emulator (SeaweedFS, service `objectstorage` of `docker/docker-comp
 
   | Setting | Default | |
   | --- | --- | --- |
-  | `ServiceUrl` | - (`http://127.0.0.1:8333` in Development) | Endpoint of the S3 API. Links are built on it: it must be the address the users' browsers reach too |
+  | `ServiceUrl` | - (`http://127.0.0.1:8333` in Development) | Endpoint of the S3 API as the host reaches it. Links are built on it too unless `PublicServiceUrl` is set |
+  | `PublicServiceUrl` | not set | The same storage as the users' browsers reach it (its origin behind a reverse proxy). When set, **every presigned link is signed for this origin**; the host's own requests (`HEAD`, ranged `GET`, `PUT` of exports, `DELETE`) keep going to `ServiceUrl`. A link cannot be rewritten afterwards: the signature covers the host. Absolute http(s) URL; blank = not set |
   | `Region` | `us-east-1` | Region the requests are signed for |
   | `ForcePathStyle` | `true` | `{endpoint}/{bucket}/{key}`; `false` for providers that need `{bucket}.{endpoint}` |
   | `BucketName` | - (`omnichannel-dev` in Development) | Must exist; the application never creates it |
@@ -1157,8 +1260,14 @@ uses a local emulator (SeaweedFS, service `objectstorage` of `docker/docker-comp
   `http://127.0.0.1:…`, through `-s3.allowedOrigins` in the compose file - an origin is compared as text, so the two
   names of the local machine are two origins. A container that already runs keeps its old list: recreate it once
   (`up -d --force-recreate objectstorage`; the bucket and its objects stay). `<img>` needs no CORS. A CSP, when one is
-  added (task 026), must allow the storage origin in `img-src` and `connect-src`.
-- **Switching the provider** (task 025; any S3-compatible service): set `ServiceUrl`, `Region`, `BucketName`, the key
+  added (task 026), must allow the storage origin in `img-src` and `connect-src`. The production stack takes the one
+  allowed origin from `FRONTEND_ORIGIN` ("Production deployment").
+- **Production** uses the same SeaweedFS as a service of the stack, reached by browsers through the proxy's storage
+  site (`PublicServiceUrl`). Checked there in task 025: a `HEAD` of a missing object is "not uploaded", not a storage
+  failure; the SDK's default request checksums are accepted; the CORS headers come back for the frontend origin on
+  `PUT` and `GET` and for no other; the stored `Content-Disposition` comes back on a presigned `GET`; an export of
+  100,000 rows (4 MB) is built and stored in under 7 s with `RequestTimeout` at its default.
+- **Switching the provider** (any S3-compatible service): set `ServiceUrl`, `Region`, `BucketName`, the key
   pair and - if the provider wants virtual-hosted addressing - `ForcePathStyle=false`; create the bucket **private**;
   set its CORS for the frontend origin (`PUT`, `GET`; header `content-type` - some services compare header names
   case-sensitively and browsers send them lower-case); give the key read, write, delete **and list** on that bucket
