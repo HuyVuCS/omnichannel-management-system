@@ -870,3 +870,47 @@ a payment from another session reaching a Staff page live. Review: `docs/tasks/0
 | Required-field text (review 024b q2) | AntD's default ("Please enter …") stays until one application-wide `validateMessages` in 026 | Affects every form | 026 |
 | Invoice on the card (review 024b q3) | Number (copyable) and issue time on one row | The number with its copy button does not fit a two-column value cell at 1280 px | — |
 | Dialog submission | `applyProblemToForm` directly instead of `useFormSubmission` (two success texts by `emailTaskId`) | The hook has one fixed success text | A second dialog needs result-dependent texts → extend the hook |
+
+## Hosting decision (user, 2026-10-10)
+
+**Decision (user, 2026-10-10, replaces "Vercel or Railway" of 2026-10-03):** the **frontend** is hosted on **Vercel
+Hobby** (static build); **API, Workers, PostgreSQL, RabbitMQ and object storage** run as one docker compose stack on
+**one always-on machine**: the user's own machine exposed through a tunnel, or an **Oracle Cloud Always Free** VM (Free
+Tier account, not upgraded). No AWS, $0. Researched by Cowork on 2026-10-10 (sources in the chat; terms change — check
+again at 025b):
+- Vercel Hobby: free, non-commercial; limits pause features for up to 30 days, no charge without upgrading. Functions
+  are request-scoped (≤ 300 s; container images in beta scale to zero after 5 min without traffic) — no consumer,
+  broker, database, `LISTEN` or long-lived WebSocket can run there.
+- Railway: Free = $1 credit/month, workloads stopped when it is used; Hobby $5/month plus usage. Render: no free
+  background workers, free web services sleep after 15 min, free Postgres deleted after 30 days. Koyeb: free plan closed
+  to new users (2026-02). Fly.io: no free tier for new users. Neon free: 100 CU-hours/project/month — a database that
+  never idles (outbox polling, `LISTEN`) runs out mid-month; transaction pooling breaks `LISTEN` and session advisory
+  locks.
+- Oracle Always Free: Ampere A1 2 OCPU / 12 GB (cut from 4/24 on 2026-06-15 without notice), 200 GB block storage,
+  10 TB egress; card required at signup for verification; idle instances (CPU, network and memory < 20 % for 7 days)
+  may be reclaimed; A1 capacity is often exhausted in popular regions.
+- Exposing a machine without a domain: Cloudflare Quick Tunnels need no account but change URL on every start, have no
+  SSE and 200 in-flight requests (testing only); Tailscale Funnel gives a stable `*.ts.net` HTTPS name on ports 443,
+  8443, 10000 (beta, bandwidth limits unpublished, WebSockets not documented — SignalR falls back to SSE / long polling).
+- CI: GitHub Actions is free for public repositories; private repositories on GitHub Free get 2,000 minutes/month and
+  are blocked, not billed, without a payment method.
+
+| Topic | Decision | Reason | Revisit when |
+| --- | --- | --- | --- |
+| Why not a Vercel-native backend | Rejected (user, 2026-10-10, after the comparison) | It would replace RabbitMQ, the .NET Worker Service, SignalR and Docker — four decisions of the architecture document — and turn §16 criteria into formalities; more than half of the backend work would be redone | Never for this project |
+| Deployment unit | One docker compose stack (API, Workers, PostgreSQL, RabbitMQ, SeaweedFS, reverse proxy) that runs the same on the user's machine (amd64) and an Oracle A1 VM (arm64) | One artefact for both targets; the architecture document's Docker | A second machine is needed |
+| Production object storage | **SeaweedFS in the stack** (the dev emulator, now with a volume and backups), not a hosted provider | $0 without a card; the provider checks of 019/020 already passed against it; R2 / B2 terms on cards and caps could not be confirmed | Storage outgrows the machine |
+| Frontend ↔ API | The frontend calls the API origin directly (`VITE_API_BASE_URL`), CORS for the Vercel origin; **no Vercel rewrite** | WebSockets through Vercel rewrites are undocumented; rewrites count against Hobby's 10 GB origin transfer; one mechanism for REST and the hub | — |
+| Split | **025** build and run anywhere (verified locally by Claude Code); **025b** go-live (accounts of the user: GitHub, Vercel, Tailscale / Oracle) | Claude Code can verify 025 end to end without accounts | — |
+
+## Task 025 plan — build and run anywhere (2026-10-10)
+
+| Topic | Decision | Reason | Revisit when |
+| --- | --- | --- | --- |
+| Images | Multi-stage Dockerfiles for API and Workers on the official .NET 10 Debian images (not chiseled / Alpine), non-root, `linux/amd64` + `linux/arm64`; built from source on the host (no registry) | Debian images carry ICU and tzdata (vi culture, `Asia/Ho_Chi_Minh`); an Oracle A1 host builds arm64 natively; a registry is one more account | Images are built in CI and pulled (025b+) |
+| Migrations in production | An EF Core **migration bundle** (`dotnet ef migrations bundle`) in its own image, run as a one-shot `migrate` service with the **migrator** role, explicitly before `up`; additive-only rule of `docs/tasks/README.md` unchanged | No SDK on the host; the app role never owns the schema (task 001) | — |
+| Entry | One reverse proxy (**Caddy**) is the only service with host ports (bound to `127.0.0.1` unless a public mode is configured): API site and storage site on separate origins; automatic HTTPS when hostnames are configured, plain HTTP when a tunnel terminates TLS in front of it | One controlled entry for headers, body limits and WebSocket upgrades; automatic certificates without a certbot job. Alternative: nginx + certbot (more moving parts) | — |
+| HTTPS | TLS ends at the edge (Caddy or the tunnel); the API listens on HTTP inside the network, trusts `X-Forwarded-For` / `-Proto` **only from the proxy**, and never redirects a request that arrived as HTTPS at the edge; HSTS stays in the API (sent only on HTTPS) | Without forwarded headers `UseHttpsRedirection` loops behind a TLS-terminating proxy and rate limits see one client | — |
+| Storage origin | SeaweedFS published through the proxy on **its own origin** (host name or port), Host header preserved; `ObjectStorage:PublicServiceUrl` + a presign-only client (review 019 q1); bucket CORS from configuration | SigV4 signs host and path: a path prefix or a rewritten host breaks the signature | — |
+| Frontend origin | `VITE_API_BASE_URL` (build time; empty = same origin, so dev and `vite preview` are unchanged); API CORS `Cors:AllowedOrigins` = the frontend origin only | Vercel serves the frontend from another origin | — |
+| CI | GitHub Actions: backend build + all tests (Docker on the Ubuntu runner for Testcontainers), frontend typecheck / lint / test / build, image builds for amd64 (arm64 only on manual dispatch: QEMU is slow); no deployment from CI | Free for public repositories, 2,000 min/month for private ones | 025b: first real run |
