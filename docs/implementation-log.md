@@ -914,3 +914,48 @@ again at 025b):
 | Storage origin | SeaweedFS published through the proxy on **its own origin** (host name or port), Host header preserved; `ObjectStorage:PublicServiceUrl` + a presign-only client (review 019 q1); bucket CORS from configuration | SigV4 signs host and path: a path prefix or a rewritten host breaks the signature | — |
 | Frontend origin | `VITE_API_BASE_URL` (build time; empty = same origin, so dev and `vite preview` are unchanged); API CORS `Cors:AllowedOrigins` = the frontend origin only | Vercel serves the frontend from another origin | — |
 | CI | GitHub Actions: backend build + all tests (Docker on the Ubuntu runner for Testcontainers), frontend typecheck / lint / test / build, image builds for amd64 (arm64 only on manual dispatch: QEMU is slow); no deployment from CI | Free for public repositories, 2,000 min/month for private ones | 025b: first real run |
+
+## Task 025 result (reviewed 2026-10-10)
+
+One compose stack `docker/docker-compose.prod.yml` (PostgreSQL, RabbitMQ, SeaweedFS, one-shot `migrate` bundle, API,
+Workers, Caddy as the only service with host ports, `127.0.0.1` by default; `backend` network internal; optional TLS
+override for public names); images for API, Workers and the migration bundle, amd64 + arm64, non-root, cross-compiled
+SDK stage; `ReverseProxy:*` (forwarded headers from the configured proxy only, `ForwardLimit` 1, nothing configured =
+not read, HTTPS redirect switch, `/health` never redirected); `ObjectStorage:PublicServiceUrl` with a presign-only
+client; `VITE_API_BASE_URL` (origin only, validated at start); env template + generator (`new-prod-env.ps1`); CI
+workflow (not yet run); README "Production deployment". Backend 1798/1798, 0 warnings; frontend 500 tests, two full
+runs and the slow run green, first-load set +0.43 kB raw; stack from an empty state healthy in 31 s; smoke 025 48/48
+with two Workers instances; Part D (100,000-row export in 6.6 s, restarts without lost tasks, only proxy ports); a
+cross-origin browser session on the production build. Review: `docs/tasks/025-*.review.md`.
+
+| Topic | Decision | Reason | Revisit when |
+| --- | --- | --- | --- |
+| Base images (review 025 dev. 1) | The official .NET 10 full images, which are **Ubuntu 24.04** (`aspnet:10.0`, `runtime:10.0`, `runtime-deps:10.0` for the bundle); "Debian" in the 025 plan was a wrong assumption | ICU and tzdata present; vi culture and `Asia/Ho_Chi_Minh` verified byte-identical on amd64, arm64 and the Windows host | A chiseled image is wanted (then ICU / tzdata must be added and re-verified) |
+| Forwarded headers | Trust only `ReverseProxy:KnownProxies` / `KnownNetworks`; empty = headers not read (the framework's empty lists mean "everyone"); loopback not implicit; the proxy sends exactly one client address (`{client_ip}`) | Fail-closed trust boundary; `ForwardLimit` 1 then reads the proxy's own determination | A second proxy hop (025c TLS host, a CDN) |
+| Tunnel client address (review 025 q1) | Measured in 025b; rule: `-Proto: https` and a public `X-Forwarded-For` from Funnel → trust the edge gateway and keep the redirect; no `-Proto` → `API_HTTPS_REDIRECT=false` (Funnel is TLS-only); no client address → trust nobody and accept shared login / webhook rate-limit buckets for the demo go-live | Facts of Funnel are not documented; the API stays safe in every outcome | 025b measurement; 026 login throttling per account |
+| TLS mode (review 025 q2) | Validated as configuration only; README says so until a host with public names uses it | 025b goes live through Funnel, which ends TLS itself | 025c |
+| Data Protection (review 025 q3) | Nothing uses it: two warnings at every API start are expected; no volume, no silencing | Silencing would hide the warning when something starts using it | Cookie auth or Identity token providers (026) → persist the key ring |
+| Edge body limit (review 025 q4) | 30 MB (Kestrel's default) for now | No smaller limit exists in the API; a tighter one is a new rule | 026 |
+| Third-party containers as root (review 025 q5) | Unchanged | Only the proxy has host ports | 026 container hardening |
+| Workers egress | `workers` only on the internal `backend` network: no route out | Every provider is simulated | The first real provider (needs the `edge` network or a dedicated egress network) |
+| Storage on the internet (review 025 P2) | Unsigned `GET`, bucket listing and `PUT` must be refused; checked by the smoke script from 025b on | The whole S3 API is behind the public storage origin | — |
+
+## Task 025b plan — go-live (2026-10-10)
+
+**Decisions (user, 2026-10-10, after review 025):** the GitHub repository is **public**; the backend goes live on the
+user's own Windows machine through **Tailscale Funnel**; the Oracle VM gets a runbook section only and its
+provisioning is an optional task **025c**.
+
+| Topic | Decision | Reason | Revisit when |
+| --- | --- | --- | --- |
+| Repository visibility (user) | Public, after a full-history secret audit (gitleaks from its container image + a check of every committed secret variable); secret scanning + push protection, Dependabot alerts, read-only default token; ruleset: no force push / deletion on `master` and `production`, no required PR | Unlimited Actions minutes and free secret scanning; the code holds no secret (audited); a solo workflow pushes to `master` | A second developer → required PR + status checks |
+| Commit e-mail | History not rewritten (all commits carry `dotranhuyvu@.com`, not a real address); future e-mail is the user's choice | Rewriting a published-to-be history is destructive and gains nothing here | — |
+| Public origins | One Funnel host name, two ports: API `https://<host>` (443 → proxy 8080), storage `https://<host>:8443` (→ proxy 8081) | A port is part of an origin, so the storage keeps its own origin (signature covers host and port) without a domain | 025c / a custom domain |
+| Release model | Vercel's production branch is `production`; a release updates the backend on the host from commit X, then pushes X to `production`; `master` pushes do not deploy | Frontend and backend always run the same commit; an API change can never reach users before its backend | CD from CI |
+| `vercel.json` | SPA fallback, `immutable` for `/assets/*`, production-branch-only deploys; no headers beyond that, no API rewrite | Deep links; hashed assets; CSP is 026; log "Hosting decision" | 026 (security headers) |
+| Workers instances | `deploy.replicas: ${WORKERS_REPLICAS:-1}`; production 2 | `--scale` is forgotten on the next `up`; two instances exercise the multi-instance design | Memory pressure on the host |
+| Backups | Daily Windows scheduled task (logged-on user): `pg_dump -Fc` as superuser inside the container + archive of the stopped storage volume (seconds of storage downtime), manifest with SHA-256, 7 daily + 4 weekly; destination chosen by the user, off the machine (own cloud-synced folder); env file never in a backup; RabbitMQ not backed up | Logical dump is version-tolerant and restores into a fresh stack whose init script creates the roles; storage has no consistent online snapshot without a new tool; queues are transient (outbox in PostgreSQL) | 025c (backups off the VM); stale-task detection (026) |
+| Restore | Script restores only into a stack that does not exist; restoring over production is a user-decided runbook procedure; a restore drill is part of go-live | A restore that can overwrite production by a typo is worse than none | — |
+| Production steps | New rule in `docs/tasks/README.md`: empty production is set up by Claude Code in 025b; afterwards production steps only on request, by the runbook, after a backup; never `down -v` / volume removal / `-Force` on the production env file | Production holds real state from the first login | — |
+| Smoke data in production | `task-025.ps1` runs once against the live stack at go-live and leaves its prefixed smoke records | A fresh production with simulated channels; proof of the live path outweighs the clutter | Real users or real channels |
+| Uptime | Bound to the user's machine (logged-on session for Docker Desktop); no external monitoring | $0, no further account | 025c, or an uptime monitor account |
