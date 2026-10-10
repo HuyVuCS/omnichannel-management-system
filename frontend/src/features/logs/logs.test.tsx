@@ -604,6 +604,8 @@ describe('logs: rows', () => {
       'channel_rate_limited',
       'channel_rejected',
       'channel_circuit_open',
+      // Not a code of a channel call: a read that failed with anything else (the reason is in the Workers log).
+      'unexpected',
     ];
     serveSystemEvents([
       systemEvent({
@@ -619,12 +621,20 @@ describe('logs: rows', () => {
         },
       }),
     ]);
-    renderLogs();
+    const { user } = renderLogs();
 
     expect(
       await screen.findByText(
         '0/0 sản phẩm lệch tồn · đã tạo 0 tác vụ đồng bộ · không đọc được: K1 (kênh không phản hồi), ' +
-          'K2 (kênh không khả dụng), K3 (kênh giới hạn tần suất), K4 (kênh từ chối), K5 (tạm ngừng gọi sau nhiều lỗi)',
+          'K2 (kênh không khả dụng), K3 (kênh giới hạn tần suất), K4 (kênh từ chối), K5 (tạm ngừng gọi sau nhiều lỗi), ' +
+          'K6 (lỗi không mong đợi (xem log của Workers))',
+      ),
+    ).toBeInTheDocument();
+
+    await switchLanguage(user, 'EN');
+    expect(
+      await screen.findByText(
+        /K5 \(paused after repeated failures\), K6 \(unexpected error \(see the Workers log\)\)$/,
       ),
     ).toBeInTheDocument();
   });

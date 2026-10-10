@@ -797,7 +797,8 @@
       "channel_unavailable": "kênh không khả dụng",
       "channel_rate_limited": "kênh giới hạn tần suất",
       "channel_rejected": "kênh từ chối",
-      "channel_circuit_open": "tạm ngừng gọi sau nhiều lỗi"
+      "channel_circuit_open": "tạm ngừng gọi sau nhiều lỗi",
+      "unexpected": "lỗi không mong đợi (xem log của Workers)"
     },
     "rejection": {
       "invalid_json": "không phải JSON hợp lệ",

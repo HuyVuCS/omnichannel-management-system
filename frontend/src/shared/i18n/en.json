@@ -797,7 +797,8 @@
       "channel_unavailable": "channel unavailable",
       "channel_rate_limited": "rate limited by the channel",
       "channel_rejected": "rejected by the channel",
-      "channel_circuit_open": "paused after repeated failures"
+      "channel_circuit_open": "paused after repeated failures",
+      "unexpected": "unexpected error (see the Workers log)"
     },
     "rejection": {
       "invalid_json": "not valid JSON",
