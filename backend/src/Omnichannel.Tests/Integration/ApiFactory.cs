@@ -46,6 +46,12 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
     /// <summary>Webhooks per minute, client address and channel in this host (production default: 120).</summary>
     public const int WebhookPermitsPerMinute = 20;
 
+    /// <summary>The one address this host believes forwarded headers from (task 025): its "reverse proxy".</summary>
+    public const string ProxyAddress = "10.255.255.1";
+
+    /// <summary>The one origin with CORS headers in this host (task 025): its "frontend".</summary>
+    public const string FrontendOrigin = "https://frontend.integration.test";
+
     private static int _nextRemoteIp;
 
     private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:17").Build();
@@ -145,6 +151,8 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         builder.UseSetting("Webhooks:Channels:pos:Secrets:0", PosWebhookSecret);
         builder.UseSetting("Webhooks:Channels:pos:Secrets:1", PosPreviousWebhookSecret);
         builder.UseSetting($"Webhooks:Channels:{SwitchedOffWebhookSlug}:Secrets:0", SwitchedOffWebhookSecret);
+        builder.UseSetting("ReverseProxy:KnownProxies:0", ProxyAddress);
+        builder.UseSetting("Cors:AllowedOrigins:0", FrontendOrigin);
         // Log sources that see request URLs or the realtime traffic are captured at their most talkative level, so the
         // tests can show that the hub's access token (query string) is in none of them.
         builder.UseSetting("Serilog:MinimumLevel:Override:Microsoft.AspNetCore.Hosting.Diagnostics", "Information");
