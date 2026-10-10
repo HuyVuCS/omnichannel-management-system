@@ -44,7 +44,7 @@ services:
       retries: 10
 
   # S3-compatible object storage for development only (product images): SeaweedFS, everything in one process.
-  # Production uses a hosted S3-compatible provider (task 025); the application only knows the S3 API.
+  # Production runs the same storage as a service of docker-compose.prod.yml; the application only knows the S3 API.
   # Bucket, access key and CORS are start-up settings of the container, so there is no init step, and starting it again
   # changes nothing: the bucket is created only when it does not exist. The bucket is private - every request needs a
   # signature of the key below.
