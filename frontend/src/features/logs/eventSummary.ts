@@ -38,7 +38,8 @@ export const REJECTION_CODES = [
 
 /**
  * The error codes of a channel call this client has a label for (`logs.channelErrors.*`; the API's
- * `ChannelApiErrorCodes`). A code that is not listed is shown as it is.
+ * `ChannelApiErrorCodes`, and `unexpected`: what a reconciliation run reports for a channel whose read failed with
+ * anything else). A code that is not listed is shown as it is.
  */
 export const CHANNEL_ERROR_CODES = [
   'channel_timeout',
@@ -46,6 +47,7 @@ export const CHANNEL_ERROR_CODES = [
   'channel_rate_limited',
   'channel_rejected',
   'channel_circuit_open',
+  'unexpected',
 ] as const;
 
 /** Between the parts of a summary that is put together from several texts. */
