@@ -520,10 +520,9 @@ Worker. Each task has independent status and attempts. One failed email must not
   | recipient at `@sim-reject.test` | the e-mail is refused (`email_rejected`) |
   | recipient at `@sim-temp.test` | `email_unavailable` on attempt 1, sent from attempt 2 |
 
-  - The simulated provider keeps **no state**: the number of an invoice is `SIM-{yyyyMM of the payment, UTC}-{first 8
-    hex digits of SHA-256 of the key}`, so a second call for one order answers with the same number. (Eight hex digits
-    can collide between two orders of one month; the unique index on `InvoiceNumber` then fails that task - a property
-    of the simulator, not of a real provider.)
+  - The simulated provider keeps **no state**: the number of an invoice is `SIM-{yyyyMM of the payment, UTC}-{first 16
+    hex digits of SHA-256 of the key}` (27 characters), so a second call for one
+    order answers with the same number. Invoices issued before task 024b keep their 8-digit number.
   - The simulated sender "sends" by writing one log line with the **subject and a masked address** (`a***@example.com`)
     - never the text, never the full address. The workers and their error messages mask the address the same way.
 - **Settings** (Workers host, checked at start-up):

@@ -58,13 +58,14 @@ public sealed class SimulatedInvoiceProviderClient(
     }
 
     /// <summary>
-    /// <c>SIM-{yyyyMM}-{8 hex}</c>: the month the order was paid in (UTC) and the start of the SHA-256 of the key. The
-    /// same key and payment time always give the same number.
+    /// <c>SIM-{yyyyMM}-{16 hex}</c>: the month the order was paid in (UTC) and the start of the SHA-256 of the key. The
+    /// same key and payment time always give the same number. Sixteen digits (64 bits): two orders of one month do not
+    /// get the same number, which the unique index on the number would turn into a task that can never succeed.
     /// </summary>
     public static string InvoiceNumberOf(string key, DateTimeOffset paidAt)
     {
         var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(key)));
-        return $"SIM-{paidAt.UtcDateTime.ToString("yyyyMM", CultureInfo.InvariantCulture)}-{hash[..8]}";
+        return $"SIM-{paidAt.UtcDateTime.ToString("yyyyMM", CultureInfo.InvariantCulture)}-{hash[..16]}";
     }
 
     // Neither the customer nor the lines: the log needs to say which order, not whose.
