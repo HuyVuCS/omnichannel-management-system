@@ -578,8 +578,16 @@ Worker. Each task has independent status and attempts. One failed email must not
 Everything but the frontend runs as **one docker compose stack on one machine**: PostgreSQL, RabbitMQ, the object
 storage (SeaweedFS), the API, the Workers and a reverse proxy (Caddy). The frontend is a static build served from
 another origin (Vercel). The same files run on an amd64 machine (Windows with Docker Desktop, Linux) and on an arm64
-one; the images are built on the machine itself, no registry is involved. Going live - the accounts, the tunnel or the
-VM, backups - is task 025b; this section is what exists and is verified locally.
+one; the images are built on the machine itself, no registry is involved.
+
+**Live topology (task 025b):** the frontend on **Vercel** (project root `frontend/`, `frontend/vercel.json`), the stack on
+the owner's Windows machine behind **Tailscale Funnel** - one public host name, two origins: the API on port 443
+(-> proxy `127.0.0.1:8080`) and the storage on port 8443 (-> proxy `127.0.0.1:8081`). Operating it - start, stop,
+release, rollback, backup, restore, secrets, incidents - is **[docs/runbook.md](docs/runbook.md)**.
+
+**Release model:** Vercel deploys the branch **`production`** only; a push to `master` changes nothing a user sees. A
+release updates the stack on the host from commit X and then pushes X to `production`, so frontend and backend always
+run the same commit (runbook "Release").
 
 | File | |
 | --- | --- |
@@ -589,6 +597,9 @@ VM, backups - is task 025b; this section is what exists and is verified locally.
 | `docker/api.Dockerfile`, `workers.Dockerfile`, `migrate.Dockerfile` | the images (multi-stage, non-root, `linux/amd64` and `linux/arm64`) |
 | `docker/prod.env.example` | every variable of the stack by name and purpose, without values |
 | `scripts/deploy/new-prod-env.ps1` | writes `docker/.env.prod` (git-ignored) with fresh random secrets |
+| `scripts/deploy/backup-prod.ps1`, `restore-prod.ps1`, `register-backup-task.ps1` | backup (database dump + storage archive + manifest), restore into a new stack, the daily Windows task |
+| `frontend/vercel.json` | static host: fallback to `index.html` for deep links, `immutable` for `/assets/*`, deployments from `production` only |
+| `docs/runbook.md` | every procedure of the live system |
 
 **1. Environment file (once).**
 
@@ -635,7 +646,8 @@ origin the API answers with CORS headers and the one the bucket allows.
   so the proxy believes the tunnel's `X-Forwarded-For` / `X-Forwarded-Proto` (the default believes nobody and
   overwrites them). **A stack without TLS anywhere** (a local run) sets `API_HTTPS_REDIRECT=false`; otherwise the API
   redirects every request that reached the edge without TLS to HTTPS.
-- **With TLS** (a machine with public names): set `API_SITE_ADDRESS=api.example.com` and
+- **With TLS** (a machine with public names; **validated as configuration, not exercised** - the live system ends TLS
+  at Funnel): set `API_SITE_ADDRESS=api.example.com` and
   `STORAGE_SITE_ADDRESS=files.example.com` and add `-f docker/docker-compose.prod.tls.yml`. The proxy gets its
   certificates by itself (ports 80 and 443 reachable from the internet) and redirects HTTP to HTTPS.
 - The API believes forwarded headers **from the proxy only** (`ReverseProxy:KnownProxies` = the proxy's fixed address
@@ -648,20 +660,35 @@ origin the API answers with CORS headers and the one the bucket allows.
 - `ASPNETCORE_ENVIRONMENT` / `DOTNET_ENVIRONMENT` = `Production`: no Swagger, compact JSON logs, the Development-only
   rules of the simulators off. **The channels, the invoice provider and the e-mail sender are still simulated**
   (sections 7 and 10): no real accounts exist. They answer "succeeded" by default.
-- **More Workers:** `docker compose @stack up -d --wait --scale workers=2`. Every instance has its own
+- **More Workers:** `WORKERS_REPLICAS` in the env file (default 1, production 2) is the number `up` starts;
+  `--scale workers=N` overrides it for that one command only. Every instance has its own
   `WorkerInstanceId` (`{container host name}-{process id}`) in the attempt history; a task is still processed once.
 - Health checks and `depends_on` order the start; every service restarts unless stopped; logs rotate (5 x 10 MB per
   container). Memory limits (sized for a 12 GB machine): PostgreSQL, RabbitMQ and storage 1 GB each, API and each
   Workers instance 768 MB, proxy 128 MB. Measured idle on the development machine (amd64): API 179 MB, Workers
   129 - 144 MB each, storage 150 MB, RabbitMQ 131 MB, PostgreSQL 91 MB, proxy 16 MB - about 0.85 GB with two Workers.
 - Data: the volumes `postgres-data`, `rabbitmq-data`, `objectstorage-data` (and `proxy-data` for certificates).
-  `docker compose down` keeps them; **`down -v` deletes them**. Backups: task 025b.
+  `docker compose down` keeps them; **`down -v` deletes them**.
+- **Backups:** `scripts\deploy\backup-prod.ps1 [-Destination <folder>]` writes a timestamped folder outside the
+  repository: `pg_dump -Fc` of the database (inside the container, as the superuser over the local socket),
+  an archive of the storage volume (the storage service is stopped for a few seconds meanwhile), and a manifest with the
+  commit of the running images, the applied migrations and the SHA-256 of both files. No password of the stack is in
+  a backup, and RabbitMQ is not backed up (the outbox is in PostgreSQL). It keeps every backup of the 7 most recent
+  days and the newest of each of the 4 most recent Sundays. `restore-prod.ps1` restores only into a stack that does
+  not exist; `register-backup-task.ps1` registers the daily run. The images carry the commit they were built from when
+  `GIT_COMMIT` is set before `build` (label `org.opencontainers.image.revision`). Runbook "Backup", "Restore".
 - **Check a running stack:** `scripts\smoke\task-025.ps1` with `SMOKE_BASE_URL` (the API origin), `SMOKE_STORAGE_ORIGIN`,
-  `SMOKE_ADMIN_EMAIL` / `SMOKE_ADMIN_PASSWORD` and, when it is not `http://localhost:4173`, `SMOKE_FRONTEND_ORIGIN`. It
-  needs two Workers instances and leaves smoke data behind (described at the top of the script).
+  `SMOKE_ADMIN_EMAIL` / `SMOKE_ADMIN_PASSWORD` (or `SMOKE_ENV_FILE` = the env file of the stack: the admin is read from
+  it) and, when it is not `http://localhost:4173`, `SMOKE_FRONTEND_ORIGIN`. It needs two Workers instances and leaves
+  smoke data behind (described at the top of the script); it also checks that the storage origin refuses unsigned
+  reads, listings and uploads. `scripts\smoke\task-025b.ps1` is the read-only check of the live system from outside
+  (static host fallback and caching, CORS, TLS): `SMOKE_BASE_URL`, `SMOKE_FRONTEND_ORIGIN`, `SMOKE_EXPECT_HSTS`.
 
 **5. Frontend build for the stack.** `VITE_API_BASE_URL=<API origin>` at build time ("Frontend"); the result is static
-files. `vercel.json` and the Vercel project are task 025b.
+files. On Vercel: root directory `frontend`, framework Vite, output `dist`, `VITE_API_BASE_URL` set for Production,
+production branch `production`. `frontend/vercel.json` serves `index.html` for every path that is not a file of the
+build (not under `/assets/`: a missing hashed file answers 404, never cached HTML), marks `/assets/*` `immutable`, and
+turns deployments off for every branch but `production`.
 
 **CI** (`.github/workflows/ci.yml`): on every push to `master` and on pull requests - backend build and all tests
 (Testcontainers on the runner's Docker), frontend typecheck / lint / tests / build, and a build of the three images for

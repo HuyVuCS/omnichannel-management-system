@@ -1,7 +1,8 @@
 # Shared helpers for smoke checks. Windows PowerShell 5.1 and PowerShell 7 compatible.
 # ASCII only on purpose: Windows PowerShell 5.1 misreads UTF-8 files without a BOM.
 # Secrets: the admin credentials are read from backend/src/Omnichannel.Api/.env (git-ignored) and never printed.
-# Another environment (not the local development one): set SMOKE_BASE_URL, SMOKE_ADMIN_EMAIL and SMOKE_ADMIN_PASSWORD.
+# Another environment (not the local development one): set SMOKE_BASE_URL, SMOKE_ADMIN_EMAIL and SMOKE_ADMIN_PASSWORD -
+# or SMOKE_ENV_FILE, the environment file of that stack (BOOTSTRAP_ADMIN_EMAIL / BOOTSTRAP_ADMIN_PASSWORD are read from it).
 # Hosts are started only for the local default (SMOKE_BASE_URL not set): a host started here runs with the development
 # user-secrets, so it must never be started on behalf of another environment. With SMOKE_BASE_URL set, the API and the
 # Workers host of that environment must already be running.
@@ -42,6 +43,14 @@ function Read-DotEnv([string]$path) {
 function Get-AdminCredential {
     if ($env:SMOKE_ADMIN_EMAIL -and $env:SMOKE_ADMIN_PASSWORD) {
         return @{ Email = $env:SMOKE_ADMIN_EMAIL; Password = $env:SMOKE_ADMIN_PASSWORD }
+    }
+    # Another environment whose admin is in its own environment file (the production stack: docker\.env.prod).
+    if ($env:SMOKE_ENV_FILE) {
+        $values = Read-DotEnv $env:SMOKE_ENV_FILE
+        if ($values['BOOTSTRAP_ADMIN_EMAIL'] -and $values['BOOTSTRAP_ADMIN_PASSWORD']) {
+            return @{ Email = $values['BOOTSTRAP_ADMIN_EMAIL']; Password = $values['BOOTSTRAP_ADMIN_PASSWORD'] }
+        }
+        throw "SMOKE_ENV_FILE ($env:SMOKE_ENV_FILE) has no BOOTSTRAP_ADMIN_EMAIL / BOOTSTRAP_ADMIN_PASSWORD."
     }
     $envFile = Join-Path $script:RepoRoot 'backend\src\Omnichannel.Api\.env'
     $values = Read-DotEnv $envFile

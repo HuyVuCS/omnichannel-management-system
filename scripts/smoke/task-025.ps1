@@ -1,10 +1,11 @@
 # Smoke check for task 025: the production stack (docker/docker-compose.prod.yml) through its reverse proxy.
-# It never starts anything: the stack must be up, with two Workers instances ("up -d --scale workers=2").
+# It never starts anything: the stack must be up, with two Workers instances (WORKERS_REPLICAS=2).
 #
 # Required environment (the script refuses to run against the local development default):
 #   SMOKE_BASE_URL         the API origin of the proxy, e.g. http://localhost:8080
 #   SMOKE_STORAGE_ORIGIN   the storage origin of the proxy (STORAGE_PUBLIC_URL of the stack), e.g. http://localhost:8081
-#   SMOKE_ADMIN_EMAIL / SMOKE_ADMIN_PASSWORD   the bootstrap admin of that stack
+#   SMOKE_ADMIN_EMAIL / SMOKE_ADMIN_PASSWORD   the bootstrap admin of that stack, or
+#   SMOKE_ENV_FILE         the environment file of that stack (docker\.env.prod): the admin is read from it
 # Optional: SMOKE_FRONTEND_ORIGIN (FRONTEND_ORIGIN of the stack; default http://localhost:4173).
 #
 # What it leaves behind: smoke products (one with an image), customers, two orders (one paid, with its invoice), one
@@ -52,6 +53,10 @@ function Get-Header($Answer, [string]$Name) { if ($Answer.Headers.ContainsKey($N
 
 # The origin (scheme://host[:port]) of a link, without anything of its path or query.
 function Get-Origin([string]$Url) { if ($Url) { return ([uri]$Url).GetLeftPart([System.UriPartial]::Authority) } else { return 'no link' } }
+
+function Get-FieldError($Answer, [string]$Field) {
+    if ($Answer.Body -and $Answer.Body.errors -and $Answer.Body.errors.$Field) { return [string]@($Answer.Body.errors.$Field)[0] } else { return 'none' }
+}
 
 function Test-StartsWithPk([byte[]]$Bytes) { return (($Bytes.Length -gt 2) -and ($Bytes[0] -eq 0x50) -and ($Bytes[1] -eq 0x4B)) }
 
@@ -203,34 +208,46 @@ try {
     Assert-Step '30 ... with the CORS header' $frontendOrigin (Get-Header $image 'access-control-allow-origin')
     $otherOrigin = Invoke-Raw GET $imageUrl @{ 'Origin' = 'https://someone-else.example' } $null $null
     Assert-Step '31 ... and none for another origin' 'none' (Get-Header $otherOrigin 'access-control-allow-origin')
+    # 6b. The bucket is private: without a signature the storage origin gives nothing and takes nothing.
+    $objectUrl = ([uri]$imageUrl).GetLeftPart([System.UriPartial]::Path)
+    $bucketUrl = "$storageOrigin/" + ([uri]$imageUrl).Segments[1]
+    Assert-Step '32 unsigned GET of the image object (the link without its query) -> 403' 403 (Invoke-Raw GET $objectUrl $null $null $null).Status
+    Assert-Step '33 unsigned listing of the bucket -> 403' '403 403' "$((Invoke-Raw GET $bucketUrl $null $null $null).Status) $((Invoke-Raw GET ($bucketUrl + '?list-type=2') $null $null $null).Status)"
+    $unsigned = Invoke-Api POST "/api/products/$($productIds[2])/image/presign" $manager @{ contentType = 'image/png'; sizeBytes = $png.Length }
+    $unsignedPut = Invoke-Raw PUT ([uri][string]$unsigned.Body.uploadUrl).GetLeftPart([System.UriPartial]::Path) $null $png 'image/png'
+    Assert-Step '34 unsigned PUT of a new key (an upload link without its query) -> 403' '200 403' "$($unsigned.Status) $($unsignedPut.Status)"
+    $absent = Invoke-ApiProblem PUT "/api/products/$($productIds[2])/image" $manager @{ objectKey = $unsigned.Body.objectKey } 'en'
+    Assert-Step '35 ... and the key does not exist afterwards (the API finds no upload)' '400 No file has been uploaded for this key.' "$($absent.Status) $(Get-FieldError $absent 'objectKey')"
+    $objectUrl = $null
+    $unsigned = $null
     $imageUrl = $null
 
     # 7. An export: built by a Workers instance, stored inside the network, downloaded from the public storage origin.
     $export = Invoke-Api POST '/api/reports/inventory/export' $manager @{ search = "SMOKE-025-$n"; lowStockOnly = $false; timeZone = 'Asia/Ho_Chi_Minh' }
-    Assert-Step '32 inventory export -> 202' 202 $export.Status
+    Assert-Step '36 inventory export -> 202' 202 $export.Status
     $exportTask = Wait-Task ([string]$export.Body.taskId) $manager $TaskWaitSeconds
-    Assert-Step "33 the export is built within $TaskWaitSeconds s" 'Succeeded' (Get-TaskStatus $exportTask)
+    Assert-Step "37 the export is built within $TaskWaitSeconds s" 'Succeeded' (Get-TaskStatus $exportTask)
     $link = Invoke-Api GET "/api/reports/exports/$($export.Body.taskId)/download" $manager
-    Assert-Step '34 download link -> 200' 200 $link.Status
-    Assert-Step '35 ... on the public storage origin' $storageOrigin (Get-Origin ([string]$link.Body.url))
+    Assert-Step '38 download link -> 200' 200 $link.Status
+    Assert-Step '39 ... on the public storage origin' $storageOrigin (Get-Origin ([string]$link.Body.url))
     $file = Invoke-Raw GET ([string]$link.Body.url) $null $null $null
-    Assert-Step '36 GET the link -> 200, the bytes start with PK (an xlsx file)' '200 True' "$($file.Status) $(Test-StartsWithPk $file.Bytes)"
-    Assert-Step '37 ... served as an attachment (the stored Content-Disposition)' $true ((Get-Header $file 'content-disposition') -clike 'attachment*')
+    Assert-Step '40 GET the link -> 200, the bytes start with PK (an xlsx file)' '200 True' "$($file.Status) $(Test-StartsWithPk $file.Bytes)"
+    Assert-Step '41 ... served as an attachment (the stored Content-Disposition)' $true ((Get-Header $file 'content-disposition') -clike 'attachment*')
     $link = $null
 
     # 8. An order, its payment, the invoice and the confirmation e-mail.
     $customer = Invoke-Api POST '/api/customers' $manager @{ name = "Smoke customer 025-$n"; phone = $null; email = "smoke-025-$n@example.com"; address = $null }
-    Assert-Step '38 create smoke customer' 201 $customer.Status
+    Assert-Step '42 create smoke customer' 201 $customer.Status
     $submitted = Invoke-Api POST '/api/orders/website' $manager @{ externalOrderId = "SMOKE-025-A-$n"; customerId = $customer.Body.customerId; items = @(@{ productId = $productIds[1]; stock = 2 }) }
-    Assert-Step '39 submit an order -> 202' 202 $submitted.Status
+    Assert-Step '43 submit an order -> 202' 202 $submitted.Status
     $orderTask = Wait-Task ([string]$submitted.Body.taskId) $manager $TaskWaitSeconds
     $orderId = if ($orderTask) { [string]$orderTask.orderId } else { '' }
-    Assert-Step '40 the Order Worker reserves it' 'Reserved' ([string](Invoke-Api GET "/api/orders/$orderId" $manager).Body.status)
+    Assert-Step '44 the Order Worker reserves it' 'Reserved' ([string](Invoke-Api GET "/api/orders/$orderId" $manager).Body.status)
     $paid = Invoke-ApiProblem POST "/api/orders/$orderId/payment" $manager @{ paymentMethod = 'Cash' } 'en'
-    Assert-Step '41 the manager pays it -> 200' 200 $paid.Status
-    Assert-Step '42 the invoice task succeeds (Invoice Worker)' 'Succeeded' (Get-TaskStatus (Wait-Task ([string]$paid.Body.invoiceTaskId) $manager $TaskWaitSeconds))
-    Assert-Step '43 the e-mail task succeeds (Notification Worker)' 'Succeeded' (Get-TaskStatus (Wait-Task ([string]$paid.Body.emailTaskId) $manager $TaskWaitSeconds))
-    Assert-Step '44 the order has its invoice number' $true ([string](Invoke-Api GET "/api/orders/$orderId" $manager).Body.invoice.number -cmatch '^SIM-\d{6}-[0-9A-F]{16}$')
+    Assert-Step '45 the manager pays it -> 200' 200 $paid.Status
+    Assert-Step '46 the invoice task succeeds (Invoice Worker)' 'Succeeded' (Get-TaskStatus (Wait-Task ([string]$paid.Body.invoiceTaskId) $manager $TaskWaitSeconds))
+    Assert-Step '47 the e-mail task succeeds (Notification Worker)' 'Succeeded' (Get-TaskStatus (Wait-Task ([string]$paid.Body.emailTaskId) $manager $TaskWaitSeconds))
+    Assert-Step '48 the order has its invoice number' $true ([string](Invoke-Api GET "/api/orders/$orderId" $manager).Body.invoice.number -cmatch '^SIM-\d{6}-[0-9A-F]{16}$')
 }
 catch {
     Assert-Step "unexpected error: $($_.Exception.Message)" 'no error' 'error'
@@ -240,11 +257,11 @@ finally {
     # The smoke mappings are deactivated and the smoke account is locked, also after a failed step.
     if ($manager -and $website -and ($mappings.Count -gt 0)) {
         $off = @($mappings | ForEach-Object { (Invoke-ApiProblem PUT "/api/channels/$website/products/$($_.channelProductId)" $manager @{ externalSku = [string]$_.externalSku; status = 'Inactive' } 'en').Status } | Where-Object { $_ -eq 200 }).Count
-        Assert-Step '45 deactivate the smoke mappings' $mappings.Count $off
+        Assert-Step '49 deactivate the smoke mappings' $mappings.Count $off
     }
     if ($admin -and $managerUser -and $managerUser.Body) {
-        Assert-Step '46 lock smoke account' 200 (Invoke-Api POST "/api/users/$($managerUser.Body.userId)/lock" $admin).Status
+        Assert-Step '50 lock smoke account' 200 (Invoke-Api POST "/api/users/$($managerUser.Body.userId)/lock" $admin).Status
     }
 }
-Invoke-FrontendChecks 47
+Invoke-FrontendChecks 51
 Complete-Smoke
