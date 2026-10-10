@@ -1,0 +1,116 @@
+# Build and test on every push to master and on pull requests. Nothing is deployed and no job needs a secret.
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      arm64:
+        description: Also build the images for linux/arm64 (emulated on the runner, slow)
+        type: boolean
+        default: false
+
+# A newer push to the same branch or pull request replaces the run that is still going.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend (build, tests)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: backend/global.json
+
+      - name: Restore
+        run: dotnet restore
+
+      # Warnings are errors (Directory.Build.props).
+      - name: Build
+        run: dotnet build --no-restore
+
+      # Integration tests start PostgreSQL, RabbitMQ and the storage emulator in containers (Testcontainers) on the
+      # runner's Docker.
+      - name: Test
+        run: dotnet test --no-build --logger "trx;LogFileName=tests.trx" --results-directory TestResults
+
+      # Only when something failed: private repositories have a small artifact quota.
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-results
+          path: backend/TestResults
+          retention-days: 7
+          if-no-files-found: ignore
+
+  frontend:
+    name: Frontend (typecheck, lint, tests, build)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: frontend/.nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      # Every test file renders the application in its own jsdom: the suite is bound by memory and cores. Two workers
+      # for the two-core runner of a private repository (vite.config.ts allows up to four on a developer machine).
+      - name: Test
+        run: npm test -- --maxWorkers=2
+
+      - name: Build
+        run: npm run build
+
+  images:
+    name: Image ${{ matrix.image }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [api, workers, migrate]
+    steps:
+      - uses: actions/checkout@v4
+
+      # Emulation is needed only for the final stage of an arm64 image; the compiler always runs natively.
+      - uses: docker/setup-qemu-action@v3
+        if: github.event_name == 'workflow_dispatch' && inputs.arm64
+
+      - uses: docker/setup-buildx-action@v3
+
+      # Built, not pushed: the stack builds its images on the machine it runs on (README "Production deployment").
+      - name: Build for linux/amd64
+        run: docker buildx build --platform linux/amd64 --file docker/${{ matrix.image }}.Dockerfile backend
+
+      - name: Build for linux/arm64
+        if: github.event_name == 'workflow_dispatch' && inputs.arm64
+        run: docker buildx build --platform linux/arm64 --file docker/${{ matrix.image }}.Dockerfile backend
