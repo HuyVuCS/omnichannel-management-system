@@ -316,6 +316,29 @@ public sealed class OrderPaymentEndpointsTests(ApiFactory factory)
         Assert.Equal(PaymentStatus.Unpaid, (await OrderAsync(factory, order.OrderId)).PaymentStatus);
     }
 
+    // The keys are part of the contract (the payment dialog puts an error on the field its key names): a text that is no
+    // payment method fails in the JSON binder, before validation, so the answer has the binder's keys - the JSON path
+    // and the action parameter - and the binder's English texts in every language, not `paymentMethod` with a localised
+    // message. The dialog offers the known methods only and shows such an answer above the form.
+    [Theory]
+    [InlineData("en")]
+    [InlineData("vi")]
+    public async Task A_method_text_the_system_does_not_know_is_refused_by_the_binder_under_its_json_path(string language)
+    {
+        var order = await SeedOrderAsync(factory);
+
+        var response = await PayAsync(_manager, order.OrderId, new { paymentMethod = "Cheque" }, language: language);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("validation_failed", body.RootElement.GetProperty("errorCode").GetString());
+        var errors = body.RootElement.GetProperty("errors");
+        Assert.Equal(["$.paymentMethod", "request"], errors.EnumerateObject().Select(p => p.Name).Order(StringComparer.Ordinal));
+        Assert.Contains("Path: $.paymentMethod", errors.GetProperty("$.paymentMethod")[0].GetString());
+        Assert.Equal("The request field is required.", errors.GetProperty("request")[0].GetString());
+        Assert.Equal(PaymentStatus.Unpaid, (await OrderAsync(factory, order.OrderId)).PaymentStatus);
+    }
+
     [Theory]
     [InlineData("en", "Only an order whose stock is reserved can be paid.", "This order has already been paid.")]
     [InlineData("vi", "Chỉ có thể thanh toán đơn hàng đã giữ hàng.", "Đơn hàng này đã được thanh toán.")]

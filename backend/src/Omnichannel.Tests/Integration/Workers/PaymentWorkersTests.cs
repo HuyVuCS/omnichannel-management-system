@@ -73,7 +73,7 @@ public sealed partial class PaymentWorkersTests(WorkersFixture fixture) : IAsync
         Assert.Equal(
             (SimulatedInvoiceProviderClient.InvoiceNumberOf(key, paid.PaidAt), 150_000m, key, InvoiceMessageHandler.Actor),
             (invoice!.InvoiceNumber, invoice.TotalAmount, invoice.ProviderReference, invoice.CreatedBy));
-        Assert.Matches("^SIM-[0-9]{6}-[0-9A-F]{8}$", invoice.InvoiceNumber);
+        Assert.Matches("^SIM-[0-9]{6}-[0-9A-F]{16}$", invoice.InvoiceNumber);
         Assert.InRange(invoice.IssuedAt, before.AddSeconds(-1), DateTimeOffset.UtcNow.AddSeconds(1));
         Assert.InRange(invoice.CreatedAt, before.AddSeconds(-1), DateTimeOffset.UtcNow.AddSeconds(1));
 

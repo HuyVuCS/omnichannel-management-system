@@ -50,7 +50,8 @@ public sealed class PaymentProviderTests
     {
         var number = SimulatedInvoiceProviderClient.InvoiceNumberOf("invoice:0199c1f0-0000-7000-8000-000000000001", PaidAt);
 
-        Assert.Matches("^SIM-202610-[0-9A-F]{8}$", number);
+        Assert.Matches("^SIM-202610-[0-9A-F]{16}$", number);
+        Assert.Equal(27, number.Length);
         // The same key gives the same number, whenever it is asked for; another key another number.
         Assert.Equal(number, SimulatedInvoiceProviderClient.InvoiceNumberOf("invoice:0199c1f0-0000-7000-8000-000000000001", PaidAt));
         Assert.NotEqual(number, SimulatedInvoiceProviderClient.InvoiceNumberOf("invoice:0199c1f0-0000-7000-8000-000000000002", PaidAt));
@@ -59,6 +60,18 @@ public sealed class PaymentProviderTests
         Assert.StartsWith("SIM-202610-", SimulatedInvoiceProviderClient.InvoiceNumberOf("k", new DateTimeOffset(2026, 11, 1, 2, 0, 0, TimeSpan.FromHours(7))));
         Assert.StartsWith("SIM-202611-", SimulatedInvoiceProviderClient.InvoiceNumberOf("k", new DateTimeOffset(2026, 11, 1, 7, 0, 0, TimeSpan.FromHours(7))));
         Assert.True(number.Length <= Omnichannel.Domain.Entities.Invoice.MaxInvoiceNumberLength);
+    }
+
+    [Fact]
+    public void The_invoice_number_carries_sixteen_hex_digits_of_the_hash_after_the_month()
+    {
+        const string key = "invoice:0199c1f0-0000-7000-8000-000000000001";
+        var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(key)));
+
+        var digits = SimulatedInvoiceProviderClient.InvoiceNumberOf(key, PaidAt)["SIM-202610-".Length..];
+
+        Assert.Equal(16, digits.Length);
+        Assert.Equal(hash[..16], digits);
     }
 
     [Fact]
