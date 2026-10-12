@@ -74,7 +74,7 @@ tailscale funnel --https=443 off ; tailscale funnel --https=8443 off     # take 
 
 | Comes back | When |
 | --- | --- |
-| Tailscale and the two Funnel ports (`--bg` is stored in Tailscale's configuration) | see "Live values" (measured in the reboot test) |
+| Tailscale and the two Funnel ports (`--bg` is stored in Tailscale's configuration) | by themselves; measured together with the stack ("Live values") |
 | Docker Desktop | **after the user logs on** ("Start Docker Desktop when you sign in") |
 | Every service of the stack (`restart: unless-stopped`) | with Docker Desktop, in dependency-free order; the API retries until PostgreSQL answers |
 | The backup task | at its next time, or right after logon when a run was missed |
@@ -305,7 +305,8 @@ Go-live of task 025b (2026-10-12); public information only.
 | Hub transport through Funnel | WebSockets (`GET /api/hubs/notifications` -> 101 on the Funnel path and on the tailnet path) |
 | The API host without TLS (`http://`) | not served |
 | Storage downtime during a backup | about 14 s (measured on a throwaway stack) |
-| After a reboot: what waited for the logon | not measured yet |
+| After a reboot (2026-10-12) | nothing was started by hand: all containers running 62 s after the boot (logon included), both Funnel ports on, first login from the internet 112 s after the boot. Docker Desktop - and with it the stack - starts with the logon; whether Tailscale alone serves before a logon was not measured |
+| Backups | **none yet** (skipped by the user at go-live): no backup task is registered and no backup of production exists - section 6 before the first release |
 | Backup destination | chosen by the user (not written here) |
 
 What reaches the proxy (its access log), measured at go-live:
