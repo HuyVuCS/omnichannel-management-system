@@ -959,3 +959,36 @@ provisioning is an optional task **025c**.
 | Production steps | New rule in `docs/tasks/README.md`: empty production is set up by Claude Code in 025b; afterwards production steps only on request, by the runbook, after a backup; never `down -v` / volume removal / `-Force` on the production env file | Production holds real state from the first login | — |
 | Smoke data in production | `task-025.ps1` runs once against the live stack at go-live and leaves its prefixed smoke records | A fresh production with simulated channels; proof of the live path outweighs the clutter | Real users or real channels |
 | Uptime | Bound to the user's machine (logged-on session for Docker Desktop); no external monitoring | $0, no further account | 025c, or an uptime monitor account |
+
+## Task 025b result (reviewed 2026-10-12)
+
+**Live since 2026-10-12.** Frontend `https://omnichannel-management-system-front.vercel.app` (Vercel Hobby, deploys
+from branch `production` only); API `https://omni.tail70815b.ts.net`, storage `https://omni.tail70815b.ts.net:8443`
+(Tailscale Funnel → proxy `127.0.0.1:8080` / `:8081`, compose project `omnichannel-prod`, 2 Workers); public
+repository `HuyVuCS/omnichannel-management-system` (secret scanning + push protection, Dependabot alerts, read-only
+token, ruleset against force push / deletion on `master` and `production`); CI green incl. one arm64 dispatch.
+`vercel.json` (fallback outside `/assets/`, `immutable` assets, `git.deploymentEnabled`), `WORKERS_REPLICAS`, image
+revision label from `GIT_COMMIT`, backup / restore / scheduled-backup scripts, storage refusal steps in `task-025.ps1`,
+read-only `task-025b.ps1`, `docs/runbook.md`, "Production steps" rule. Smoke 51/51 locally and live, 12/12 live;
+phone check over mobile data; reboot without manual steps; bootstrap password blanked.
+**Not done:** production backups and the restore drill of a production backup (E4 / E5, skipped by the user) → 025d.
+Review: `docs/tasks/025b-go-live.review.md`.
+
+| Topic | Decision | Reason | Revisit when |
+| --- | --- | --- | --- |
+| Funnel facts (measured) | Funnel sends the client's public address in `X-Forwarded-For`, `X-Forwarded-Proto: https`, keeps `Host` on 443 and 8443, and carries WebSockets (hub 101). Case 1 of review 025 q1: `PROXY_TRUSTED_PROXIES=172.30.250.1/32`, `API_HTTPS_REDIRECT=true`; Caddyfile unchanged | Measured from a phone over mobile data, read from the proxy's access log | Funnel changes behaviour; a second proxy hop (025c) |
+| gitleaks findings at publication | 6 `generic-api-key` findings (placeholders and test fixtures) accepted by the user; history not rewritten | Triaged by file / commit / rule; none is a credential of any environment | A finding that is not a fixture |
+| Production without backups (review 025b q1) | **Not accepted**; task **025d** before 026. A new letter task instead of 026 Part A (convention) because it needs the user, touches production and must be closed before 026's first release | "Production steps" requires a backup before every release; Docker Desktop data loss removes all volumes at once; the scheduled start was never run | — |
+| Backup encryption | **None**; the dump (customers, orders, password hashes) is protected by the destination's own access control — the user's private cloud drive | A key would be one more secret to lose; a demo system with simulated customers | Real customer data, or a shared destination |
+| `Tailscale-User-*` headers (review 025b q2) | Stripped at the proxy and in its access-log filter in **026**; never trusted for identity by the API | Only the user's own tailnet devices send them; personal data in a local log, not a trust issue | — |
+| Secret rotation (review 025b q3) | Drilled on a throwaway stack in 025d (all rows of runbook §9 except the bootstrap password); production is not rotated; database passwords need a non-interactive variant that keeps the value off command lines and out of the PostgreSQL log | Untested procedures fail under pressure; Claude Code cannot type at a prompt | A suspected leak (then by the runbook, after a backup) |
+| 026 size | Split into 026, 026b, … when written | More than twenty items across API, proxy, containers, frontend and database | — |
+
+## Task 025d plan — production backups and drills (2026-10-12)
+
+| Topic | Decision | Reason | Revisit when |
+| --- | --- | --- | --- |
+| Destination | The user's choice in 025d B1: a folder of the user's own cloud-synced drive (recommended), or a local folder outside the repository recorded as **interim** | A copy has to leave the machine to survive the disk; an interim copy still survives Docker data loss | 025c (backups off the VM) |
+| Manifest | `rowCounts` of the main tables (taken right after the dump) and `storageArchiveEntries`; the restore prints manifest vs restored and **warns** on a difference | Drills compare automatically; counts taken after the snapshot can legitimately be higher under traffic, so a mismatch is not an error in general — in the drill (no traffic) it is | A consistent count inside the dump's snapshot is needed |
+| Scope on production | Only backups (manual + scheduled) and read-only queries; no `up`, build, migrate, env change or rotation | Smallest change to a live system; the first release is 026's | — |
+| Drills | Restore of a **production** backup into `omni025d-restore`; rotation of every §9 row on `omni025d-rot`; both removed with `down -v` of their own project only | A backup is proven by a restore; a rotation procedure by running it | After every change of the backup scripts (runbook §7) |
