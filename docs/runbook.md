@@ -158,14 +158,18 @@ powershell -ExecutionPolicy Bypass -File scripts\deploy\backup-prod.ps1 -Destina
 
 Writes `<backup folder>\omnichannel-backup-<yyyyMMdd-HHmmss>\` with `postgres.dump` (`pg_dump -Fc`, taken inside the
 container as the superuser over the local socket), `objectstorage.tar` (the storage volume) and `manifest.json` (time,
-commit of the running images, applied migrations, size and SHA-256 of both files), and one line in
-`<backup folder>\backup.log`. Exit code 0 only when everything was written; a failed run leaves no folder.
+commit of the running images, applied migrations, size and SHA-256 of both files, the row counts of the main tables
+and the number of entries of the storage archive), and one line in `<backup folder>\backup.log`. Exit code 0 only when everything was written; a failed run leaves no folder.
 
 - **The storage service is stopped while its volume is archived** (measured: see "Live values"; about a quarter of a
   minute). An image upload or an export download in that moment fails visibly in the browser and can be repeated; an
   export that a Workers instance stores in that moment fails its attempt and is retried by the normal retry rules.
-- The backup contains customers, orders and password hashes. The destination is the user's private storage; it should
-  leave the machine by itself (a folder that a cloud drive synchronises). The default is
+- **The dump and the storage archive are taken seconds apart**, and the row counts of the manifest right after the
+  dump. An image confirmed in between is an orphan object after a restore; an image removed in between is missing for
+  its product; a count can be ahead of the dump. Accepted: seconds, at night.
+- The backup contains customers, orders and password hashes and is **not encrypted** (decision in the log): the access
+  control of the destination is its only protection. The destination is the user's private storage, never a shared
+  folder; it should leave the machine by itself (a folder that a cloud drive synchronises). The default is
   `%USERPROFILE%\OmnichannelBackups`.
 - It contains **no password or key of the stack** and never the env file. Keep a copy of `docker/.env.prod` in the
   password manager if the same secrets must survive the machine (not needed for a restore).
@@ -174,8 +178,13 @@ commit of the running images, applied migrations, size and SHA-256 of both files
 - RabbitMQ is not backed up (section 8).
 - **Daily task:** `powershell -ExecutionPolicy Bypass -File scripts\deploy\register-backup-task.ps1 -At 03:00
   -Destination <backup folder>` registers "Omnichannel backup (omnichannel-prod)" for the current user: daily, only
-  while logged on, a missed run is made up at the next logon. `-Unregister` removes it. Look at `backup.log` from time
-  to time: a line `FAILED ...` (Docker Desktop not running, disk full) means there is no backup of that day.
+  while logged on, a missed run is made up at the next logon. `-Unregister` removes it.
+- **The weekly look** (nobody is told when a backup fails): 1. the last lines of `<backup folder>\backup.log` - one
+  `OK ...` line per day; a line `FAILED ...` (Docker Desktop not running, disk full) means there is no backup of that
+  day. 2. Task Scheduler (`taskschd.msc`) -> Task Scheduler Library -> "Omnichannel backup (omnichannel-prod)": "Last
+  Run Result" must be `(0x0)` and "Last Run Time" last night - or
+  `Get-ScheduledTaskInfo -TaskName 'Omnichannel backup (omnichannel-prod)'` (`LastTaskResult` 0). A result other than
+  0 with no new line in `backup.log` means the script did not even start.
 
 ## 7. Restore
 
@@ -191,7 +200,9 @@ powershell -ExecutionPolicy Bypass -File scripts\deploy\new-prod-env.ps1 -AdminE
 #   EDGE_SUBNET=172.30.252.0/28, EDGE_GATEWAY=172.30.252.1, EDGE_DYNAMIC_RANGE=172.30.252.8/29, PROXY_IP=172.30.252.2
 powershell -ExecutionPolicy Bypass -File scripts\deploy\restore-prod.ps1 -BackupPath <backup folder>\omnichannel-backup-<...> `
     -ProjectName omni-drill -EnvFile docker\.env.prod.drill
-# Look: http://localhost:18180/health, log in with a production account, compare a few numbers. Then remove the drill:
+# Read the table the script prints: every table and the storage entries must show the same number under "manifest" and
+# "restored" (a difference is a warning, marked "<-- differs"; while nobody used the system during the backup there
+# must be none). Then http://localhost:18180/health and a login with a production account. Then remove the drill:
 docker compose -p omni-drill --env-file docker\.env.prod.drill -f docker/docker-compose.prod.yml --profile migrate down -v
 Remove-Item docker\.env.prod.drill
 ```
@@ -235,19 +246,38 @@ A backup holds PostgreSQL and the storage, not RabbitMQ. What that means:
 All in `docker/.env.prod`; a change takes effect with `docker compose @stack up -d --wait` (compose recreates the
 services whose environment changed). **Backup first** for anything that touches PostgreSQL or the storage.
 
-| Secret | Procedure | Effect |
+`rotate-secret.ps1` makes the new value (random letters and digits, the lengths of `new-prod-env.ps1`) and writes it
+where the row says; it prints no value and puts none on a command line. In the table, `-Name ...` stands for
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\deploy\rotate-secret.ps1 -EnvFile docker\.env.prod -Name ...
+```
+
+| Secret | Procedure | Effect (the containers `up` recreates; times measured on the drill stack) |
 | --- | --- | --- |
-| `JWT_SIGNING_KEY` | new value (64 letters / digits) in the file, `up -d --wait` | **every session ends**; all users log in again |
-| `WEBHOOK_SECRET_<CHANNEL>` | without downtime: give the API the new secret as a second one first — a local, uncommitted override file with `services: api: environment: Webhooks__Channels__<slug>__Secrets__1: <new>`, added with a second `-f`; `up -d --wait`; switch the sender; then put the new value into the env file, drop the override, `up -d --wait` (README section 9 "Rotation") | none when done in this order |
-| `OMNI_APP_PASSWORD` | 1. `docker compose @stack exec postgres psql -U postgres -c '\password omnichannel_app'` (typed at the prompt, on no command line) 2. the same value in the file 3. `up -d --wait` | API and Workers fail database logins between 1 and 3: seconds |
-| `OMNI_MIGRATOR_PASSWORD` | the same with `omnichannel_migrator`; no service uses it between releases | none |
-| `POSTGRES_PASSWORD` | `\password postgres` the same way, then the file (the variable is only read when the volume is created) | none |
-| `RABBITMQ_PASSWORD` | 1. the new value in the file 2. `up -d --wait rabbitmq` (the container now carries the new value; the broker still has the old one - the default user is only created with the volume) 3. `docker compose @stack exec rabbitmq sh -c 'rabbitmqctl change_password "$RABBITMQ_DEFAULT_USER" "$RABBITMQ_DEFAULT_PASS"'` (the value comes from the container's environment, not from the command line) 4. `up -d --wait` | Workers cannot connect between 2 and 4; messages stay; the outbox keeps what is not published |
-| `OBJECT_STORAGE_ACCESS_KEY_ID` / `_SECRET_ACCESS_KEY` | new values (20 / 40 letters / digits) in the file, `up -d --wait` (storage, API and Workers restart together) | links handed out before stop working (they live 5 to 15 minutes anyway) |
+| `JWT_SIGNING_KEY` | `-Name JWT_SIGNING_KEY`, then `up -d --wait` | `api` (8 s). **Every session ends**; all users log in again |
+| `WEBHOOK_SECRET_<CHANNEL>` | without a refused webhook: 1. `-Name WEBHOOK_SECRET_<CHANNEL> -OverlapFile <new file outside the repository>` writes a compose override that gives the API the new secret as a **second** one 2. `docker compose @stack -f <that file> up -d --wait` - both secrets are accepted 3. switch the sender (the new secret is in that file) 4. `-Name WEBHOOK_SECRET_<CHANNEL> -CompleteFrom <that file>` moves it into the env file and removes the override 5. `up -d --wait` - the old secret is refused (401) | `api` twice (8 s each); no webhook is refused when done in this order |
+| `OMNI_APP_PASSWORD` | 1. `-Name OMNI_APP_PASSWORD` changes the role in the running database (below) and writes the file 2. `up -d --wait` | `postgres`, `api`, `workers` (13 s). Between 1 and 2 API and Workers keep their open connections; new ones are refused |
+| `OMNI_MIGRATOR_PASSWORD` | `-Name OMNI_MIGRATOR_PASSWORD`, then `up -d --wait` (no service uses the role between releases, but the variable is part of the `postgres` service) | `postgres` (seconds; API and Workers reconnect by themselves). Without the `up`, the next `run --rm migrate` or release recreates it |
+| `POSTGRES_PASSWORD` | `-Name POSTGRES_PASSWORD`, then `up -d --wait` (the variable is only read when the volume is created; backups use the local socket and need no password) | `postgres` (seconds), as above |
+| `RABBITMQ_PASSWORD` | 1. `-Name RABBITMQ_PASSWORD` 2. `up -d --wait rabbitmq` (the container now carries the new value; the broker still has the old one - the default user is only created with the volume) 3. `docker compose @stack exec rabbitmq sh -c 'rabbitmqctl change_password $RABBITMQ_DEFAULT_USER $RABBITMQ_DEFAULT_PASS'` (single quotes: the shell **inside** the container fills in the values) 4. `up -d --wait` | `rabbitmq` at 2 (13 s), `workers` at 4. Workers cannot connect between 2 and 4; messages stay; the outbox keeps what is not published |
+| `OBJECT_STORAGE_ACCESS_KEY_ID` / `_SECRET_ACCESS_KEY` | `-Name OBJECT_STORAGE_ACCESS_KEY_ID`, `-Name OBJECT_STORAGE_SECRET_ACCESS_KEY`, then one `up -d --wait` | `objectstorage`, `api`, `workers` (20 s). Links handed out before stop working (403; they live 5 to 15 minutes anyway) |
 | `BOOTSTRAP_ADMIN_PASSWORD` | **blank after the first login** (it is only used to create the first Admin): empty value in the file, `up -d --wait api`. `docker inspect` then shows it empty. | none; the admin keeps the password |
 
-Exercised at go-live: the `BOOTSTRAP_ADMIN_PASSWORD` row. The other rows are procedures by design that have not been
-run against a live stack yet: do each one first on a drill stack (section 7).
+**Database passwords without a prompt.** For the three database rows the script computes the SCRAM-SHA-256 verifier
+of the new password itself and sends only that, as the superuser over the local socket of the container, in a session
+with statement logging switched off (`log_min_error_statement = panic`): the password never reaches PostgreSQL in
+clear, and a statement that fails leaves neither the password, the verifier nor the statement in
+`docker compose logs postgres` - only the error line (verified in the drill). By hand the same is
+`docker compose @stack exec postgres psql -U postgres -c '\password omnichannel_app'` (typed twice at the prompt, on no
+command line), then the value into the file.
+
+Exercised: the `BOOTSTRAP_ADMIN_PASSWORD` row on production at go-live. **Every other row on a drill stack in task
+025d** (`omni025d-rot`, two Workers instances, each row followed by its check: old token 401 and a fresh login; old and
+new webhook secret 202 during the overlap, old 401 after it; an order `Reserved` and three clients of the app role
+logged in again; `migrate` "already up to date"; a backup; both Workers connected and the outbox drained; an old
+upload link 403 and a new upload confirmed; the smoke script green before and after). **No secret of production has
+ever been rotated.** Do a row on a drill stack again (section 7) when its procedure or the compose file changed.
 
 Values are letters and digits only (they are substituted into the compose file and into connection strings). Never
 `new-prod-env.ps1 -Force` over `docker/.env.prod`: it would replace passwords that the volumes keep.
@@ -285,7 +315,9 @@ all host-local connections from that address. Accepted on a single-user machine.
 - **Funnel**: a beta feature of Tailscale with unpublished bandwidth limits; the public name contains the machine and
   tailnet names and appears in certificate transparency logs.
 - **Simulated providers**: channels, invoices and e-mails (section 1).
-- **Backups** are as far from the machine as the chosen destination is.
+- **Backups**: none are taken (section 13). Losing Docker Desktop's data (reset, purge, uninstall, a broken virtual
+  disk) or the disk loses everything. When they are switched on (section 6), they are as far from the machine as the
+  chosen destination is.
 - Security headers / CSP on the frontend, body limits, container hardening, login throttling per account: roadmap 026.
 - TLS mode of the proxy (public host names, `docker-compose.prod.tls.yml`) is validated as configuration only.
 
@@ -304,10 +336,11 @@ Go-live of task 025b (2026-10-12); public information only.
 | `SMOKE_EXPECT_HSTS` for `task-025b.ps1` | `true` |
 | Hub transport through Funnel | WebSockets (`GET /api/hubs/notifications` -> 101 on the Funnel path and on the tailnet path) |
 | The API host without TLS (`http://`) | not served |
-| Storage downtime during a backup | about 14 s (measured on a throwaway stack) |
+| Storage downtime during a backup | 13 to 14 s (measured on throwaway stacks in 025b and 025d; never on production) |
+| Restore into a new stack | healthy after 40 s, counts and storage entries identical to the manifest (throwaway stack with smoke data, 025d) |
 | After a reboot (2026-10-12) | nothing was started by hand: all containers running 62 s after the boot (logon included), both Funnel ports on, first login from the internet 112 s after the boot. Docker Desktop - and with it the stack - starts with the logon; whether Tailscale alone serves before a logon was not measured |
-| Backups | **none yet** (skipped by the user at go-live): no backup task is registered and no backup of production exists - section 6 before the first release |
-| Backup destination | chosen by the user (not written here) |
+| Backups | **none** - declined by the user at go-live and again in task 025d (2026-10-12): no backup task is registered, no backup of production exists, the backup scripts have never run against `omnichannel-prod`. "Production steps" (`docs/tasks/README.md`) asks for a backup before every release: that rule and this decision must be settled before the first release |
+| Backup destination, time of the daily task | none (no destination was chosen) |
 
 What reaches the proxy (its access log), measured at go-live:
 
