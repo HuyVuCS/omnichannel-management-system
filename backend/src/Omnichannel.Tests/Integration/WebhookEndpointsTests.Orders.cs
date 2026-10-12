@@ -195,10 +195,10 @@ public sealed partial class WebhookEndpointsTests
         // Missing altogether: the three parts of an order.
         var empty = await _sender.SendAsync(WebhookTesting.Request(Website, "{}"u8.ToArray(), ApiFactory.WebsiteWebhookSecret));
         Assert.Equal(["customer", "externalOrderId", "items"], (await empty.ErrorsAsync()).Keys.Order(StringComparer.Ordinal));
-        // A value of the wrong JSON type is the parser's error, with its path.
+        // A value of the wrong JSON type is the parser's error, under the key of the field (task 026 B3).
         var wrongType = Encoding.UTF8.GetBytes($$$"""{"externalOrderId":"ORD-{{{_tag}}}","customer":{"externalCustomerId":"C","name":"N"},"items":[{"externalSku":"S","quantity":"two"}]}""");
         var parsed = await _sender.SendAsync(WebhookTesting.Request(Website, wrongType, ApiFactory.WebsiteWebhookSecret));
-        Assert.Contains((await parsed.ErrorsAsync()).Keys, key => key.StartsWith("$.items[0].quantity", StringComparison.Ordinal));
+        Assert.Equal(["items[0].quantity"], (await parsed.ErrorsAsync()).Keys);
 
         Assert.Empty(await TasksAsync(Website, $"ORD-{_tag}"));
         Assert.Equal(0, await factory.QueryDbAsync(db => db.ChannelCustomers.CountAsync(m => m.ExternalCustomerId == $"CUST-{_tag}")));

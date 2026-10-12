@@ -62,6 +62,8 @@ public static class ValidationMessages
         public const string ItemNotSoldOnChannel = nameof(ItemNotSoldOnChannel);
         public const string OrderNotPayable = nameof(OrderNotPayable);
         public const string OrderAlreadyPaid = nameof(OrderAlreadyPaid);
+        public const string ValueInvalid = nameof(ValueInvalid);
+        public const string BodyNotJson = nameof(BodyNotJson);
     }
 
     /// <summary>The text of <paramref name="key"/> in the current UI culture, with <c>{Name}</c> placeholders replaced.</summary>

@@ -15,7 +15,7 @@
 #                                                        the override
 #
 # The first Admin's bootstrap password is not rotated here (runbook: it is blanked after the first login).
-# Every change of the file takes effect with "docker compose ... up -d --wait". Backup first.
+# Every change of the file takes effect with "docker compose ... up -d --wait".
 param(
     [Parameter(Mandatory = $true)][string]$Name,
     [Parameter(Mandatory = $true)][string]$EnvFile,

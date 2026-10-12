@@ -206,6 +206,7 @@ try {
     $image = Invoke-Raw GET $imageUrl @{ 'Origin' = $frontendOrigin } $null $null
     Assert-Step '29 GET the image link -> 200 with the uploaded bytes' "200 $($png.Length)" "$($image.Status) $($image.Bytes.Length)"
     Assert-Step '30 ... with the CORS header' $frontendOrigin (Get-Header $image 'access-control-allow-origin')
+    Assert-Step '30b ... as data that is never a page (task 026): its type, nosniff, the sandbox policy' "image/png | nosniff | default-src 'none'; sandbox" "$(Get-Header $image 'content-type') | $(Get-Header $image 'x-content-type-options') | $(Get-Header $image 'content-security-policy')"
     $otherOrigin = Invoke-Raw GET $imageUrl @{ 'Origin' = 'https://someone-else.example' } $null $null
     Assert-Step '31 ... and none for another origin' 'none' (Get-Header $otherOrigin 'access-control-allow-origin')
     # 6b. The bucket is private: without a signature the storage origin gives nothing and takes nothing.
@@ -233,6 +234,7 @@ try {
     $file = Invoke-Raw GET ([string]$link.Body.url) $null $null $null
     Assert-Step '40 GET the link -> 200, the bytes start with PK (an xlsx file)' '200 True' "$($file.Status) $(Test-StartsWithPk $file.Bytes)"
     Assert-Step '41 ... served as an attachment (the stored Content-Disposition)' $true ((Get-Header $file 'content-disposition') -clike 'attachment*')
+    Assert-Step '41b ... with nosniff and the sandbox policy (task 026)' "nosniff | default-src 'none'; sandbox" "$(Get-Header $file 'x-content-type-options') | $(Get-Header $file 'content-security-policy')"
     $link = $null
 
     # 8. An order, its payment, the invoice and the confirmation e-mail.

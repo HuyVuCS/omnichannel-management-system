@@ -30,20 +30,34 @@
 				request>headers>Authorization delete
 				request>headers>Cookie delete
 				request>headers>Referer delete
+				# What Tailscale adds for a device of the tailnet: the login, name and picture of its user.
+				request>headers>Tailscale-User-Login delete
+				request>headers>Tailscale-User-Name delete
+				request>headers>Tailscale-User-Profile-Pic delete
 				resp_headers>Location regexp "\?.*" ""
 			}
 		}
 	}
 }
 
+# The identity headers Tailscale adds to a request from a device of the tailnet never reach an upstream: nothing
+# behind this proxy uses them, and nobody may mistake them for an authentication.
+(strip_tailscale_identity) {
+	request_header -Tailscale-User-Login
+	request_header -Tailscale-User-Name
+	request_header -Tailscale-User-Profile-Pic
+}
+
 {$API_SITE_ADDRESS:http://:8080} {
 	import access_log
+	import strip_tailscale_identity
 
 	@api path /api/* /health
 	handle @api {
-		# Kestrel's own limit for a request body (28.6 MB), rounded up: the proxy does not add a rule of its own.
+		# The API's own limit for a request body (RequestBodyLimit.MaxBytes; a test of the backend compares the
+		# two numbers). A longer body that announces its length is answered by the API (413 ProblemDetails).
 		request_body {
-			max_size 30MB
+			max_size 128KiB
 		}
 
 		# WebSocket upgrades of /api/hubs/* pass through as they are. The API gets exactly one client address: the
@@ -61,11 +75,17 @@
 
 {$STORAGE_SITE_ADDRESS:http://:8081} {
 	import access_log
+	import strip_tailscale_identity
 
 	# The Host header is passed on unchanged (Caddy's default) and the path is not rewritten: a presigned link is
 	# signed for exactly this host and path. Bodies are streamed, not buffered: an upload of several megabytes goes
-	# straight through.
-	reverse_proxy objectstorage:8333
+	# straight through - no size limit here (the API checks the size of an image when it is confirmed).
+	reverse_proxy objectstorage:8333 {
+		# An object is data, whatever type it was stored with: never sniffed into another type and never run as a
+		# page on this origin (an image is still shown and a file still downloaded by a page of the frontend).
+		header_down X-Content-Type-Options nosniff
+		header_down Content-Security-Policy "default-src 'none'; sandbox"
+	}
 }
 
 # For the container health check only; not published.

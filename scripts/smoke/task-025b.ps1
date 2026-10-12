@@ -4,13 +4,17 @@
 # Required environment:
 #   SMOKE_BASE_URL          the public API origin, e.g. https://machine.tailnet.ts.net
 #   SMOKE_FRONTEND_ORIGIN   the public origin of the frontend, e.g. https://project.vercel.app
+#   SMOKE_STORAGE_ORIGIN    the public origin of the storage, e.g. https://machine.tailnet.ts.net:8443
 #   SMOKE_EXPECT_HSTS       true / false: whether the API is expected to answer Strict-Transport-Security (true only
 #                           when the proxy believes the tunnel's X-Forwarded-Proto - docs/runbook.md "Client addresses")
 # Usage (repository root):  powershell -ExecutionPolicy Bypass -File scripts\smoke\task-025b.ps1
 . (Join-Path $PSScriptRoot '_common.ps1')
+. (Join-Path $PSScriptRoot '_hardening.ps1')
 
 if (-not $env:SMOKE_BASE_URL) { throw 'SMOKE_BASE_URL is required: the public API origin.' }
 if (-not $env:SMOKE_FRONTEND_ORIGIN) { throw 'SMOKE_FRONTEND_ORIGIN is required: the public origin of the frontend.' }
+if (-not $env:SMOKE_STORAGE_ORIGIN) { throw 'SMOKE_STORAGE_ORIGIN is required: the public origin of the storage.' }
+$storageOrigin = $env:SMOKE_STORAGE_ORIGIN.TrimEnd('/')
 if (($env:SMOKE_EXPECT_HSTS -ne 'true') -and ($env:SMOKE_EXPECT_HSTS -ne 'false')) { throw 'SMOKE_EXPECT_HSTS is required: true or false.' }
 $frontendOrigin = $env:SMOKE_FRONTEND_ORIGIN.TrimEnd('/')
 $expectHsts = ($env:SMOKE_EXPECT_HSTS -eq 'true')
@@ -70,6 +74,20 @@ try {
     $other = ([uri]$frontendOrigin).Scheme + '://not-' + ([uri]$frontendOrigin).Host
     $preflight['Origin'] = $other
     Assert-Step "12 preflight from $other -> no CORS header" 'none' (Get-Header (Invoke-Raw OPTIONS "$script:BaseUrl/api/products" $preflight) 'access-control-allow-origin')
+
+    # 4. Task 026: the headers of the static host and the policy the build wrote into the page.
+    Assert-Step '13 the static host forbids framing, on the page and on a deep link' "frame-ancestors 'none' | frame-ancestors 'none'" "$(Get-Header $index 'content-security-policy') | $(Get-Header $deep 'content-security-policy')"
+    Assert-Step '14 ... nosniff, a referrer policy and a permissions policy' 'nosniff | strict-origin-when-cross-origin | camera=(), microphone=(), geolocation=(), payment=()' "$(Get-Header $index 'x-content-type-options') | $(Get-Header $index 'referrer-policy') | $(Get-Header $index 'permissions-policy')"
+    Assert-Step '15 ... and on a script under /assets/ (next to its cache rule)' 'nosniff' (Get-Header $assetAnswer 'x-content-type-options')
+    $apiOrigin = ([uri]$script:BaseUrl).GetLeftPart([System.UriPartial]::Authority)
+    $hubOrigin = $apiOrigin -replace '^http', 'ws'
+    $policy = if ($index.Text -match '<meta http-equiv="Content-Security-Policy" content="([^"]*)"') { $Matches[1].Replace('&#39;', "'") } else { 'no policy in the page' }
+    $expectedPolicy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' $storageOrigin; connect-src 'self' $apiOrigin $hubOrigin $storageOrigin; object-src 'none'; base-uri 'self'; form-action 'self'"
+    Assert-Step '16 the page carries the policy of the build: scripts of the build only, the API, its hub and the storage' $expectedPolicy $policy
+    Assert-Step '17 ... before the first script of the page' $true (($index.Text.IndexOf('http-equiv="Content-Security-Policy"') -ge 0) -and ($index.Text.IndexOf('http-equiv="Content-Security-Policy"') -lt $index.Text.IndexOf('<script')))
+
+    # 5. Task 026: the API and the storage origin (no account, nothing written).
+    [void](Invoke-HardeningChecks $script:BaseUrl $storageOrigin 18)
 }
 catch {
     Assert-Step "unexpected error: $($_.Exception.Message)" 'no error' 'error'

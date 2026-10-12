@@ -5,9 +5,22 @@
 #
 # The proxy then listens on every interface, gets its certificates by itself (ports 80 and 443 must be reachable from
 # the internet) and redirects HTTP to HTTPS. Without this file the proxy stays on 127.0.0.1 behind a tunnel.
+#
+# The certificates and their account key are kept in two volumes. The proxy runs as 65532:65532 and a new volume
+# belongs to root: before the first start, once,
+#   docker compose ... -f docker/docker-compose.prod.tls.yml run --rm --user 0:0 --cap-add CHOWN --entrypoint chown proxy -R 65532:65532 /data /config
+# (This mode has never been exercised - README "Production deployment".)
 services:
   proxy:
     ports: !override
       - "80:80"
       - "443:443"
       - "443:443/udp"
+    tmpfs: !reset []
+    volumes:
+      - proxy-data:/data
+      - proxy-config:/config
+
+volumes:
+  proxy-data:
+  proxy-config:

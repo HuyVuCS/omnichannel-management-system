@@ -17,6 +17,10 @@ param(
     # Public origin of the proxy's storage site. The default is the local run without TLS.
     [string]$StoragePublicUrl = 'http://localhost:8081',
     [string]$Path,
+    # Tag of the images of this stack. The default is a tag of its own (local-<8 random characters>), so that building
+    # this stack never changes the images another stack on the machine runs. Production gets the commit of each
+    # release instead (docs/runbook.md "Release").
+    [string]$ImageTag,
     [switch]$PromptAdminPassword,
     [switch]$Force
 )
@@ -60,6 +64,8 @@ function Test-AdminPassword([string]$Value) {
 if (-not (Test-Origin $FrontendOrigin)) { throw '-FrontendOrigin must be an origin: http(s)://host[:port] without a path or a trailing slash.' }
 if (-not (Test-Origin $StoragePublicUrl)) { throw '-StoragePublicUrl must be an origin: http(s)://host[:port] without a path or a trailing slash.' }
 if ($AdminEmail -notmatch '^[^@\s=]+@[^@\s=]+$') { throw '-AdminEmail must be an e-mail address.' }
+if (-not $ImageTag) { $ImageTag = 'local-' + (New-Secret 8 'abcdefghijklmnopqrstuvwxyz0123456789') }
+if ($ImageTag -cnotmatch '^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$') { throw '-ImageTag must be an image tag: letters, digits, "_", "." and "-", at most 128 characters.' }
 if (-not (Test-Path $template)) { throw "Template not found: $template" }
 if ((Test-Path $Path) -and (-not $Force)) {
     throw "$Path exists and is kept. New passwords do not fit the volumes of a stack that already ran; use -Force only for a stack that is created from nothing."
@@ -75,6 +81,7 @@ if ($PromptAdminPassword) {
 }
 
 $values = @{
+    IMAGE_TAG                        = $ImageTag
     FRONTEND_ORIGIN                  = $FrontendOrigin
     STORAGE_PUBLIC_URL               = $StoragePublicUrl
     POSTGRES_PASSWORD                = New-Secret 32
@@ -113,6 +120,7 @@ if ($missing.Count -gt 0) { throw "The template has no line for: $($missing -joi
 [System.IO.File]::WriteAllText($Path, (($lines -join "`n") + "`n"), (New-Object System.Text.UTF8Encoding($false)))
 
 Write-Host "Written: $Path (git-ignored; $($values.Count) values set, none shown here)."
+Write-Host "Image tag:       $ImageTag"
 Write-Host "Frontend origin: $FrontendOrigin"
 Write-Host "Storage origin:  $StoragePublicUrl"
 if (-not $PromptAdminPassword) {

@@ -6,4 +6,5 @@ Dockerfile text eol=lf
 *.ps1 text eol=crlf
 # Read inside Linux containers.
 Caddyfile text eol=lf
+docker/rabbitmq/*.conf text eol=lf
 *.env.example text eol=lf
