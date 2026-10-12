@@ -992,3 +992,36 @@ Review: `docs/tasks/025b-go-live.review.md`.
 | Manifest | `rowCounts` of the main tables (taken right after the dump) and `storageArchiveEntries`; the restore prints manifest vs restored and **warns** on a difference | Drills compare automatically; counts taken after the snapshot can legitimately be higher under traffic, so a mismatch is not an error in general — in the drill (no traffic) it is | A consistent count inside the dump's snapshot is needed |
 | Scope on production | Only backups (manual + scheduled) and read-only queries; no `up`, build, migrate, env change or rotation | Smallest change to a live system; the first release is 026's | — |
 | Drills | Restore of a **production** backup into `omni025d-restore`; rotation of every §9 row on `omni025d-rot`; both removed with `down -v` of their own project only | A backup is proven by a restore; a rotation procedure by running it | After every change of the backup scripts (runbook §7) |
+
+## Task 025d result (reviewed 2026-10-12)
+
+Backup manifest with `rowCounts` (11 tables) and `storageArchiveEntries`, compared by `restore-prod.ps1` (warning on a
+difference; old manifests restore without comparison); `scripts/deploy/rotate-secret.ps1` for every secret of runbook
+§9 (database roles get a **SCRAM-SHA-256 verifier computed in PowerShell**, sent by the superuser over the local socket
+with statement logging off for the session — the password never reaches the server or a log); rotation drill of every
+§9 row on a throwaway stack 30/30, smoke 51/51 before and after; runbook rows corrected by the drill. Production
+untouched. **Parts B / C (production backups, restore drill of a production backup) not done: the user decided that
+production runs without backups.** Review: `docs/tasks/025d-*.review.md`.
+
+| Topic | Decision | Reason | Revisit when |
+| --- | --- | --- | --- |
+| Production backups (user, 2026-10-12, given twice) | **None.** The "backup before a production step" rule is removed from `docs/tasks/README.md`; the scripts stay for use on request. Consequences accepted: Docker Desktop reset / disk loss / a wrong command loses all production data; after a migration only fix-forward; runbook restore sections apply to drills only. The guardrails (no `down -v`, no volume removal, no `-Force` over the env file, additive migrations only) are the only protection and stay absolute | Demo system with simulated channels, invoices and e-mails | Real customers, real channels, or the user asks |
+| Database passwords | Rotated with a client-side SCRAM verifier (`Set-StackRolePassword`); passwords letters and digits only (no SASLprep) | No prompt, no value on a command line, nothing in the PostgreSQL log even on failure | — |
+| Image tags | Shared `:local` tags across compose projects are a hazard (a drill build re-points production's next `up`) → `IMAGE_TAG` in the env file, commit tag per release (026 A1) | Found in 025d (deviation 2) | — |
+
+## Task 026 plan — security hardening, first release (2026-10-12)
+
+Roadmap row 026 split (review 025b): **026** security of edge, API, containers and frontend + the first release;
+**026b** database and performance; **026c** object storage and frontend follow-ups.
+
+| Topic | Decision | Reason | Revisit when |
+| --- | --- | --- | --- |
+| Image tags | `omnichannel-*:${IMAGE_TAG}` with `IMAGE_TAG` in the stack's env file (production: short commit of the release; drills: their own); backend rollback without a migration = previous tag + `up` | One stack can never re-tag another's images; rollback without a rebuild; a shell variable could silently change what `up` runs | CI-built images in a registry |
+| API response headers | In the API (middleware), not only at the proxy: `nosniff`, `Referrer-Policy: no-referrer`, `CSP default-src 'none'; frame-ancestors 'none'`, `no-store` for authenticated answers; no CORP (frontend and API are different sites) | Development and tests see the same headers; JSON never renders as a page | — |
+| Body limit | Application-wide Kestrel limit from the largest measured legitimate body, the proxy the same; 413 ProblemDetails; webhooks keep 64 KiB | Review 025 q4 | A larger legitimate body |
+| Frontend CSP | Build-time `<meta>` CSP from `VITE_API_BASE_URL` + new `VITE_STORAGE_ORIGIN`; `frame-ancestors` and the other headers in `vercel.json`; `script-src 'self'` strictly; `style-src 'unsafe-inline'` accepted | One source of truth for origins (the build variables), testable locally with `vite preview`; Ant Design injects `<style>` elements and a static host cannot issue nonces | A server-rendered host with nonces |
+| Auth token storage (roadmap "revisit httpOnly cookie") | **Kept: bearer token in `sessionStorage`** | `*.vercel.app` and `*.ts.net` are different sites: an auth cookie would be third-party (`SameSite=None`), blocked by Safari and restricted elsewhere; CSP is the mitigation | Frontend and API under one site (custom domain) |
+| Login throttling per account | **Nothing added**: Identity lockout (5 / 15 min per account) + 10/min per address | Lockout already throttles per account; its denial-of-login trade-off is documented, a second Admin can unlock | Real users, or abuse seen |
+| Token-in-URL at the proxy (roadmap 026 item) | **Closed by 025**: the Caddy log filter drops query strings and `Authorization`, the API enricher redacts the hub token | Verified in review 025 | — |
+| Containers | `no-new-privileges` everywhere; `cap_drop: ALL` with measured add-backs; read-only roots where they work without hacks; Caddy and SeaweedFS non-root (one-shot `chown` of the storage volume, drilled first); RabbitMQ memory from the container limit | Review 025 q5; only least privilege that is measured, not guessed | A service update changes its needs |
+| Third-party image digests | Not pinned unless the user agrees (question in the 026 report) | Floating tags accepted in review 025; `up` never pulls by itself | — |

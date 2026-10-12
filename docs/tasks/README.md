@@ -102,8 +102,11 @@ project and the branch `production`; procedures are in `docs/runbook.md`.
 
 - Until go-live production was empty: Claude Code built, migrated, started and smoke-tested it in task 025b.
 - **From the first login of the user, production holds real state.** A production step (release, migration, restore,
-  secret rotation, scaling) is run only when a task or the user asks for it, by the runbook, **after a backup** of
-  that moment (`scripts\deploy\backup-prod.ps1`).
+  secret rotation, scaling) is run only when a task or the user asks for it, by the runbook.
+- **No backups (user, 2026-10-12, after reviews 025b / 025d):** production is a demo with simulated data; losing it
+  is accepted. A production step does **not** wait for a backup and no task runs `backup-prod.ps1` against
+  production unless the user asks. Because nothing can be restored, the guardrails below are the only protection and
+  stay absolute; a migration that is not additive is never applied to production (`Blocked`, the user decides).
 - Never `down -v`, never removing a volume of `omnichannel-prod`, never `--force` / `-Force` over `docker/.env.prod`.
   Migrations: listed before applying, additive only - the rules of "Development steps" unchanged.
 - Smoke scripts against production only when the task says so (they leave smoke data); `task-025b.ps1` is read-only
