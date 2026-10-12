@@ -597,7 +597,8 @@ run the same commit (runbook "Release").
 | `docker/api.Dockerfile`, `workers.Dockerfile`, `migrate.Dockerfile` | the images (multi-stage, non-root, `linux/amd64` and `linux/arm64`) |
 | `docker/prod.env.example` | every variable of the stack by name and purpose, without values |
 | `scripts/deploy/new-prod-env.ps1` | writes `docker/.env.prod` (git-ignored) with fresh random secrets |
-| `scripts/deploy/backup-prod.ps1`, `restore-prod.ps1`, `register-backup-task.ps1` | backup (database dump + storage archive + manifest), restore into a new stack, the daily Windows task |
+| `scripts/deploy/backup-prod.ps1`, `restore-prod.ps1`, `register-backup-task.ps1` | backup (database dump + storage archive + manifest with row counts), restore into a new stack (prints manifest vs restored), the daily Windows task |
+| `scripts/deploy/rotate-secret.ps1` | a new random value for one secret of the stack's environment file, database roles included (runbook "Secrets"); prints no value |
 | `frontend/vercel.json` | static host: fallback to `index.html` for deep links, `immutable` for `/assets/*`, deployments from `production` only |
 | `docs/runbook.md` | every procedure of the live system |
 

@@ -11,6 +11,8 @@
 #   included, keep the passwords they had at backup time.
 # - Order: verify the SHA-256 of both files; start postgres; pg_restore as the superuser over the local socket; unpack
 #   the storage archive into the new volume; start the storage; run "migrate"; start everything and wait until healthy.
+# - It prints the row counts and the storage entries of the manifest beside the restored ones. A difference is a warning
+#   (exit code 0): the manifest's counts are taken seconds after the dump and can be ahead of it under traffic.
 param(
     [Parameter(Mandatory = $true)][string]$BackupPath,
     [Parameter(Mandatory = $true)][string]$ProjectName,
@@ -20,6 +22,7 @@ param(
 . (Join-Path $PSScriptRoot '_stack.ps1')
 
 $helper = $null
+$differences = @()
 try {
     $started = [System.Diagnostics.Stopwatch]::StartNew()
     $BackupPath = (Resolve-Path $BackupPath).Path
@@ -52,14 +55,33 @@ try {
     $restored = @(Get-AppliedMigrations $postgres)
     if ((@($restored) -join ',') -cne (@($manifest.migrations) -join ',')) { throw 'The restored database does not have the migrations of the manifest.' }
     Write-Host "  database restored ($($restored.Count) migrations)"
+    # Counted before anything of the application runs. The manifest's counts were taken seconds after the dump's
+    # snapshot, so a difference is a warning: under traffic the manifest can be ahead of the dump.
+    if ($manifest.rowCounts) {
+        $restoredCounts = Get-TableRowCounts $postgres
+        Write-Host ('  {0,-22}{1,12}{2,12}' -f 'table', 'manifest', 'restored')
+        foreach ($table in @($manifest.rowCounts.PSObject.Properties)) {
+            $now = if ($restoredCounts.Contains($table.Name)) { [string]$restoredCounts[$table.Name] } else { 'n/a' }
+            $mark = ''
+            if ($now -cne [string]$table.Value) { $mark = '  <-- differs'; $differences += $table.Name }
+            Write-Host ('  {0,-22}{1,12}{2,12}{3}' -f $table.Name, $table.Value, $now, $mark)
+        }
+    } else { Write-Host '  The manifest has no row counts (a backup made before they existed): no comparison.' }
 
     # 4. The object storage: its volume is created with the container (not started), filled, then the service starts.
     Invoke-Compose $ProjectName $EnvFile create objectstorage
     $volume = "${ProjectName}_objectstorage-data"
     $helper = "$ProjectName-restore-helper"
-    [void](Invoke-Docker create --name $helper --network none --entrypoint tar -v "${volume}:/data" $script:ToolImage -xf /tmp/archive.tar -C /data)
+    Start-VolumeHelper $helper "${volume}:/data"
     [void](Invoke-Docker cp (Join-Path $BackupPath $script:ArchiveName) "${helper}:/tmp/archive.tar")
-    [void](Invoke-Docker start -a $helper)
+    [void](Invoke-Docker exec $helper tar -xf /tmp/archive.tar -C /data)
+    if ($null -ne $manifest.storageArchiveEntries) {
+        $entries = Get-TarEntryCount $helper
+        $mark = ''
+        if ($entries -ne [long]$manifest.storageArchiveEntries) { $mark = '  <-- differs'; $differences += 'storage archive entries' }
+        Write-Host ('  {0,-22}{1,12}{2,12}{3}' -f 'storage entries', $manifest.storageArchiveEntries, $entries, $mark)
+    }
+    [void](Invoke-Docker rm -f $helper)
     Invoke-Compose $ProjectName $EnvFile up -d --wait objectstorage
     Write-Host '  object storage restored'
 
@@ -71,6 +93,9 @@ try {
     Invoke-Compose $ProjectName $EnvFile up -d --wait
     $started.Stop()
     Write-Host "Restored into '$ProjectName' and healthy after $([math]::Round($started.Elapsed.TotalSeconds)) s." -ForegroundColor Green
+    if ($differences.Count -gt 0) {
+        Write-Host "WARNING: restored and manifest differ for: $($differences -join ', '). Expected only when the system was in use during the backup." -ForegroundColor Yellow
+    }
     Write-Host 'Messages that were in RabbitMQ at backup time are not part of a backup: runbook "After a restore".'
     $code = 0
 }

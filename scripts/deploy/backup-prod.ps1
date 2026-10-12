@@ -8,7 +8,8 @@
 #                       over the local socket - no password is used anywhere
 #   objectstorage.tar   the storage volume, archived while the storage service is stopped (seconds; uploads and export
 #                       files fail or are retried meanwhile), then the service is started again
-#   manifest.json       time, commit of the running images, applied migrations, size and SHA-256 of both files
+#   manifest.json       time, commit of the running images, applied migrations, size and SHA-256 of both files, row
+#                       counts of the main tables (taken right after the dump) and the entries of the storage archive
 # and appends one line to <Destination>\backup.log. RabbitMQ is not backed up: its messages are transient, the outbox
 # is in PostgreSQL (runbook "After a restore").
 #
@@ -89,6 +90,8 @@ try {
     # 1. The database. The dump is written inside the container and copied out: binary data never passes a pipe.
     $migrations = @(Get-AppliedMigrations $postgres)
     [void](Invoke-Docker exec $postgres pg_dump -U postgres -d omnichannel -Fc -f /tmp/backup.dump)
+    # Counted right after the dump, not inside its snapshot: under traffic a count can be higher than the dump.
+    $rowCounts = Get-TableRowCounts $postgres
     try { [void](Invoke-Docker cp "${postgres}:/tmp/backup.dump" (Join-Path $work $script:DumpName)) }
     finally { [void](Invoke-Docker exec $postgres rm -f /tmp/backup.dump) }
     Write-Host "  database dumped ($($migrations.Count) migrations applied)"
@@ -99,18 +102,20 @@ try {
     [void](Invoke-Docker volume inspect $volume)
     $helper = "$ProjectName-backup-helper"
     try { [void](Invoke-Docker rm -f $helper) } catch { }
+    Start-VolumeHelper $helper "${volume}:/data:ro"
     $stopped = [System.Diagnostics.Stopwatch]::StartNew()
     [void](Invoke-Docker stop $storage)
     try {
-        [void](Invoke-Docker run --name $helper --network none --entrypoint tar -v "${volume}:/data:ro" $script:ToolImage -cf /tmp/archive.tar -C /data .)
+        [void](Invoke-Docker exec $helper tar -cf /tmp/archive.tar -C /data .)
     } finally {
         [void](Invoke-Docker start $storage)
         Wait-Healthy $storage 120
         $stopped.Stop()
     }
     $downtime = [math]::Round($stopped.Elapsed.TotalSeconds, 1)
+    $archiveEntries = Get-TarEntryCount $helper '/tmp/archive.tar'
     [void](Invoke-Docker cp "${helper}:/tmp/archive.tar" (Join-Path $work $script:ArchiveName))
-    Write-Host "  object storage archived (the storage service was down for $downtime s)"
+    Write-Host "  object storage archived ($archiveEntries entries; the storage service was down for $downtime s)"
 
     # 3. The manifest.
     $revisions = @{}
@@ -132,6 +137,8 @@ try {
         gitCommit                    = [ordered]@{ api = $revisions['api']; workers = $revisions['workers'] }
         migrations                   = @($migrations)
         files                        = @($files)
+        rowCounts                    = $rowCounts
+        storageArchiveEntries        = $archiveEntries
         storageDowntimeSeconds       = $downtime
     }
     [System.IO.File]::WriteAllText((Join-Path $work $script:ManifestName), ($manifest | ConvertTo-Json -Depth 5), (New-Object System.Text.ASCIIEncoding))
