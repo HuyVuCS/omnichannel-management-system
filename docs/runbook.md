@@ -257,7 +257,8 @@ helper account, blank the variable again.
 
 ## 10. Client addresses, rate limits, trust
 
-See "Live values" for what was measured at go-live and which of the three cases of review 025 (question 1) applies.
+Measured at go-live ("Live values"): Funnel reports the client's public address and `https`, so the proxy trusts the
+edge gateway and the API sees every client's own address.
 In every case: the API believes forwarded headers from the proxy only, the proxy only from `PROXY_TRUSTED_PROXIES`.
 Trusting the edge gateway (`172.30.250.1/32`) also trusts **every process on this machine** — Docker Desktop delivers
 all host-local connections from that address. Accepted on a single-user machine.
@@ -269,7 +270,7 @@ all host-local connections from that address. Accepted on a single-user machine.
 | The frontend loads, every request fails ("cannot reach the server") | machine asleep or off; nobody logged on after a reboot; Docker Desktop not started; Funnel off | wake / log on; Docker Desktop; `docker compose @stack ps`; `tailscale funnel status`; section 3 |
 | `https://<host>/health` fails from outside, works on `http://127.0.0.1:8080/health` | Funnel or Tailscale | `tailscale status`; Funnel on again (section 2); the node attribute `funnel` in the tailnet policy; Tailscale's status page |
 | `127.0.0.1:8080/health` fails | proxy or API down | `docker compose @stack ps`, `logs --since 15m api proxy`; `up -d --wait` |
-| Login answers 429 for everybody | the login limit is one bucket when no client address is available (section 10) | wait a minute; find the sender in the proxy's access log; 026 |
+| Login answers 429 | more than 10 login attempts a minute from that client address (section 10) | wait a minute; the sender is in the proxy's access log (`client_ip`); 026 adds throttling per account |
 | Uploads fail, pages work | storage stopped (a backup is running: a quarter of a minute), storage unhealthy, or disk full | `ps`, `logs objectstorage`; free disk space |
 | Disk full | Docker's virtual disk (images, build cache), logs (bounded: 5 x 10 MB per container), backups | `docker system df`; `docker builder prune` (build cache only — **never** `docker system prune --volumes`); old backups are removed by the retention |
 | A dead-letter queue fills up / tasks `Failed` | a real failure of a worker or of the storage / database | Alerts and **Sync & Processing** show the task and its attempts (`ErrorCode`, `CorrelationId`); `logs workers`; fix the cause, then **Retry** |
@@ -290,21 +291,37 @@ all host-local connections from that address. Accepted on a single-user machine.
 
 ## 13. Live values
 
-Filled in at go-live (task 025b); public information only.
+Go-live of task 025b (2026-10-12); public information only.
 
 | What | Value |
 | --- | --- |
-| API origin | `https://<host>` |
-| Storage origin | `https://<host>:8443` |
-| Frontend origin | `https://<project>.vercel.app` |
-| Repository | `<owner>/<name>` (public) |
-| `PROXY_TRUSTED_PROXIES` / `API_HTTPS_REDIRECT` | — |
-| Client address available to the API | — |
-| `SMOKE_EXPECT_HSTS` for `task-025b.ps1` | — |
-| Hub transport through Funnel | — |
-| Storage downtime during a backup | — |
-| After a reboot: what waited for the logon | — |
+| API origin | `https://omni.tail70815b.ts.net` |
+| Storage origin | `https://omni.tail70815b.ts.net:8443` |
+| Frontend origin | `https://omnichannel-management-system-front.vercel.app` |
+| Repository | `HuyVuCS/omnichannel-management-system` (public) |
+| `PROXY_TRUSTED_PROXIES` / `API_HTTPS_REDIRECT` | `172.30.250.1/32` / `true` |
+| Client address available to the API | yes - Funnel sends the public address in `X-Forwarded-For` |
+| `SMOKE_EXPECT_HSTS` for `task-025b.ps1` | `true` |
+| Hub transport through Funnel | WebSockets (`GET /api/hubs/notifications` -> 101 on the Funnel path and on the tailnet path) |
+| The API host without TLS (`http://`) | not served |
+| Storage downtime during a backup | about 14 s (measured on a throwaway stack) |
+| After a reboot: what waited for the logon | not measured yet |
 | Backup destination | chosen by the user (not written here) |
+
+What reaches the proxy (its access log), measured at go-live:
+
+| Path | Port | `remote_ip` | `Host` | `X-Forwarded-For` | `X-Forwarded-Proto` | `X-Forwarded-Host` | Also |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Funnel (from the internet) | 443 | `172.30.250.1` | `omni.tail70815b.ts.net` | the client's public address | `https` | as `Host` | `Tailscale-Funnel-Request` |
+| Funnel (from the internet) | 8443 | `172.30.250.1` | `omni.tail70815b.ts.net:8443` | the client's public address | `https` | as `Host` | `Tailscale-Funnel-Request` |
+| Tailnet (this machine, or a device of the tailnet) | 443 / 8443 | `172.30.250.1` | as above | the device's tailnet address (`100.x`) | `https` | as `Host` | `Tailscale-User-Login`, `-Name`, `-Profile-Pic` |
+
+- Funnel keeps the `Host` header on both ports, so presigned links (signed for `host:8443`) work unchanged: the
+  Caddyfile needed no fix.
+- This is the first case of review 025, question 1: the proxy believes the edge gateway, the API keeps redirecting
+  plain HTTP and answers `Strict-Transport-Security`; rate limits and logs see the client's address.
+- A request from a device of the tailnet carries the **Tailscale login of its user** in headers; the proxy passes them
+  to the API (which ignores them) and writes them to its access log. The log stays on this machine (5 x 10 MB).
 
 ## 14. Moving to an Oracle Always Free VM (task 025c, not done)
 
