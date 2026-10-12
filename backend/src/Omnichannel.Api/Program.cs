@@ -27,6 +27,9 @@ try
 {
     var builder = WebApplication.CreateBuilder(args);
 
+    // A body that announces no length is cut off here; one that does is refused before it is read (RequestBodyLimit).
+    builder.WebHost.ConfigureKestrel(kestrel => kestrel.Limits.MaxRequestBodySize = RequestBodyLimit.MaxBytes);
+
     // Validation error keys = JSON names (items[0].productId), field names inside messages = FieldNames resources in the
     // request language; process-wide FluentValidation settings.
     ValidationConventions.UseJsonPropertyNames();
@@ -80,7 +83,12 @@ try
     // Web
     builder.Services
         .AddControllers(options => options.Filters.Add<ValidationFilter>())
-        .AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()))
+        .AddJsonOptions(options =>
+        {
+            options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+            // What the parser says about a body it cannot read names .NET types: never part of an answer.
+            options.AllowInputFormatterExceptionMessages = false;
+        })
         // Model-binding errors (malformed JSON, "pageSize=abc", unknown enum) use the same 400 shape as validators.
         .ConfigureApiBehaviorOptions(options => options.InvalidModelStateResponseFactory =
             context => ValidationProblemResponse.Create(context.HttpContext, context.ModelState));
@@ -113,9 +121,11 @@ try
     // error bodies carry it.
     app.UseReverseProxySupport();
     app.UseMiddleware<CorrelationIdMiddleware>();
-    app.UseSerilogRequestLogging();
+    app.UseMiddleware<SecurityHeadersMiddleware>();
+    app.UseSerilogRequestLogging(options => options.GetMessageTemplateProperties = RequestLogProperties.Create);
     app.UseExceptionHandler();
     app.UseStatusCodePages();
+    app.UseMiddleware<RequestBodyLimitMiddleware>();
 
     if (app.Environment.IsDevelopment())
     {

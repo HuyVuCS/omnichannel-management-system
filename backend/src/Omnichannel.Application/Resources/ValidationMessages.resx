@@ -160,4 +160,12 @@
     <value>This order has already been paid.</value>
     <comment>Payment, 409 order_already_paid.</comment>
   </data>
+  <data name="ValueInvalid" xml:space="preserve">
+    <value>'{PropertyName}' has a value of the wrong type or format.</value>
+    <comment>A JSON body the parser could not bind: text for a number, an unknown enum value, a number out of range.</comment>
+  </data>
+  <data name="BodyNotJson" xml:space="preserve">
+    <value>The request body is not valid JSON.</value>
+    <comment>A body that is not JSON at all, or not the expected kind of JSON value.</comment>
+  </data>
 </root>

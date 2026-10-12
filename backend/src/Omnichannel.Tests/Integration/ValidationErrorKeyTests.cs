@@ -51,17 +51,15 @@ public sealed class ValidationErrorKeyTests(ApiFactory factory)
     }
 
     [Fact]
-    public async Task Malformed_json_keeps_the_body_path_of_the_parser()
+    public async Task Malformed_json_is_reported_under_the_field_where_the_parser_stopped()
     {
+        // Since task 026 (B3) the parser's own path ($.sku) is not passed on: the key is the field's, like any other.
         using var content = new StringContent("{ \"sku\": ", Encoding.UTF8, "application/json");
 
         var response = await _manager.PostAsync("/api/products", content);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        var keys = await ErrorKeysAsync(response);
-        Assert.Contains(keys, key => key.StartsWith('$'));
-        // Nothing else was upper-cased or renamed on the way.
-        Assert.All(keys.Where(key => !key.StartsWith('$')), key => Assert.Equal(char.ToLowerInvariant(key[0]), key[0]));
+        Assert.Equal(["sku"], await ErrorKeysAsync(response));
     }
 
     private static async Task<string[]> ErrorKeysAsync(HttpResponseMessage response)

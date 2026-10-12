@@ -1,11 +1,13 @@
 import { fileURLToPath, URL } from 'node:url';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vitest/config';
+import { contentSecurityPolicy } from './vite/contentSecurityPolicy.ts';
 
 // The API runs on http://localhost:5080 (backend launchSettings). In development the dev server proxies /api to it,
 // so the browser only ever talks to its own origin (no CORS, same paths as in production).
 export default defineConfig({
-  plugins: [react()],
+  // The built index.html gets its Content Security Policy from VITE_API_BASE_URL / VITE_STORAGE_ORIGIN (build only).
+  plugins: [react(), contentSecurityPolicy()],
   resolve: {
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
   },

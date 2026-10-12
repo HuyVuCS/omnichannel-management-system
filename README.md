@@ -595,11 +595,13 @@ run the same commit (runbook "Release").
 | `docker/docker-compose.prod.tls.yml` | adds TLS mode: the proxy on ports 80 / 443 of every interface |
 | `docker/proxy/Caddyfile` | the two sites of the proxy |
 | `docker/api.Dockerfile`, `workers.Dockerfile`, `migrate.Dockerfile` | the images (multi-stage, non-root, `linux/amd64` and `linux/arm64`) |
+| `docker/rabbitmq/20-memory.conf` | the memory RabbitMQ may count on (= the memory limit of its container) |
 | `docker/prod.env.example` | every variable of the stack by name and purpose, without values |
-| `scripts/deploy/new-prod-env.ps1` | writes `docker/.env.prod` (git-ignored) with fresh random secrets |
+| `scripts/deploy/new-prod-env.ps1` | writes `docker/.env.prod` (git-ignored) with fresh random secrets and an image tag of its own |
+| `scripts/deploy/set-image-tag.ps1` | sets `IMAGE_TAG` in an env file: the commit of a release, or a previous tag for a rollback |
 | `scripts/deploy/backup-prod.ps1`, `restore-prod.ps1`, `register-backup-task.ps1` | backup (database dump + storage archive + manifest with row counts), restore into a new stack (prints manifest vs restored), the daily Windows task |
 | `scripts/deploy/rotate-secret.ps1` | a new random value for one secret of the stack's environment file, database roles included (runbook "Secrets"); prints no value |
-| `frontend/vercel.json` | static host: fallback to `index.html` for deep links, `immutable` for `/assets/*`, deployments from `production` only |
+| `frontend/vercel.json` | static host: fallback to `index.html` for deep links, `immutable` for `/assets/*`, security headers on every path, deployments from `production` only |
 | `docs/runbook.md` | every procedure of the live system |
 
 **1. Environment file (once).**
@@ -615,6 +617,11 @@ at the end (`-PromptAdminPassword` asks for it instead). An existing file is kep
 stack that is created from nothing, because PostgreSQL and RabbitMQ keep the passwords of their first start in their
 volumes). No secret is in an image, a compose file or `appsettings*.json`.
 
+The file also names the images of the stack: `IMAGE_TAG` (`omnichannel-api:<tag>`, `-workers`, `-migrate`). The
+generator writes a tag of its own (`local-<8 random characters>`, or `-ImageTag <tag>`), so two stacks on one machine
+never share images and building one never changes what another runs; production gets the short commit of each
+release (`scripts\deploy\set-image-tag.ps1`, runbook "Release") and goes back by putting the previous tag back.
+
 **2. Migrate, then up.** The order matters: the application role cannot change the schema.
 
 ```powershell
@@ -628,7 +635,8 @@ docker compose @stack up -d --wait
 `migrate` is an EF Core migration bundle in its own image: it applies what is pending and nothing else. The rules of
 `docs/tasks/README.md` stay as they are for a database with data - additive migrations only, and look before applying:
 `docker compose @stack exec postgres psql -U postgres -d omnichannel -c 'select "MigrationId" from "__EFMigrationsHistory" order by 1'`
-shows what is applied. After a new version of the code: `build`, `run --rm migrate`, `up -d --wait`.
+shows what is applied. After a new version of the code: `set-image-tag.ps1`, `build`, `run --rm migrate`,
+`up -d --wait` (runbook "Release").
 
 **3. Two origins behind the proxy.**
 
@@ -654,7 +662,15 @@ origin the API answers with CORS headers and the one the bucket allows.
 - The API believes forwarded headers **from the proxy only** (`ReverseProxy:KnownProxies` = the proxy's fixed address
   `PROXY_IP`), and only its own entry. That is where the client address of the rate limits and of the logs comes from.
 - The proxy's access log has no query string (the hub's `access_token`, the signature of a presigned link) and no
-  `Authorization`, `Cookie` or `Referer` header.
+  `Authorization`, `Cookie` or `Referer` header. The identity headers Tailscale adds for a device of the tailnet
+  (`Tailscale-User-Login`, `-Name`, `-Profile-Pic`) are removed before a request reaches the API or the storage, and
+  are not logged.
+- **Limits and headers (task 026).** A request body is at most **128 KiB** - in the API (`RequestBodyLimit`, Kestrel)
+  and at the API site of the proxy; a larger one is answered `413` with a problem document (`request_body_too_large`).
+  Every answer of the API carries `nosniff`, `Referrer-Policy: no-referrer`,
+  `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'` and `Cache-Control: no-store` (in Development
+  too; the Swagger UI and the OpenAPI document are served without the policy). Every answer of the storage site
+  carries `nosniff` and `Content-Security-Policy: default-src 'none'; sandbox`: an object is data, never a page.
 
 **4. What runs how.**
 
@@ -668,8 +684,14 @@ origin the API answers with CORS headers and the one the bucket allows.
   container). Memory limits (sized for a 12 GB machine): PostgreSQL, RabbitMQ and storage 1 GB each, API and each
   Workers instance 768 MB, proxy 128 MB. Measured idle on the development machine (amd64): API 179 MB, Workers
   129 - 144 MB each, storage 150 MB, RabbitMQ 131 MB, PostgreSQL 91 MB, proxy 16 MB - about 0.85 GB with two Workers.
-- Data: the volumes `postgres-data`, `rabbitmq-data`, `objectstorage-data` (and `proxy-data` for certificates).
-  `docker compose down` keeps them; **`down -v` deletes them**.
+- **Least privilege (task 026):** every container runs with `no-new-privileges` and without Linux capabilities,
+  except the few a service was measured to need (PostgreSQL's entrypoint: `CHOWN`, `DAC_READ_SEARCH`, `FOWNER`,
+  `SETGID`, `SETUID`; Caddy: `NET_BIND_SERVICE`, for its binary to start at all). API, Workers, the migration bundle,
+  Caddy, SeaweedFS and RabbitMQ run as non-root users on a read-only root file system; PostgreSQL's stays writable
+  (the operating scripts copy files into it). RabbitMQ is told the memory limit of its container
+  (`docker/rabbitmq/20-memory.conf`). The table and the reasons: runbook "Containers, limits and headers".
+- Data: the volumes `postgres-data`, `rabbitmq-data`, `objectstorage-data` (TLS mode adds `proxy-data` and
+  `proxy-config` for certificates). `docker compose down` keeps them; **`down -v` deletes them**.
 - **Backups:** `scripts\deploy\backup-prod.ps1 [-Destination <folder>]` writes a timestamped folder outside the
   repository: `pg_dump -Fc` of the database (inside the container, as the superuser over the local socket),
   an archive of the storage volume (the storage service is stopped for a few seconds meanwhile), and a manifest with the
@@ -682,14 +704,20 @@ origin the API answers with CORS headers and the one the bucket allows.
   `SMOKE_ADMIN_EMAIL` / `SMOKE_ADMIN_PASSWORD` (or `SMOKE_ENV_FILE` = the env file of the stack: the admin is read from
   it) and, when it is not `http://localhost:4173`, `SMOKE_FRONTEND_ORIGIN`. It needs two Workers instances and leaves
   smoke data behind (described at the top of the script); it also checks that the storage origin refuses unsigned
-  reads, listings and uploads. `scripts\smoke\task-025b.ps1` is the read-only check of the live system from outside
-  (static host fallback and caching, CORS, TLS): `SMOKE_BASE_URL`, `SMOKE_FRONTEND_ORIGIN`, `SMOKE_EXPECT_HSTS`.
+  reads, listings and uploads. `scripts\smoke\task-026.ps1` checks the security headers and the body limit of a
+  stack through its proxy (read-only: `SMOKE_BASE_URL`, `SMOKE_STORAGE_ORIGIN`). `scripts\smoke\task-025b.ps1` is the
+  read-only check of the live system from outside (static host fallback, caching and headers, the policy in the page,
+  CORS, TLS, and the checks of 026): `SMOKE_BASE_URL`, `SMOKE_STORAGE_ORIGIN`, `SMOKE_FRONTEND_ORIGIN`,
+  `SMOKE_EXPECT_HSTS`.
 
-**5. Frontend build for the stack.** `VITE_API_BASE_URL=<API origin>` at build time ("Frontend"); the result is static
-files. On Vercel: root directory `frontend`, framework Vite, output `dist`, `VITE_API_BASE_URL` set for Production,
-production branch `production`. `frontend/vercel.json` serves `index.html` for every path that is not a file of the
-build (not under `/assets/`: a missing hashed file answers 404, never cached HTML), marks `/assets/*` `immutable`, and
-turns deployments off for every branch but `production`.
+**5. Frontend build for the stack.** `VITE_API_BASE_URL=<API origin>` and `VITE_STORAGE_ORIGIN=<storage origin>` at
+build time ("Frontend"); the result is static files. On Vercel: root directory `frontend`, framework Vite, output
+`dist`, both variables set for Production, production branch `production`. `frontend/vercel.json` serves `index.html`
+for every path that is not a file of the build (not under `/assets/`: a missing hashed file answers 404, never cached
+HTML), marks `/assets/*` `immutable`, sends `Content-Security-Policy: frame-ancestors 'none'`,
+`X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin` and a `Permissions-Policy`
+without camera, microphone, geolocation and payment on every path, and turns deployments off for every branch but
+`production`. (`Strict-Transport-Security` is Vercel's own on `*.vercel.app` and is not repeated.)
 
 **CI** (`.github/workflows/ci.yml`): on every push to `master` and on pull requests - backend build and all tests
 (Testcontainers on the runner's Docker), frontend typecheck / lint / tests / build, and a build of the three images for
@@ -731,6 +759,15 @@ npm run dev     # http://localhost:5173 - needs the API on http://localhost:5080
   origin - a trailing slash is accepted, a path or anything that is no absolute http(s) URL stops the application at
   start with a message that names the variable. Not set (the default): the origin of the page, as before. The access
   token still travels in the `Authorization` header and, for the hub only, in `access_token`.
+- **Content Security Policy of the build** (`vite/contentSecurityPolicy.ts`, a plugin of `vite build` only - the dev
+  server is untouched): `index.html` gets a `<meta http-equiv="Content-Security-Policy">` made from
+  `VITE_API_BASE_URL` and **`VITE_STORAGE_ORIGIN`** (the public origin of the object storage; an origin like the
+  other; **required when `VITE_API_BASE_URL` is set**, a value that is no origin fails the build): scripts from the
+  build only (no inline script, no `eval`), requests to the page's origin, the API, its WebSocket address and the
+  storage, images from the page's origin and the storage, `<style>` elements allowed (Ant Design injects them).
+  **`vite preview` against the development stack** therefore needs the development storage named at build time, or
+  product images and uploads are blocked by the browser:
+  `$env:VITE_STORAGE_ORIGIN = 'http://127.0.0.1:8333' ; npm run build ; npm run preview`.
 - Sign in with a user of the API (the bootstrap admin, or one created on the Users page).
 - Other scripts: `npm run typecheck`, `npm run lint` (ESLint + Prettier check), `npm test` (Vitest, no API needed: requests
   are answered by MSW; **a test that ends with a request still unanswered fails**, see "Tests" below), `npm run test:slow`

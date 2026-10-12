@@ -34,6 +34,13 @@ public sealed class GlobalExceptionHandler(
             NotFoundException notFound => Create(StatusCodes.Status404NotFound, "Resource not found", notFound.Message, notFound.ErrorCode),
             ConflictException conflict => Create(StatusCodes.Status409Conflict, "Conflict", conflict.Message, conflict.ErrorCode),
             RequestRejectedException rejected => Create(StatusCodes.Status400BadRequest, "Request rejected", rejected.Message, rejected.ErrorCode),
+            // Thrown by the server while a body is read: longer than the limit (no Content-Length announced it), or broken off.
+            BadHttpRequestException { StatusCode: StatusCodes.Status413PayloadTooLarge } => RequestBodyLimit.Problem(),
+            BadHttpRequestException badRequest => Create(
+                badRequest.StatusCode,
+                "Bad request",
+                "The request could not be read.",
+                "bad_request"),
             ObjectStorageException => Create(
                 StatusCodes.Status503ServiceUnavailable,
                 "Storage unavailable",

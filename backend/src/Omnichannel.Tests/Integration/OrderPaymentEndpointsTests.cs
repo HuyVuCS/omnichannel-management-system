@@ -317,13 +317,13 @@ public sealed class OrderPaymentEndpointsTests(ApiFactory factory)
     }
 
     // The keys are part of the contract (the payment dialog puts an error on the field its key names): a text that is no
-    // payment method fails in the JSON binder, before validation, so the answer has the binder's keys - the JSON path
-    // and the action parameter - and the binder's English texts in every language, not `paymentMethod` with a localised
-    // message. The dialog offers the known methods only and shows such an answer above the form.
+    // payment method fails in the JSON binder, before validation. Since task 026 (B3) that answer has the field's own
+    // key and a generic message in the language of the request - not the binder's path, its English text with a .NET
+    // type name and a second error for the action parameter.
     [Theory]
-    [InlineData("en")]
-    [InlineData("vi")]
-    public async Task A_method_text_the_system_does_not_know_is_refused_by_the_binder_under_its_json_path(string language)
+    [InlineData("en", "'Payment method' has a value of the wrong type or format.")]
+    [InlineData("vi", "'Phương thức thanh toán' có giá trị không đúng kiểu hoặc định dạng.")]
+    public async Task A_method_text_the_system_does_not_know_is_refused_under_the_key_of_its_field(string language, string message)
     {
         var order = await SeedOrderAsync(factory);
 
@@ -333,9 +333,8 @@ public sealed class OrderPaymentEndpointsTests(ApiFactory factory)
         using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         Assert.Equal("validation_failed", body.RootElement.GetProperty("errorCode").GetString());
         var errors = body.RootElement.GetProperty("errors");
-        Assert.Equal(["$.paymentMethod", "request"], errors.EnumerateObject().Select(p => p.Name).Order(StringComparer.Ordinal));
-        Assert.Contains("Path: $.paymentMethod", errors.GetProperty("$.paymentMethod")[0].GetString());
-        Assert.Equal("The request field is required.", errors.GetProperty("request")[0].GetString());
+        Assert.Equal(["paymentMethod"], errors.EnumerateObject().Select(p => p.Name));
+        Assert.Equal([message], errors.GetProperty("paymentMethod").EnumerateArray().Select(m => m.GetString()));
         Assert.Equal(PaymentStatus.Unpaid, (await OrderAsync(factory, order.OrderId)).PaymentStatus);
     }
 
