@@ -118,7 +118,7 @@ dotnet run --project src/Omnichannel.Api --launch-profile http
 
 Run the API in Docker instead: `docker compose -f docker/docker-compose.yml --env-file docker/.env --profile app up -d --build` (port 8080).
 
-### 6. Workers (Outbox Publisher, Order Worker, Stock Sync Worker, Report Export Worker, Invoice Worker, Notification Worker, Reconciliation)
+### 6. Workers (Outbox Publisher, Order Worker, Stock Sync Worker, Report Export Worker, Invoice Worker, Notification Worker, Reconciliation, stale-task sweep)
 
 The Workers host runs these background workers in one process:
 
@@ -132,6 +132,7 @@ The Workers host runs these background workers in one process:
 | Notification Worker | `notification.email` (`email.requested`) | sends the payment confirmation of a paid order to its customer (section 10) |
 | Export retention sweep | - | every hour: deletes the files of exports older than 7 days |
 | Reconciliation | - | every 15 minutes (Development: every minute): compares the central stock with what the channels show and starts a stock sync where they differ (section 8) |
+| Stale-task sweep | - | every 5 minutes: fails a task that is unfinished and was not changed for 30 minutes - its message is lost - so that it shows as an alert and can be retried ("Stale tasks" below) |
 
 Every queue has its dead-letter queue `<queue>.dlq`; a task that fails for good ends there, with its `processing.failed`
 event and its alert.
@@ -171,6 +172,27 @@ dotnet run --project src/Omnichannel.Workers
   into a new outbox row (new message id, original routing key), the task becomes `Pending` with a fresh attempt budget
   (`OrderWorker:MaxAttempts` new attempts; attempt numbers keep counting), and `processing.retry_requested` is logged. The copy in
   the DLQ is left there for inspection. Look up the result with `GET /api/processing/tasks/{id}` or `GET /api/orders/{orderId}`.
+  A message that is not the one the task waits for - the one of before a manual retry, should it still arrive - starts no
+  attempt and is acknowledged (checked under the task's row lock, in every worker).
+
+**Stale tasks.** RabbitMQ is not the source of truth and can lose a message (its data lost, an outbox row that ended
+`Failed`, a message removed by hand). The task of such a message would stay `Pending`, `InProgress` or `RetryScheduled`
+for good: nothing picks it up, the API refuses to retry it (`task_not_failed`), and reconciliation skips its pair.
+The stale-task sweep (one run at a time over all Workers instances - a PostgreSQL advisory lock, as reconciliation)
+fails every unfinished task whose last change (`UpdatedAt`, or `CreatedAt` when it was never changed) is older than
+`StaleAfter`: a new attempt of the worker `StaleTaskSweep` with the error code **`stale_no_progress`**, the task
+`Failed`, the `processing.failed` event, the alert and the realtime hint of any final failure - under the task's row
+lock, with status and age checked again, so a task a worker touched meanwhile is left alone. A run that failed
+something writes one event `processing.stale_tasks_failed` (Warning, correlation id `stale-tasks-{runId}`: the count
+and the first 50 task ids). The operator then uses "Retry"; a failed stock-sync task is pushed again by the next
+reconciliation. Operating it: `docs/runbook.md` section 8.
+
+| Setting (`StaleTasks`) | Default | Meaning |
+| --- | --- | --- |
+| `Enabled` | `true` | `false` = this host never fails a task for standing still |
+| `Interval` | `00:05:00` | pause between two runs (1 s to 1 day), and the wait before the first run after a start: consumers get that long to start what waited in the queues |
+| `StaleAfter` | `00:30:00` | no change for this long = stale. At least **twice** the longest wait of a healthy task - the longest retry delay (`RabbitMq:RetryDelays`, 10 min) or the time the Outbox Publisher keeps trying one message (the sum of its backoffs, about 9 min with the defaults); **the host does not start otherwise** |
+| `MaxPerRun` | `200` | most tasks one run fails (1 to 1000), the longest standing first; the rest waits for the next run |
 
 ### 7. Stock sync (Stock Sync Worker, simulated channels)
 
@@ -1032,7 +1054,9 @@ npm run dev     # http://localhost:5173 - needs the API on http://localhost:5080
   409 `channel_product_exists` (product already mapped on this channel), 409 `external_product_id_taken` (the external
   product id belongs to another product on this channel), 409 `external_sku_taken` (create or update would leave two
   mappings of the channel with this external SKU and no external product id). The dialog shows each on its field.
-- `GET /api/processing/tasks` accepts `channelId`; task responses carry `channelId`, `productId` and `productSku` (set
+- `GET /api/processing/tasks` accepts `channelId` and `productId` (each a GUID, combinable with every other filter of
+  the list; the page "Sync & Processing" has a product picker, and a stock-sync task links to the tasks of its
+  product); task responses carry `channelId`, `productId` and `productSku` (set
   for `StockSync` tasks, null otherwise; the SKU comes from a left join in the same query). Attempt error codes of stock sync: `channel_timeout`, `channel_unavailable`, `channel_rate_limited`,
   `channel_circuit_open` (temporary), `channel_rejected` (permanent).
 - A business conflict that the API answers with 409 (the three above, `product_sku_exists`, `stock_import_already_applied`,
