@@ -25,7 +25,19 @@ internal sealed class DashboardService(OmnichannelDbContext dbContext, TimeProvi
             .AsNoTracking()
             .OrderBy(c => c.Name)
             .ThenBy(c => c.ChannelId)
-            .Select(c => new { c.ChannelId, c.Slug, c.Name })
+            .Select(c => new
+            {
+                c.ChannelId,
+                c.Slug,
+                c.Name,
+                // The newest successful stock sync of the channel: one step backwards in the (Status, UpdatedAt) index
+                // per channel. As an aggregate of the statement below it read every stock-sync task there is.
+                LastSyncSucceededAt = dbContext.ProcessingTasks
+                    .Where(t => t.TaskType == ProcessingTaskType.StockSync
+                        && t.Status == ProcessingTaskStatus.Succeeded
+                        && t.ChannelId == c.ChannelId)
+                    .Max(t => t.UpdatedAt)
+            })
             .ToListAsync(cancellationToken);
 
         var orderGroups = await dbContext.Orders
@@ -54,14 +66,16 @@ internal sealed class DashboardService(OmnichannelDbContext dbContext, TimeProvi
 
         var syncGroups = await dbContext.ProcessingTasks
             .AsNoTracking()
-            .Where(t => t.TaskType == ProcessingTaskType.StockSync && t.ChannelId != null)
+            // Only the tasks that are counted: the (TaskType, Status, CreatedAt) index finds them without the succeeded ones.
+            .Where(t => t.TaskType == ProcessingTaskType.StockSync
+                && t.ChannelId != null
+                && (t.Status == ProcessingTaskStatus.RetryScheduled || t.Status == ProcessingTaskStatus.Failed))
             .GroupBy(t => t.ChannelId)
             .Select(g => new
             {
                 ChannelId = g.Key,
                 RetryScheduled = g.Count(t => t.Status == ProcessingTaskStatus.RetryScheduled),
-                Failed = g.Count(t => t.Status == ProcessingTaskStatus.Failed && t.UpdatedAt >= fromUtc && t.UpdatedAt <= toUtc),
-                LastSucceededAt = g.Where(t => t.Status == ProcessingTaskStatus.Succeeded).Max(t => t.UpdatedAt)
+                Failed = g.Count(t => t.Status == ProcessingTaskStatus.Failed && t.UpdatedAt >= fromUtc && t.UpdatedAt <= toUtc)
             })
             .ToListAsync(cancellationToken);
 
@@ -124,7 +138,7 @@ internal sealed class DashboardService(OmnichannelDbContext dbContext, TimeProvi
                 {
                     var sync = syncGroups.SingleOrDefault(g => g.ChannelId == c.ChannelId);
                     return new DashboardStockSync(
-                        c.ChannelId, c.Slug, c.Name, sync?.RetryScheduled ?? 0, sync?.Failed ?? 0, sync?.LastSucceededAt);
+                        c.ChannelId, c.Slug, c.Name, sync?.RetryScheduled ?? 0, sync?.Failed ?? 0, c.LastSyncSucceededAt);
                 })
                 .ToList(),
             new DashboardOutbox(outboxPending?.Count ?? 0, outboxFailed, outboxPending?.OldestAt),

@@ -914,6 +914,8 @@ namespace Omnichannel.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("ProductId");
 
+                    b.HasIndex("CreatedAt", "TaskId");
+
                     b.HasIndex("Status", "UpdatedAt");
 
                     b.HasIndex("TaskType", "Status", "CreatedAt");

@@ -66,6 +66,12 @@ internal sealed class ProcessingTaskConfiguration : IEntityTypeConfiguration<Pro
         // is checked on the few rows found) and the count of the task list filtered by status (index only).
         builder.HasIndex(x => new { x.Status, x.UpdatedAt });
 
+        // Task 026c, measured on the same 24,000 tasks (report 026c, A2): the task list's default order, newest first
+        // by (CreatedAt, TaskId). Read backwards it gives a page without sorting every task (unfiltered page 9.4 ms ->
+        // 1.1 ms; with a type or a time range the page is found the same way). Both columns ascending on purpose: the
+        // list sorts both in the same direction, so one index serves "newest first" and "oldest first".
+        builder.HasIndex(x => new { x.CreatedAt, x.TaskId });
+
         // Intake idempotency: the same external order (key) can create only one task, before any Order exists.
         builder.HasIndex(x => x.IdempotencyKey)
             .IsUnique()
