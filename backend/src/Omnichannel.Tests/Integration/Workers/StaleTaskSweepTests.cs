@@ -21,8 +21,9 @@ using RabbitMQ.Client;
 namespace Omnichannel.Tests.Integration.Workers;
 
 /// <summary>
-/// Task 026b Part C: the stale-task sweep against real PostgreSQL. Every test has a database of its own (a run looks at
-/// every task there is). Tasks are seeded as a worker leaves them and aged by setting their timestamps.
+/// Task 026b Part C: the stale-task sweep against real PostgreSQL. A run looks at every task there is, so these tests
+/// have a database of their own - one for the class, emptied before each test (a database per test would open a
+/// connection pool per test). Tasks are seeded as a worker leaves them and aged by setting their timestamps.
 /// </summary>
 [Collection(WorkersCollection.Name)]
 [Trait("Category", "Integration")]
@@ -34,15 +35,40 @@ public sealed class StaleTaskSweepTests(WorkersFixture fixture) : IAsyncLifetime
     private static readonly TimeSpan StaleAfter = TimeSpan.FromMinutes(30);
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(60);
 
+    // One per test run: the fixture (and its server) lives as long as the "workers" collection.
+    private static readonly SemaphoreSlim DatabaseGate = new(1, 1);
+    private static WorkersFixture? _databaseOwner;
+    private static string? _classDatabase;
+
     private string _database = null!;
     private IHost _tools = null!;
 
     public async Task InitializeAsync()
     {
         await fixture.PurgeQueuesAsync();
-        _database = await fixture.CreateIsolatedDatabaseAsync();
+        await DatabaseGate.WaitAsync();
+        try
+        {
+            if (!ReferenceEquals(_databaseOwner, fixture))
+            {
+                _classDatabase = await fixture.CreateIsolatedDatabaseAsync();
+                _databaseOwner = fixture;
+            }
+        }
+        finally
+        {
+            DatabaseGate.Release();
+        }
+
+        _database = _classDatabase!;
         // Not started: only its services are used.
         _tools = fixture.CreateHost("stale-tools", databaseConnectionString: _database);
+        // What a test of this class writes, in one statement (the seeded channels and roles stay).
+        await DbAsync(db => db.Database.ExecuteSqlRawAsync(
+            """
+            TRUNCATE "Alerts", "ProcessingAttempts", "ProcessingTasks", "SystemEventLogs", "OutboxEvents", "InventoryMovements",
+                     "OrderItems", "Orders", "Inventories", "Products", "Customers" CASCADE
+            """));
     }
 
     public async Task DisposeAsync()
