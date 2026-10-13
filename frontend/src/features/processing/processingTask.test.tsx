@@ -5,9 +5,17 @@ import type { AuthUser } from '@/features/auth/session';
 import { FLUSH_WINDOW_MS } from '@/features/realtime/hintTags';
 import type { HubFactory } from '@/features/realtime/hub';
 import { fakeHub } from '@/test/hub';
-import { expectLanguageSwitchChangesTextOnly, findDialog, settled } from '@/test/interactions';
+import { expectLanguageSwitchChangesTextOnly, findDialog, settled, switchLanguage } from '@/test/interactions';
 import { attempt, ORDER_ID, orderDetail, serveChannels, task, TASK_ID } from '@/test/orders';
-import { failedSyncDetail, serveTask, SYNC_TASK_ID, taskChannels, UNKNOWN_CHANNEL_ID } from '@/test/processing';
+import {
+  failedSyncDetail,
+  PRODUCT_ID,
+  serveTask,
+  serveTaskList,
+  SYNC_TASK_ID,
+  taskChannels,
+  UNKNOWN_CHANNEL_ID,
+} from '@/test/processing';
 import { renderApp } from '@/test/renderApp';
 import { adminUser, api, managerUser, problem, server, sessionOf, staffUser } from '@/test/server';
 
@@ -48,8 +56,12 @@ describe('processing task detail', () => {
     expect(summary).toHaveTextContent('corr-sync-7');
     expect(summary).toHaveTextContent(SYNC_TASK_ID);
     expect(summary).toHaveTextContent('Ngày tạo02/10/2026 09:30');
-    // No order behind a stock-sync task: no link.
-    expect(within(summary).queryByRole('link')).not.toBeInTheDocument();
+    // No order behind a stock-sync task: the only link is the one to the tasks of its product.
+    expect(
+      within(summary)
+        .getAllByRole('link')
+        .map((link) => link.textContent),
+    ).toEqual(['Các tác vụ của sản phẩm này']);
 
     const message = screen.getByTestId('task-message');
     expect(message).toHaveTextContent('Loại sự kiệnstock.sync.requested');
@@ -88,6 +100,62 @@ describe('processing task detail', () => {
     expect(within(summaryOf()).getByRole('link', { name: 'Mở đơn' })).toHaveAttribute('href', `/orders/${ORDER_ID}`);
     await waitFor(() => expect(summaryOf()).toHaveTextContent(`Kênh bán${UNKNOWN_CHANNEL_ID}`));
     expect(screen.getByTestId('task-message')).toHaveTextContent('Tác vụ này không có thông điệp.');
+  });
+
+  it('leads from a stock-sync task to every task of its product; a task without a product has no such link', async () => {
+    serveTask(failedSyncDetail());
+    const { requests } = serveTaskList([]);
+    const { user, location } = renderTask();
+    await screen.findByRole('heading', { name: 'Đồng bộ tồn kho' });
+
+    await user.click(within(summaryOf()).getByRole('link', { name: 'Các tác vụ của sản phẩm này' }));
+
+    await waitFor(() => expect(requests.at(-1)).toEqual({ page: '1', pageSize: '20', productId: PRODUCT_ID }));
+    expect(location()).toBe(`/processing?productId=${PRODUCT_ID}`);
+    await settled();
+  });
+
+  it('has no link to the tasks of a product on a task without one', async () => {
+    serveTask(task({ taskId: SYNC_TASK_ID, orderId: null, attempts: [attempt()], message: null }));
+    renderTask();
+
+    await screen.findByRole('heading', { name: 'Xử lý đơn hàng' });
+    expect(within(summaryOf()).queryByRole('link')).not.toBeInTheDocument();
+  });
+
+  it('names the error code of a task that was failed for standing still, in both languages; other codes stay as they are', async () => {
+    serveTask(
+      failedSyncDetail({
+        attempts: [
+          attempt({
+            attemptNo: 1,
+            status: 'Failed',
+            errorCode: 'channel_unavailable',
+            errorMessage: 'The channel did not answer.',
+          }),
+          attempt({
+            attemptNo: 2,
+            status: 'Failed',
+            workerName: 'StaleTaskSweep',
+            errorCode: 'stale_no_progress',
+            errorMessage: 'No progress for more than 00:30:00: the message of the task was lost or never delivered.',
+          }),
+        ],
+      }),
+    );
+    const { user } = renderTask();
+    await screen.findByRole('heading', { name: 'Đồng bộ tồn kho' });
+
+    const codes = () =>
+      [...screen.getByTestId('task-attempts').querySelectorAll('tbody tr.ant-table-row')].map(
+        (row) => row.querySelectorAll('td')[4]?.textContent,
+      );
+    expect(codes()).toEqual(['channel_unavailable', 'Không có tiến triển - mất thông điệp (stale_no_progress)']);
+
+    await switchLanguage(user, 'EN');
+    await screen.findByRole('heading', { name: 'Stock sync' });
+    expect(codes()).toEqual(['channel_unavailable', 'No progress - message lost (stale_no_progress)']);
+    await settled();
   });
 
   it('says so when the task has no attempt yet', async () => {

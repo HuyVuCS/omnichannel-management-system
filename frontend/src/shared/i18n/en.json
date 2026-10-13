@@ -632,6 +632,7 @@
       "taskType": "Task type",
       "status": "Status",
       "channel": "Channel",
+      "product": "Product",
       "from": "Created from",
       "to": "To",
       "correlationId": "Correlation ID",
@@ -667,6 +668,7 @@
       "status": "Status",
       "channel": "Channel",
       "productSku": "SKU",
+      "productTasks": "Tasks of this product",
       "order": "Order",
       "retryCount": "Retries",
       "correlationId": "Correlation ID",
@@ -716,6 +718,9 @@
       "Running": "Running",
       "Succeeded": "Succeeded",
       "Failed": "Failed"
+    },
+    "errorCodes": {
+      "stale_no_progress": "No progress - message lost (stale_no_progress)"
     },
     "attempts": {
       "attemptNo": "No.",
@@ -820,6 +825,7 @@
       "stock_sync_message_rejected": "Sync message rejected",
       "processing_failed": "Task failed",
       "processing_retry_requested": "Manual retry",
+      "processing_stale_tasks_failed": "Stale tasks failed",
       "outbox_publish_failed": "Message not published",
       "alert_acknowledged": "Alert acknowledged",
       "user_created": "User created",
@@ -874,6 +880,7 @@
       "stock_sync_message_rejected": "Message {{messageId}} rejected on {{queue}}: {{reason}}",
       "processing_failed": "{{taskType}} · attempt {{attemptNo}} · {{errorCode}}",
       "processing_retry_requested": "{{taskType}}: retry requested",
+      "processing_stale_tasks_failed": "{{failed}} tasks without progress for {{minutes}} min marked as failed",
       "outbox_publish_failed": "{{eventType}} not published after {{publishAttempts}} attempts",
       "alert_acknowledged": "Alert: {{type}}",
       "user_created": "Role {{role}}",

@@ -12,6 +12,9 @@ const STATUS_COLORS: Record<AttemptStatus, string> = {
   Failed: 'error',
 };
 
+/** The error codes of an attempt this client has a label for (`processing.errorCodes.*`); any other is shown as it is. */
+const LABELLED_ERROR_CODES: readonly string[] = ['stale_no_progress'];
+
 /**
  * The attempts of one processing task, in the order the API sends them (by number): which worker instance ran it, when,
  * and what went wrong. Long values are one truncated line with the full text as a tooltip. The error message is the one
@@ -62,7 +65,15 @@ export function AttemptsTable({ attempts }: { attempts: ProcessingAttempt[] }) {
         title: t('processing.attempts.errorCode'),
         width: 170,
         ellipsis: { showTitle: false },
-        render: (errorCode: string | null) => <TruncatedText text={errorCode} />,
+        render: (errorCode: string | null) => (
+          <TruncatedText
+            text={
+              errorCode && LABELLED_ERROR_CODES.includes(errorCode)
+                ? t(`processing.errorCodes.${errorCode}`)
+                : errorCode
+            }
+          />
+        ),
       },
       {
         key: 'errorMessage',

@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import type { AuthUser } from '@/features/auth/session';
 import { FLUSH_WINDOW_MS } from '@/features/realtime/hintTags';
 import type { HubFactory } from '@/features/realtime/hub';
+import { chooseProduct, COFFEE_ID, coffeeProduct, serveProductCatalog, TEA_ID, teaProduct } from '@/test/catalog';
 import { POS_ID, WEBSITE_ID } from '@/test/dashboard';
 import { fakeHub } from '@/test/hub';
 import { chooseOption, columnTexts, expectLanguageSwitchChangesTextOnly, rowOf, settled } from '@/test/interactions';
@@ -37,9 +38,11 @@ const unknownChannelSync = taskSummary({
   lastAttempt: null,
 });
 
+/** The task list with the endpoints of its channel filter and of its product picker. */
 function serveList(items = [failedSync, orderTask, unknownChannelSync], totalCount = items.length) {
   const channels = serveChannels(taskChannels);
-  return { ...serveTaskList(items, totalCount), channels };
+  const catalog = serveProductCatalog([teaProduct, coffeeProduct]);
+  return { ...serveTaskList(items, totalCount), channels, catalog };
 }
 
 function renderProcessing(route = '/processing', user: AuthUser = staffUser, createHub?: HubFactory) {
@@ -174,6 +177,38 @@ describe('processing list', () => {
       await settled();
     });
 
+    it('filters by product next to the other filters, keeps it in the address and starts on page 1 again', async () => {
+      const { user, location, requests } = await renderFiltered(`/processing?${SELECTED}&page=2`);
+
+      await chooseProduct(user, filter('Sản phẩm'), 'COF-01 — Cà phê');
+      await waitFor(() =>
+        expect(requests.at(-1)).toEqual({
+          page: '1',
+          pageSize: '20',
+          taskType: 'StockSync',
+          status: 'Failed',
+          channelId: POS_ID,
+          productId: COFFEE_ID,
+        }),
+      );
+      expect(location()).toBe(`/processing?${SELECTED}&productId=${COFFEE_ID}`);
+
+      await settled();
+    });
+
+    it('restores the product from the address: the request carries it and the picker names the product', async () => {
+      const { requests } = serveList([failedSync], 1);
+      const { location } = renderProcessing(`/processing?productId=${TEA_ID}&status=Failed`);
+
+      await screen.findByText('channel_rejected');
+      expect(requests).toEqual([{ page: '1', pageSize: '20', status: 'Failed', productId: TEA_ID }]);
+      // The label of a product that was not picked here comes from the product itself.
+      await waitFor(() => expect(filter('Sản phẩm').closest('.ant-select')).toHaveTextContent('TEA-01 — Trà xanh'));
+      expect(location()).toBe(`/processing?productId=${TEA_ID}&status=Failed`);
+
+      await settled();
+    });
+
     it('sends a text filter once per pause in typing, and starts on page 1 again', async () => {
       const { user, requests, secondPage } = await renderFiltered(`/processing?${SELECTED}&page=2`);
 
@@ -208,9 +243,10 @@ describe('processing list', () => {
 
     it('"Clear filters" removes every filter from the address and from the controls', async () => {
       const { user, location, requests } = await renderFiltered(
-        `/processing?${SELECTED}&${TYPED}&from=2026-10-01&to=2026-10-02`,
+        `/processing?${SELECTED}&productId=${TEA_ID}&${TYPED}&from=2026-10-01&to=2026-10-02`,
       );
       await waitFor(() => expect(filter('Kênh bán').closest('.ant-select')).toHaveTextContent('POS'));
+      await waitFor(() => expect(filter('Sản phẩm').closest('.ant-select')).toHaveTextContent('TEA-01'));
 
       await user.click(screen.getByRole('button', { name: 'Xoá bộ lọc' }));
       await waitFor(() => expect(requests.at(-1)).toEqual({ page: '1', pageSize: '20' }));
@@ -219,6 +255,7 @@ describe('processing list', () => {
       expect(screen.getByRole('textbox', { name: 'Mã lỗi' })).toHaveValue('');
       expect(startInput()).toHaveValue('');
       expect(filter('Kênh bán').closest('.ant-select')).not.toHaveTextContent('POS');
+      expect(filter('Sản phẩm').closest('.ant-select')).not.toHaveTextContent('TEA-01');
 
       await settled();
     });
@@ -259,7 +296,7 @@ describe('processing list', () => {
   it('ignores address values that are not valid and never sends them', async () => {
     const { requests } = serveList();
     renderProcessing(
-      '/processing?taskType=Nope&status=Done&channelId=pos&from=2026-13-45&to=soon&sortBy=secret&page=x',
+      '/processing?taskType=Nope&status=Done&channelId=pos&productId=tea&from=2026-13-45&to=soon&sortBy=secret&page=x',
     );
 
     await screen.findByText('channel_rejected');

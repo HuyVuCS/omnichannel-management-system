@@ -632,6 +632,7 @@
       "taskType": "Loại tác vụ",
       "status": "Trạng thái",
       "channel": "Kênh bán",
+      "product": "Sản phẩm",
       "from": "Tạo từ ngày",
       "to": "Đến ngày",
       "correlationId": "Mã tương quan",
@@ -667,6 +668,7 @@
       "status": "Trạng thái",
       "channel": "Kênh bán",
       "productSku": "SKU",
+      "productTasks": "Các tác vụ của sản phẩm này",
       "order": "Đơn hàng",
       "retryCount": "Số lần thử lại",
       "correlationId": "Mã tương quan",
@@ -716,6 +718,9 @@
       "Running": "Đang chạy",
       "Succeeded": "Thành công",
       "Failed": "Thất bại"
+    },
+    "errorCodes": {
+      "stale_no_progress": "Không có tiến triển - mất thông điệp (stale_no_progress)"
     },
     "attempts": {
       "attemptNo": "Lần",
@@ -820,6 +825,7 @@
       "stock_sync_message_rejected": "Thông điệp đồng bộ bị từ chối",
       "processing_failed": "Tác vụ thất bại",
       "processing_retry_requested": "Chạy lại thủ công",
+      "processing_stale_tasks_failed": "Tác vụ treo bị đánh dấu thất bại",
       "outbox_publish_failed": "Gửi thông điệp thất bại",
       "alert_acknowledged": "Ghi nhận cảnh báo",
       "user_created": "Tạo người dùng",
@@ -874,6 +880,7 @@
       "stock_sync_message_rejected": "Thông điệp {{messageId}} bị từ chối ở {{queue}}: {{reason}}",
       "processing_failed": "{{taskType}} · lần {{attemptNo}} · {{errorCode}}",
       "processing_retry_requested": "{{taskType}}: yêu cầu chạy lại",
+      "processing_stale_tasks_failed": "{{failed}} tác vụ không có tiến triển trong {{minutes}} phút bị đánh dấu thất bại",
       "outbox_publish_failed": "{{eventType}} không gửi được sau {{publishAttempts}} lần",
       "alert_acknowledged": "Cảnh báo: {{type}}",
       "user_created": "Vai trò {{role}}",

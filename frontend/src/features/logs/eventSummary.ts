@@ -173,6 +173,17 @@ export function eventSummary(t: TFunction, event: SystemEvent): EventSummary | n
     case 'processing.retry_requested':
       return { text: t(key, { taskType: label(t, 'processing.taskTypes', TASK_TYPES, details.taskType) }) };
 
+    // How many tasks the sweep failed, and after how long without a change; each task has its own "Task failed" event.
+    case 'processing.stale_tasks_failed':
+      return {
+        text: t(key, {
+          failed: count(details.failed),
+          minutes: count(
+            typeof details.staleAfterSeconds === 'number' ? Math.round(details.staleAfterSeconds / 60) : undefined,
+          ),
+        }),
+      };
+
     case 'outbox.publish_failed':
       return { text: t(key, { eventType: text(details.eventType), publishAttempts: count(details.publishAttempts) }) };
 

@@ -6,10 +6,12 @@ import { useTranslation } from 'react-i18next';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { useListChannelsQuery } from '@/features/channels/channelsApi';
 import { orderPath } from '@/features/orders/paths';
+import { ProductSelect } from '@/features/products/components/ProductSelect';
 import { problemMessages } from '@/shared/api/problemDetails';
 import {
   DATE_RANGE_WIDTH,
   FILTER_WIDTH,
+  PRODUCT_SELECT_WIDTH,
   SEARCH_WIDTH,
   SECONDARY_ACTION_WIDTH,
   SINGLE_ACTION_COLUMN_WIDTH,
@@ -36,7 +38,16 @@ import {
 } from './processingApi';
 
 /** Filters of this page in the address (next to `page` / `pageSize` / `sortBy` / `sortDir`). */
-const FILTER_PARAMS = ['taskType', 'status', 'channelId', 'correlationId', 'errorCode', 'from', 'to'] as const;
+const FILTER_PARAMS = [
+  'taskType',
+  'status',
+  'channelId',
+  'productId',
+  'correlationId',
+  'errorCode',
+  'from',
+  'to',
+] as const;
 
 /**
  * Sum of the column widths without the action column. Created, type, status, channel and product come first and fit
@@ -48,7 +59,7 @@ const COLUMNS_WIDTH = 1810;
  * Sync & Processing (every role): every asynchronous task - order processing, stock sync per channel - with its
  * status, its channel and product, and its last attempt: which worker instance ran it and what went wrong. Newest first
  * unless the user sorts. Paging, sorting and filters live in the address; values there that are not valid (an unknown
- * status, a channel id that is no GUID, a bad date) are ignored and never sent. The date range is a range of local days
+ * status, a channel or product id that is no GUID, a bad date) are ignored and never sent. The date range is a range of local days
  * on the creation time (see `dateRange.ts`).
  *
  * Tasks change in the background: the list is fetched again whenever the page is opened, on "Refresh", and when a
@@ -71,6 +82,8 @@ export function ProcessingPage() {
   const status = oneOf(TASK_STATUSES, searchParams.get('status'));
   const rawChannelId = searchParams.get('channelId');
   const channelId = isGuid(rawChannelId) ? rawChannelId : undefined;
+  const rawProductId = searchParams.get('productId');
+  const productId = isGuid(rawProductId) ? rawProductId : undefined;
   const correlationId = searchParams.get('correlationId')?.trim() || undefined;
   const errorCode = searchParams.get('errorCode')?.trim() || undefined;
   const range = readLocalDayRange(searchParams);
@@ -84,6 +97,7 @@ export function ProcessingPage() {
       taskType,
       status,
       channelId,
+      productId,
       correlationId,
       errorCode,
       from: range.fromInstant,
@@ -292,6 +306,14 @@ export function ProcessingPage() {
           options={(channels.data ?? []).map((channel) => ({ value: channel.channelId, label: channel.name }))}
           onChange={(value) => setFilter({ channelId: value })}
           style={{ width: FILTER_WIDTH }}
+        />
+        <ProductSelect
+          allowClear
+          value={productId}
+          placeholder={t('processing.filters.product')}
+          aria-label={t('processing.filters.product')}
+          onChange={(value) => setFilter({ productId: value })}
+          style={{ width: PRODUCT_SELECT_WIDTH }}
         />
         <DatePicker.RangePicker
           allowEmpty={[true, true]}
