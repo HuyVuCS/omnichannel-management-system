@@ -58,7 +58,7 @@ internal sealed class ProductImageCleanup(
     /// <summary>Objects per listing request, and keys per reference question.</summary>
     public const int PageSize = 200;
 
-    public async Task<ImageCleanupResult> RunAsync(Guid runId, string workerName, CancellationToken cancellationToken)
+    public async Task<ImageCleanupResult> RunAsync(Guid runId, string workerName, bool dryRun, CancellationToken cancellationToken)
     {
         // Not pooled: the lock belongs to the session, and closing this connection ends the session for certain.
         var lockConnectionString = new NpgsqlConnectionStringBuilder(database.Value.ConnectionString) { Pooling = false }.ConnectionString;
@@ -72,7 +72,7 @@ internal sealed class ProductImageCleanup(
 
         try
         {
-            return await RunExclusiveAsync(runId, workerName, cancellationToken);
+            return await RunExclusiveAsync(runId, workerName, dryRun, cancellationToken);
         }
         finally
         {
@@ -93,17 +93,17 @@ internal sealed class ProductImageCleanup(
         return await command.ExecuteScalarAsync(cancellationToken) is true;
     }
 
-    private async Task<ImageCleanupResult> RunExclusiveAsync(Guid runId, string workerName, CancellationToken cancellationToken)
+    private async Task<ImageCleanupResult> RunExclusiveAsync(Guid runId, string workerName, bool dryRun, CancellationToken cancellationToken)
     {
         var settings = options.Value;
-        var run = new Run(timeProvider.GetUtcNow() - settings.MinAge, settings.MaxPerRun);
+        var run = new Run(timeProvider.GetUtcNow() - settings.MinAge, settings.MaxPerRun, dryRun);
 
         // Uploads first: nothing refers to them, so their age decides alone.
         await SweepAsync(ProductImageKey.StagingPrefix, run, isStaging: true, cancellationToken);
         await SweepAsync(ProductImageKey.FinalPrefix, run, isStaging: false, cancellationToken);
 
         var deleted = run.DeletedUploads.Count + run.DeletedImages.Count;
-        if (deleted > 0)
+        if (deleted > 0 && !dryRun)
         {
             string[] keys = [.. run.DeletedUploads, .. run.DeletedImages];
             dbContext.ChangeTracker.Clear();
@@ -191,7 +191,11 @@ internal sealed class ProductImageCleanup(
                 cancellationToken.ThrowIfCancellationRequested();
                 try
                 {
-                    await storage.DeleteAsync(key, cancellationToken);
+                    if (!run.DryRun)
+                    {
+                        await storage.DeleteAsync(key, cancellationToken);
+                    }
+
                     (isStaging ? run.DeletedUploads : run.DeletedImages).Add(key);
                 }
                 catch (ObjectStorageException)
@@ -206,9 +210,12 @@ internal sealed class ProductImageCleanup(
     }
 
     /// <summary>The state of one run.</summary>
-    private sealed class Run(DateTimeOffset writtenBefore, int maxDeletes)
+    private sealed class Run(DateTimeOffset writtenBefore, int maxDeletes, bool dryRun)
     {
         public DateTimeOffset WrittenBefore { get; } = writtenBefore;
+
+        /// <summary>Look only: what would be deleted is collected, nothing is deleted.</summary>
+        public bool DryRun { get; } = dryRun;
 
         public List<string> DeletedUploads { get; } = [];
 

@@ -67,7 +67,8 @@ public sealed class ImageCleanupService(
             await using var scope = scopeFactory.CreateAsyncScope();
             scope.ServiceProvider.GetRequiredService<WorkerCurrentUser>().UserId = Actor;
             scope.ServiceProvider.GetRequiredService<WorkerCorrelationContext>().CorrelationId = correlationId;
-            var result = await scope.ServiceProvider.GetRequiredService<IProductImageCleanup>().RunAsync(runId, WorkerName, stoppingToken);
+            var result = await scope.ServiceProvider.GetRequiredService<IProductImageCleanup>()
+                .RunAsync(runId, WorkerName, dryRun: false, stoppingToken);
 
             if (!result.Ran)
             {
@@ -85,6 +86,52 @@ public sealed class ImageCleanupService(
         {
             logger.LogError(exception, "Image clean-up run {RunId} failed; the next round starts over", runId);
         }
+    }
+}
+
+/// <summary>
+/// The image clean-up as a look without a touch, for an operator: <c>dotnet Omnichannel.Workers.dll
+/// --image-cleanup-dry-run=true</c> (in the production stack: <c>docker compose run --rm --no-deps workers
+/// --image-cleanup-dry-run=true</c>) builds the services of the host <b>without starting any worker</b>, runs one
+/// clean-up that deletes nothing and writes nothing, logs what a real run would delete now, and ends.
+/// </summary>
+public static class ImageCleanupDryRun
+{
+    /// <summary>Configuration key of the switch (a command-line argument).</summary>
+    public const string Switch = "image-cleanup-dry-run";
+
+    /// <summary>Most keys of each kind the report lists.</summary>
+    public const int MaxListed = 100;
+
+    public static async Task<ImageCleanupResult> RunAsync(IServiceProvider services, CancellationToken cancellationToken)
+    {
+        await using var scope = services.CreateAsyncScope();
+        var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger(typeof(ImageCleanupDryRun).FullName!);
+        var settings = scope.ServiceProvider.GetRequiredService<IOptions<ImageCleanupOptions>>().Value;
+        var result = await scope.ServiceProvider.GetRequiredService<IProductImageCleanup>()
+            .RunAsync(Guid.CreateVersion7(), ImageCleanupService.WorkerName, dryRun: true, cancellationToken);
+
+        if (!result.Ran)
+        {
+            logger.LogWarning("Image clean-up dry run: a clean-up of a running instance holds the lock; nothing was looked at. Try again.");
+            return result;
+        }
+
+        logger.LogInformation(
+            "Image clean-up dry run (nothing deleted, nothing written): {Listed} objects listed; a run now would delete {Uploads} uploads and {Images} unreferenced images older than {MinAge}; {Referenced} old images in use would be kept, {Unknown} unknown keys left alone; stopped at the limit of {MaxPerRun}: {MoreExpected}",
+            result.Listed, result.DeletedUploads.Count, result.DeletedImages.Count, settings.MinAge, result.Referenced, result.Unknown,
+            settings.MaxPerRun, result.MoreExpected);
+        foreach (var key in result.DeletedUploads.Take(MaxListed))
+        {
+            logger.LogInformation("Image clean-up dry run: would delete the upload {ObjectKey}", key);
+        }
+
+        foreach (var key in result.DeletedImages.Take(MaxListed))
+        {
+            logger.LogInformation("Image clean-up dry run: would delete the unreferenced image {ObjectKey}", key);
+        }
+
+        return result;
     }
 }
 
