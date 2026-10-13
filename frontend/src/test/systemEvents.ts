@@ -264,6 +264,28 @@ export const staleTasksFailedEvent = systemEvent({
   },
 });
 
+/** A run of the image clean-up that deleted one upload nobody confirmed and two images no product uses. */
+export const imageOrphansDeletedEvent = systemEvent({
+  logId: 152,
+  level: 'Information',
+  eventType: 'product_image.orphans_deleted',
+  createdAt: new Date(2026, 9, 13, 18, 5).toISOString(),
+  correlationId: 'image-cleanup-0199c3c27d1e7c4a9f00aabbccddee02',
+  workerName: 'ImageCleanup',
+  details: {
+    runId: '0199c3c2-7d1e-7c4a-9f00-aabbccddee02',
+    minAgeSeconds: 86400,
+    uploads: 1,
+    images: 2,
+    keys: [
+      'uploads/products/0199a1b2-0000-7000-8000-000000000011/0199c3c2-0000-7000-8000-000000000001',
+      'products/0199a1b2-0000-7000-8000-000000000011/0199c3c2-0000-8000-8000-000000000002',
+      'products/0199a1b2-0000-7000-8000-000000000011/0199c3c2-0000-8000-8000-000000000003',
+    ],
+    notListed: 0,
+  },
+});
+
 export const everyEventType: SystemEvent[] = [
   importedEvent,
   insufficientEvent,

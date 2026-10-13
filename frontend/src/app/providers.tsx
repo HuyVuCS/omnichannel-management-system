@@ -13,13 +13,21 @@ const ANTD_LOCALES = { vi: viVN, en: enUS } satisfies Record<Language, typeof vi
 /**
  * AntD theme and locale. The locale follows the i18next language, so AntD's built-in texts (pagination, empty state,
  * date picker, validation defaults) switch together with ours — by re-rendering, never by remounting the tree.
+ *
+ * One text for every required field of every form, in our own words: "{label} là bắt buộc" / "{label} is required"
+ * (AntD's own differs per locale and per kind of field). `${label}` is AntD's placeholder; a rule that says more than
+ * "required" keeps its own `message`.
  */
 function AntdProvider({ children }: { children: ReactNode }) {
   // Subscribes this component to language changes.
-  useTranslation();
+  const { t } = useTranslation();
 
   return (
-    <ConfigProvider locale={ANTD_LOCALES[currentLanguage()]} theme={{ token: { colorPrimary: PRIMARY_COLOR } }}>
+    <ConfigProvider
+      locale={ANTD_LOCALES[currentLanguage()]}
+      theme={{ token: { colorPrimary: PRIMARY_COLOR } }}
+      form={{ validateMessages: { required: t('common.requiredField') } }}
+    >
       <AntApp>{children}</AntApp>
     </ConfigProvider>
   );

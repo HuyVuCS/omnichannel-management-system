@@ -20,6 +20,7 @@ export const EVENT_TYPES = [
   'processing.failed',
   'processing.retry_requested',
   'processing.stale_tasks_failed',
+  'product_image.orphans_deleted',
   'outbox.publish_failed',
   'alert.acknowledged',
   'report.export_requested',

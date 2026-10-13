@@ -271,9 +271,10 @@ describe('stock import', () => {
 
     await appUser.click(submitButton());
 
-    expect(await screen.findByText('Hãy nhập thông tin cho trường Số chứng từ')).toBeInTheDocument();
-    expect(screen.getByText('Hãy nhập thông tin cho trường Sản phẩm')).toBeInTheDocument();
-    expect(screen.getByText('Hãy nhập thông tin cho trường Số lượng')).toBeInTheDocument();
+    // Each field shows its error when its own validation has finished: every one is waited for (task 026c A3).
+    expect(await screen.findByText('Số chứng từ là bắt buộc')).toBeInTheDocument();
+    expect(await screen.findByText('Sản phẩm là bắt buộc')).toBeInTheDocument();
+    expect(await screen.findByText('Số lượng là bắt buộc')).toBeInTheDocument();
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(bodies).toEqual([]);
   });

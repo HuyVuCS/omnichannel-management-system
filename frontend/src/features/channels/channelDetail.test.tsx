@@ -459,7 +459,7 @@ describe('channel detail: mapping a product', () => {
 
     // A product is asked for before anything is sent.
     await create();
-    expect(await within(dialog).findByText('Hãy nhập thông tin cho trường Sản phẩm')).toBeInTheDocument();
+    expect(await within(dialog).findByText('Sản phẩm là bắt buộc')).toBeInTheDocument();
     expect(creates).toEqual([]);
 
     // 400: "one of the two external ids" is the server's rule - nothing here stops the request - and its message
@@ -696,8 +696,10 @@ describe('channel detail: changing a mapping', () => {
     expect(externalId.closest('.ant-form-item')).not.toHaveTextContent('thuộc về');
 
     // The text is the client's for the code: the next answer is shown in the language the page has then.
+    // The texts of a language are loaded by the first switch to it: the button is waited for under its new name
+    // (asked for at once, it was still "Lưu" in two of three full runs of task 026c).
     await switchLanguage(user, 'EN');
-    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+    await user.click(await within(dialog).findByRole('button', { name: 'Save' }));
     const takenInEnglish = await within(dialog).findByText(
       'This external SKU belongs to another product on this channel.',
     );

@@ -533,10 +533,13 @@ describe('order entry', () => {
     await appUser.clear(externalOrderId('digital-platform'));
     await appUser.click(submitButton('digital-platform'));
 
-    expect(await panel.findByText('Hãy nhập thông tin cho trường Mã đơn hàng bên ngoài')).toBeInTheDocument();
-    expect(panel.getByText('Hãy nhập thông tin cho trường Khách hàng')).toBeInTheDocument();
-    expect(panel.getByText('Hãy nhập thông tin cho trường Sản phẩm')).toBeInTheDocument();
-    expect(panel.getByText('Hãy nhập thông tin cho trường Số lượng')).toBeInTheDocument();
+    // Each field shows its error when its own validation has finished - not all in the commit that shows the first
+    // one (the red CI runs of 294cb91 and f363c23: the second text was looked for without waiting). Every one is
+    // waited for.
+    expect(await panel.findByText('Mã đơn hàng bên ngoài là bắt buộc')).toBeInTheDocument();
+    expect(await panel.findByText('Khách hàng là bắt buộc')).toBeInTheDocument();
+    expect(await panel.findByText('Sản phẩm là bắt buộc')).toBeInTheDocument();
+    expect(await panel.findByText('Số lượng là bắt buộc')).toBeInTheDocument();
     expect(backend.submissions).toEqual([]);
     expect(panel.getByRole('button', { name: 'Xoá dòng 1' })).toBeDisabled();
     // Fixed widths for what differs per language.

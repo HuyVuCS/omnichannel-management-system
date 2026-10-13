@@ -140,9 +140,12 @@ export function OrdersExportForm({ prefill }: { prefill?: OrdersPrefill }) {
             ]}
             style={{ width: DATE_RANGE_WIDTH }}
           >
+            {/* The form's label names the first input only; with an error shown, the second one had no name but its
+                placeholder and the error text. */}
             <DatePicker.RangePicker
               format={DATE_FORMAT}
               placeholder={[t('orders.filters.from'), t('orders.filters.to')]}
+              aria-label={t('reports.form.range')}
               style={{ width: '100%' }}
             />
           </Form.Item>

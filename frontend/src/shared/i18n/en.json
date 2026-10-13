@@ -3,6 +3,7 @@
     "name": "Omnichannel"
   },
   "common": {
+    "requiredField": "${label} is required",
     "cancel": "Cancel",
     "close": "Close",
     "save": "Save",
@@ -826,6 +827,7 @@
       "processing_failed": "Task failed",
       "processing_retry_requested": "Manual retry",
       "processing_stale_tasks_failed": "Stale tasks failed",
+      "product_image_orphans_deleted": "Unused image files deleted",
       "outbox_publish_failed": "Message not published",
       "alert_acknowledged": "Alert acknowledged",
       "user_created": "User created",
@@ -881,6 +883,7 @@
       "processing_failed": "{{taskType}} · attempt {{attemptNo}} · {{errorCode}}",
       "processing_retry_requested": "{{taskType}}: retry requested",
       "processing_stale_tasks_failed": "{{failed}} tasks without progress for {{minutes}} min marked as failed",
+      "product_image_orphans_deleted": "{{uploads}} unconfirmed uploads and {{images}} images no product uses deleted",
       "outbox_publish_failed": "{{eventType}} not published after {{publishAttempts}} attempts",
       "alert_acknowledged": "Alert: {{type}}",
       "user_created": "Role {{role}}",
