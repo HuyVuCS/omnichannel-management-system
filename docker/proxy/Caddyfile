@@ -54,10 +54,13 @@
 
 	@api path /api/* /health
 	handle @api {
-		# The API's own limit for a request body (RequestBodyLimit.MaxBytes; a test of the backend compares the
-		# two numbers). A longer body that announces its length is answered by the API (413 ProblemDetails).
+		# A backstop only: 8 x the API's own limit for a request body (RequestBodyLimit.MaxBytes, 128 KiB; a test of the
+		# backend asserts the relation). Every body the API refuses for its size therefore reaches the API, which answers
+		# a 413 the frontend can read (CORS header, problem document, correlation id). With equal limits the answer
+		# was a race: this proxy only fails when it reads past its limit, and then with a bare 413. Above 1 MiB the
+		# proxy refuses by itself.
 		request_body {
-			max_size 128KiB
+			max_size 1024KiB
 		}
 
 		# WebSocket upgrades of /api/hubs/* pass through as they are. The API gets exactly one client address: the
