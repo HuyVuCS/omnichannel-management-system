@@ -4,12 +4,14 @@ using Omnichannel.Application.Channels;
 using Omnichannel.Application.Common.Abstractions;
 using Omnichannel.Application.Notifications;
 using Omnichannel.Application.Processing;
+using Omnichannel.Application.Products;
 using Omnichannel.Infrastructure;
 using Omnichannel.Infrastructure.ExternalChannels;
 using Omnichannel.Infrastructure.ExternalProviders;
 using Omnichannel.Infrastructure.Persistence.Channels;
 using Omnichannel.Infrastructure.RabbitMQ;
 using Omnichannel.Infrastructure.S3;
+using Omnichannel.Workers.ImageCleanupWorker;
 using Omnichannel.Workers.InvoiceWorker;
 using Omnichannel.Workers.NotificationWorker;
 using Omnichannel.Workers.OrderWorker;
@@ -76,6 +78,12 @@ public static class WorkerHostSetup
             .ValidateOnStart();
         services.AddSingleton<IValidateOptions<StaleTaskOptions>, StaleTaskOptionsValidator>();
 
+        // Uploads that were never confirmed and image objects no product refers to: deleted when they are old.
+        services.AddOptions<ImageCleanupOptions>()
+            .Bind(configuration.GetSection(ImageCleanupOptions.SectionName))
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<ImageCleanupOptions>, ImageCleanupOptionsValidator>();
+
         services.AddOptions<ReportExportWorkerOptions>()
             .Bind(configuration.GetSection(ReportExportWorkerOptions.SectionName))
             .ValidateOnStart();
@@ -125,6 +133,7 @@ public static class WorkerHostSetup
         services.AddHostedService<ReportExportCleanupService>();
         services.AddHostedService<ReconciliationService>();
         services.AddHostedService<StaleTaskSweepService>();
+        services.AddHostedService<ImageCleanupService>();
 
         return services;
     }

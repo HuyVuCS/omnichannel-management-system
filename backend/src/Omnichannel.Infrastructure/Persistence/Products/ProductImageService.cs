@@ -31,6 +31,24 @@ internal sealed class ProductImageLinks(IObjectStorage storage, IOptions<ObjectS
     }
 }
 
+/// <summary>
+/// <see cref="IProductImageService"/>. An upload goes to a staging key; the confirmation copies it inside the storage
+/// to a final key of its own, checks <b>the copy</b> and makes the product refer to it (review 019: the upload link is
+/// valid for some minutes more and could replace the confirmed object - now it can only write the staging key, which
+/// nothing refers to).
+/// <para>
+/// Why the copy is what is checked: the staging object can be rewritten through the link between a check and the
+/// copy; the copy cannot - its key is new for this confirmation (<see cref="ProductImageKey.NewFinalFor"/>), no link
+/// leads to it and no client can name it. So what a product refers to is exactly what was checked, also when two
+/// confirmations of the same upload run at once: each has its own copy, the product row lock decides which one is
+/// referred to, and the other one is deleted.
+/// </para>
+/// <para>
+/// Every call to the storage happens outside the database transaction. A copy whose confirmation does not finish is
+/// deleted when the failure is known, and is otherwise left to the image clean-up
+/// (<see cref="IProductImageCleanup"/>), like a staging object that could not be deleted.
+/// </para>
+/// </summary>
 internal sealed class ProductImageService(
     OmnichannelDbContext dbContext,
     IObjectStorage storage,
@@ -59,8 +77,10 @@ internal sealed class ProductImageService(
             throw new NotFoundException(nameof(Product), productId);
         }
 
-        var key = ProductImageKey.NewFor(productId);
-        var link = storage.PresignPut(key, request.ContentType, settings.UploadUrlLifetime);
+        var key = ProductImageKey.NewStagingFor(productId);
+        // The declared size is signed into the link. The browser sends the length of the file by itself, so the
+        // answer names the Content-Type header only (a script cannot set Content-Length).
+        var link = storage.PresignPut(key, request.ContentType, request.SizeBytes, settings.UploadUrlLifetime);
         return new PresignProductImageResponse(
             key,
             link.Url,
@@ -74,7 +94,7 @@ internal sealed class ProductImageService(
         ConfirmProductImageRequest request,
         CancellationToken cancellationToken)
     {
-        var key = request.ObjectKey;
+        var stagingKey = request.ObjectKey;
         var current = await dbContext.Products
             .AsNoTracking()
             .Where(p => p.ProductId == productId)
@@ -82,40 +102,79 @@ internal sealed class ProductImageService(
             .SingleOrDefaultAsync(cancellationToken)
             ?? throw new NotFoundException(nameof(Product), productId);
 
-        if (!ProductImageKey.BelongsTo(key, productId))
+        if (!ProductImageKey.TryParseStaging(stagingKey, out var owner, out var uploadId) || owner != productId)
         {
             throw InvalidKey(ValidationMessages.Keys.ImageKeyInvalid);
         }
 
-        if (current.ImageKey == key)
+        if (ProductImageKey.IsFinalOf(current.ImageKey, uploadId))
         {
-            // A repeated confirmation (the client did not see the first answer): the image is already this object.
+            // A repeated confirmation (the client did not see the first answer): the image is already a copy of this
+            // upload. No call to the storage - whatever is under the staging key now is not looked at.
             return await products.GetAsync(productId, cancellationToken);
         }
 
-        // The checks talk to the storage: all of them before the transaction, none inside it.
-        var uploaded = await CheckUploadAsync(productId, key, cancellationToken);
+        // The storage is asked before the transaction, never inside it.
+        var staged = await CheckStagedAsync(productId, stagingKey, cancellationToken);
+
+        var finalKey = ProductImageKey.NewFinalFor(productId, uploadId);
+        var copiedAt = timeProvider.GetUtcNow();
+        if (!await storage.CopyAsync(stagingKey, finalKey, staged.ContentType, cancellationToken))
+        {
+            // Deleted between the look and the copy (a rejected concurrent confirmation of the same upload).
+            throw InvalidKey(ValidationMessages.Keys.ImageNotUploaded);
+        }
 
         string? previousKey;
-        // No EnableRetryOnFailure: a retried transaction would need the execution strategy around it.
-        await using (var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken))
+        bool alreadyConfirmed;
+        (string ContentType, long Length) copy;
+        var committing = false;
+        try
         {
+            copy = await CheckCopyAsync(productId, stagingKey, finalKey, cancellationToken);
+
+            // No EnableRetryOnFailure: a retried transaction would need the execution strategy around it.
+            await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
             var product = await LockAsync(productId, cancellationToken);
             previousKey = product.ImageKey;
-            if (previousKey != key)
+            // A concurrent confirmation of the same upload came first: its copy is the image, this one is not needed.
+            alreadyConfirmed = ProductImageKey.IsFinalOf(previousKey, uploadId);
+            if (!alreadyConfirmed)
             {
-                product.SetImage(key, uploaded.ContentType, uploaded.Length, timeProvider.GetUtcNow());
+                if (timeProvider.GetUtcNow() - copiedAt > ProductImageRules.ConfirmationDeadline)
+                {
+                    // The clean-up may take an unreferenced copy for an orphan once it is old; a confirmation that
+                    // was held up this long does not refer to its copy any more. The upload is still there: try again.
+                    throw new ObjectStorageException("confirm");
+                }
+
+                product.SetImage(finalKey, copy.ContentType, copy.Length, timeProvider.GetUtcNow());
                 await dbContext.SaveChangesAsync(cancellationToken);
             }
 
+            committing = true;
             await transaction.CommitAsync(cancellationToken);
         }
+        catch when (!committing)
+        {
+            // Nothing refers to the copy and nothing will. (A failure of the commit itself says nothing about its
+            // outcome: then the copy stays, and the clean-up removes it only if no product refers to it.)
+            await DeleteQuietlyAsync(productId, finalKey, "unconfirmed", CancellationToken.None);
+            throw;
+        }
 
-        if (previousKey is not null && previousKey != key)
+        if (alreadyConfirmed)
+        {
+            await DeleteQuietlyAsync(productId, finalKey, "duplicate", cancellationToken);
+        }
+        else if (previousKey is not null)
         {
             // Nothing refers to the replaced object any more. If this fails it stays as an orphan: never served.
             await DeleteQuietlyAsync(productId, previousKey, "replaced", cancellationToken);
         }
+
+        // The upload has done its work; what the link writes there afterwards is never looked at.
+        await DeleteQuietlyAsync(productId, stagingKey, "confirmed upload", cancellationToken);
 
         return await products.GetAsync(productId, cancellationToken);
     }
@@ -143,38 +202,66 @@ internal sealed class ProductImageService(
     }
 
     /// <summary>
-    /// What is stored under the key, if it may be a product image: it exists, is not too large, has an allowed content
-    /// type, and its first bytes are the signature of that type. An object that fails is deleted.
+    /// The upload as it is now, before anything is copied: it exists, is not too large and has an allowed content type.
+    /// The cheap part of the checks - an upload that can never become an image is deleted without being copied.
     /// </summary>
-    private async Task<(string ContentType, long Length)> CheckUploadAsync(Guid productId, string key, CancellationToken cancellationToken)
+    private async Task<(string ContentType, long Length)> CheckStagedAsync(Guid productId, string stagingKey, CancellationToken cancellationToken)
     {
-        var stored = await storage.HeadAsync(key, cancellationToken)
+        var staged = await storage.HeadAsync(stagingKey, cancellationToken)
             ?? throw InvalidKey(ValidationMessages.Keys.ImageNotUploaded);
 
-        var maxBytes = options.Value.MaxImageBytes;
-        ValidationException? rejection = null;
-        if (stored.Length > maxBytes)
+        if (RejectionOf(staged) is { } rejection)
         {
-            rejection = Invalid(nameof(ConfirmProductImageRequest.ObjectKey), TooLarge(maxBytes));
+            await DeleteQuietlyAsync(productId, stagingKey, "rejected", cancellationToken);
+            throw rejection;
         }
-        else if (!ProductImageRules.IsAllowed(stored.ContentType))
-        {
-            rejection = InvalidKey(ValidationMessages.Keys.ImageTypeNotAllowed);
-        }
-        else if (!ProductImageRules.StartsLike(
-            stored.ContentType!,
-            await storage.ReadStartAsync(key, ProductImageRules.SignatureLength, cancellationToken)))
+
+        return (staged.ContentType!, staged.Length);
+    }
+
+    /// <summary>
+    /// The copy, which nothing but this confirmation can write: size and content type again (the upload may have been
+    /// replaced between the first look and the copy) and its first bytes, which must be the signature of its type. A
+    /// copy that fails is deleted together with the upload.
+    /// </summary>
+    private async Task<(string ContentType, long Length)> CheckCopyAsync(
+        Guid productId,
+        string stagingKey,
+        string finalKey,
+        CancellationToken cancellationToken)
+    {
+        // The storage confirmed the copy a moment ago: not finding it is a failure of the storage, not of the client.
+        var copy = await storage.HeadAsync(finalKey, cancellationToken) ?? throw new ObjectStorageException("head");
+
+        var rejection = RejectionOf(copy);
+        if (rejection is null
+            && !ProductImageRules.StartsLike(
+                copy.ContentType!,
+                await storage.ReadStartAsync(finalKey, ProductImageRules.SignatureLength, cancellationToken)))
         {
             rejection = InvalidKey(ValidationMessages.Keys.ImageContentMismatch);
         }
 
         if (rejection is not null)
         {
-            await DeleteQuietlyAsync(productId, key, "rejected", cancellationToken);
+            await DeleteQuietlyAsync(productId, stagingKey, "rejected", cancellationToken);
+            // The copy is deleted by the caller, like every copy of a confirmation that does not finish.
             throw rejection;
         }
 
-        return (stored.ContentType!, stored.Length);
+        return (copy.ContentType!, copy.Length);
+    }
+
+    /// <summary>Why an object cannot be a product image by its size or content type; null when it can.</summary>
+    private ValidationException? RejectionOf(StoredObject stored)
+    {
+        var maxBytes = options.Value.MaxImageBytes;
+        if (stored.Length > maxBytes)
+        {
+            return Invalid(nameof(ConfirmProductImageRequest.ObjectKey), TooLarge(maxBytes));
+        }
+
+        return ProductImageRules.IsAllowed(stored.ContentType) ? null : InvalidKey(ValidationMessages.Keys.ImageTypeNotAllowed);
     }
 
     /// <summary>The product, with its row locked until the transaction ends: concurrent image changes run one after the other.</summary>

@@ -8,6 +8,7 @@ using Omnichannel.Application.Invoices;
 using Omnichannel.Application.Notifications;
 using Omnichannel.Application.Orders;
 using Omnichannel.Application.Processing;
+using Omnichannel.Application.Products;
 using Omnichannel.Application.Reports;
 using Omnichannel.Application.Users;
 
@@ -61,6 +62,8 @@ public static class SystemEventDetails
             [ProcessingEvents.RetryRequested] =
                 ["taskId", "taskType", "requestedBy", "previousMessageId", "newMessageId", "attemptBudgetStart"],
             [ProcessingEvents.StaleTasksFailed] = ["runId", "staleAfterSeconds", "failed", "taskIds", "notListed"],
+            // Keys of deleted objects are ids of the application (product id, object id): no personal data, capped.
+            [ProductImageEvents.OrphansDeleted] = ["runId", "minAgeSeconds", "uploads", "images", "keys", "notListed"],
             // Never "lastError": broker or exception text.
             [OutboxEvents.PublishFailed] = ["outboxEventId", "eventType", "publishAttempts"],
             [AlertEvents.Acknowledged] = ["alertId", "type", "acknowledgedBy"],

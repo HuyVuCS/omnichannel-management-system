@@ -54,7 +54,7 @@ public sealed class StoragePublicOriginTests(ApiFactory factory)
         using var browser = new HttpClient();
 
         // Upload through the public origin, as a browser does.
-        var upload = storage.PresignPut(key, "application/octet-stream", TimeSpan.FromMinutes(1));
+        var upload = storage.PresignPut(key, "application/octet-stream", Content.Length, TimeSpan.FromMinutes(1));
         Assert.StartsWith($"{publicUrl}/", upload.Url, StringComparison.Ordinal);
         Assert.DoesNotContain("127.0.0.1", upload.Url, StringComparison.Ordinal);
         using var body = new ByteArrayContent(Content);
@@ -109,7 +109,7 @@ public sealed class StoragePublicOriginTests(ApiFactory factory)
 
         Assert.StartsWith($"{emulator.ServiceUrl}/", storage.PresignGet("any/key", TimeSpan.FromMinutes(1)).Url, StringComparison.Ordinal);
         Assert.StartsWith(
-            $"{emulator.ServiceUrl}/", storage.PresignPut("any/key", "image/png", TimeSpan.FromMinutes(1)).Url, StringComparison.Ordinal);
+            $"{emulator.ServiceUrl}/", storage.PresignPut("any/key", "image/png", 1, TimeSpan.FromMinutes(1)).Url, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -135,7 +135,7 @@ public sealed class StoragePublicOriginTests(ApiFactory factory)
         foreach (var link in new[]
                  {
                      storage.PresignGet("products/p/image", TimeSpan.FromMinutes(1)).Url,
-                     storage.PresignPut("products/p/image", "image/png", TimeSpan.FromMinutes(1)).Url
+                     storage.PresignPut("products/p/image", "image/png", 1, TimeSpan.FromMinutes(1)).Url
                  })
         {
             Assert.StartsWith("https://files.example.test/bucket/products/p/image?", link, StringComparison.Ordinal);
