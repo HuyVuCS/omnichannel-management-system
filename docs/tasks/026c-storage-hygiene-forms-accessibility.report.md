@@ -4,7 +4,7 @@ Status: Partially done — Parts A to D are implemented, verified and applied to
 production) has not started: the task makes it wait for the user's go-ahead**, and the count of what the first
 clean-up run would delete on production comes before that (see "Manual steps for the user").
 Commit: `2f78c4e` (A1), `e73cd24` (A2), `e9a20d5` + `060ee4a` (B backend), `c2077c8` + `78958e9` (frontend: event label,
-C1, C2, A3), `8cb22b6` (smoke scripts, README, runbook), CI_COMMIT_PLACEHOLDER; this report in a commit of its own.
+C1, C2, A3), `8cb22b6` (smoke scripts, README, runbook), `70b1d3f` (README; the commit CI ran on); this report in commits of its own.
 
 ## Summary
 - **A:** the proxy's body limit is 1 MiB (8 x the API's, relation tested), so every oversize body up to 1 MiB gets the
@@ -92,8 +92,8 @@ Scripts and documents
 | `omni026c`: `compose run --rm --no-deps workers --image-cleanup-dry-run=true` | one clean-up, nothing deleted: "1 objects listed; a run now would delete 0 uploads and 0 unreferenced images older than 00:02:00; 1 old images in use would be kept" |
 | `omni026c` removed | `down -v` of that project, its three images by tag, its env file: 0 containers, 0 volumes, 0 images left; production untouched (its containers "Up 3 hours" before and after) |
 | Development: `task-026c.ps1` | PASSED: all 28 checks (24 of the script, clean-up, `npm run build`, `npm test`) |
-| Development: `task-019.ps1` | SMOKE_019_PLACEHOLDER |
-| CI (GitHub Actions) | CI_RESULT_PLACEHOLDER |
+| Development: `task-019.ps1` (step 14 changed) | PASSED: all 50 checks |
+| CI (GitHub Actions) | **green**: run 38426116916 on `70b1d3f` — backend, frontend and the three image jobs (the frontend job took 6 m 46 s; 4 m 02 s and 5 m 26 s in the two red runs before — the difference is axe-core, deviation 9) |
 
 ### A1 — the 413 through the proxy
 `_hardening.ps1` (used by `task-026.ps1` and `task-025b.ps1`) asserts for a body of 128 KiB + 1: status 413 **with the
@@ -258,8 +258,8 @@ pane** (it was hidden, and a hidden pane does not advance the close animation): 
    columns in the same direction, read backwards the ascending index serves "newest first" and forwards "oldest
    first"; a mixed index would serve neither without a sort.
 9. **C2: axe runs after every test of the suite** (what each test ends on), not through a helper called per page: no
-   page or dialog can be forgotten. Cost: the suite takes about 5.4 minutes instead of about 4.7 on this machine.
-   While axe runs the injected style sheets are detached (jsdom matched every rule for every element: 1–2.8 s per
+   page or dialog can be forgotten. Cost: about 17 % more time, measured on one test file (37 s -> 43.5 s); a full
+   local run takes about 5.4 minutes, the frontend job of CI 6 m 46 s. While axe runs the injected style sheets are detached (jsdom matched every rule for every element: 1–2.8 s per
    test, 0.3–0.6 s without).
 10. **C2: the colours of the theme changed** — visible on every page (a darker blue, darker status texts, darker
     secondary text and placeholders). The task allows "contrast within the theme"; it is still a change of look the
@@ -303,7 +303,7 @@ pane** (it was hidden, and a hidden pane does not advance the close animation): 
   `dotnet ef database update --no-build` -> `Applying migration '20261013132359_TaskListOrderIndex'. Done.`; pending
   afterwards: 0.
 - `powershell -ExecutionPolicy Bypass -File scripts\smoke\task-026c.ps1` on development -> PASSED: all 28 checks.
-- `scripts\smoke\task-019.ps1` on development -> SMOKE_019_PLACEHOLDER
+- `scripts\smoke\task-019.ps1` on development -> PASSED: all 50 checks.
 - No host is left running (the scripts stopped what they started); the measuring container and the throwaway stack
   are removed.
 
