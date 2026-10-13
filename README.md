@@ -762,6 +762,41 @@ and exit code 0 / 1. Run one from the repository root: `powershell -ExecutionPol
   script stops at its start with a message that names both variables.
 - `scripts\smoke\_assert-selftest.ps1` checks the helpers themselves (strict comparison, the table, the skip switch);
   it needs no API.
+- `scripts\smoke\task-026b.ps1` (error answers a page on the frontend origin can read, the product filter of the
+  tasks) runs on development as it is; with `SMOKE_STALE_DRILL=1` and `SMOKE_COMPOSE_PROJECT=<a throwaway stack whose
+  Workers run with short `StaleTasks` settings>` it also drills the stale-task sweep: it stops the Workers, submits an
+  order, marks its message as sent by hand, starts the Workers and waits for the task to fail, then retries it. It
+  refuses the projects `omnichannel-prod` and `omnichannel`.
+
+## Load test of the reserve path
+
+`scripts\load\run.ps1` submits orders with [k6](https://k6.io) and then checks what the Order Worker made of them.
+**Only against a throwaway production-like stack** ("Production deployment": its own project name, env file, ports,
+edge subnet and `IMAGE_TAG`, two Workers) - it writes thousands of orders, and it refuses the projects
+`omnichannel-prod` and `omnichannel`. Nothing is installed: k6 runs from its official image, pinned by digest in the
+script, as a container on the stack's edge network, and reaches the API through the stack's proxy; the access token of
+the stack's first Admin reaches it through the environment.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\load\run.ps1 -Project omni026b -BaseUrl http://localhost:18080 `
+    -EnvFile docker\.env.prod.026b -Scenario all      # contention | spread | duplicates | all
+```
+
+| Scenario | What is sent (`scripts\load\reserve.js`) | What must hold afterwards |
+| --- | --- | --- |
+| `contention` | one product with a stock of 100; 300 orders of one piece from 30 clients, as fast as the intake answers | exactly 100 orders `Reserved`, 200 `InsufficientStock`; stock 100 / 100 / 0 |
+| `spread` | 50 products with a stock of 200; 2,000 orders at a constant 20 per second for 100 s, one to three lines each | all 2,000 `Reserved`; k6 never fell behind its rate |
+| `duplicates` | 100 external order ids, each submitted twice at the same moment | 200 answers `202`, 100 orders, each reserved once |
+
+After each scenario the script waits until no task is unfinished and no message waits, and prints: the intake's
+requests, rate and answer times (p50 / p95 / p99); the Order Worker's time from intake to finished (p50 / p95, from
+the task's timestamps), its throughput and number of attempts; CPU and memory of `postgres`, `rabbitmq` and the
+Workers (`docker stats`, sampled every two seconds); and the invariants of `scripts\load\invariants.sql` - stock
+never negative and `Available = Total - Reserved`, reserved stock = the lines of the `Reserved` orders, exactly one
+`Reserve` movement per reserved line, one order per channel and external order id, no task unfinished or failed, no
+message left in the outbox, a queue or a dead-letter queue. Exit code 1 when an expectation or an invariant does not
+hold: that is a defect to report, not a number to tune. There is no performance target; the numbers of task 026b on
+one machine are in `docs/implementation-log.md` as a baseline.
 
 ## Frontend
 
