@@ -40,9 +40,18 @@ function Invoke-HardeningRequest([string]$Method, [string]$Url, [byte[]]$Body, [
 
 # A body that is refused without being read: the answer can arrive while this client is still sending, and the
 # connection is then closed under it (no HTTP answer, Status 0). That is this client, not the server: asked again.
+# The checks post to the login endpoint (the only one that reads a body without an account), which this address may
+# call ten times a minute: a 429 is that limit, not the answer under test - the minute is waited out, twice at most.
 function Invoke-HardeningRefused([string]$Method, [string]$Url, [byte[]]$Body, [switch]$Chunked) {
-    foreach ($try in 1..5) {
+    $waited = 0
+    foreach ($try in 1..7) {
         $answer = Invoke-HardeningRequest $Method $Url $Body -Chunked:$Chunked
+        if (($answer.Status -eq 429) -and ($waited -lt 2)) {
+            Write-Host '   (the login limit of this address is reached: waiting 61 s)'
+            Start-Sleep -Seconds 61
+            $waited++
+            continue
+        }
         if ($answer.Status -ne 0) { return $answer }
         Start-Sleep -Milliseconds 300
     }
@@ -95,7 +104,7 @@ function Invoke-HardeningChecks([string]$ApiOrigin, [string]$StorageOrigin, [int
     $atLimit = New-Object byte[] $script:BodyLimitBytes
     for ($i = 0; $i -lt $atLimit.Length; $i++) { $atLimit[$i] = 32 }
     $atLimit[0] = 123; $atLimit[1] = 125
-    Assert-Step ('{0:00} a body of exactly the limit is read (400: an empty login)' -f $n) 400 (Invoke-HardeningRequest POST "$ApiOrigin/api/auth/login" $atLimit).Status; $n++
+    Assert-Step ('{0:00} a body of exactly the limit is read (400: an empty login)' -f $n) 400 (Invoke-HardeningRefused POST "$ApiOrigin/api/auth/login" $atLimit).Status; $n++
 
     # C1: whatever the storage origin answers is data, never a page.
     $storage = Invoke-HardeningRequest GET "$StorageOrigin/"

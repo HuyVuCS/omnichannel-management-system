@@ -21,7 +21,6 @@
 . (Join-Path $PSScriptRoot '_hardening.ps1')
 
 $frontendOrigin = if ($env:SMOKE_FRONTEND_ORIGIN) { $env:SMOKE_FRONTEND_ORIGIN.TrimEnd('/') } else { 'http://localhost:5173' }
-$throughProxy = $script:ForeignEnvironment
 $drill = ($env:SMOKE_STALE_DRILL -eq '1')
 $project = [string]$env:SMOKE_COMPOSE_PROJECT
 $staleWaitSeconds = if ($env:SMOKE_STALE_WAIT_SECONDS) { [int]$env:SMOKE_STALE_WAIT_SECONDS } else { 240 }
@@ -138,12 +137,9 @@ try {
 
     $id = "smoke-026b-413c-$n"
     $chunked = Invoke-FromOrigin POST '/api/inventory/import' $frontendOrigin $id $admin $tooLarge -Chunked
-    if ($throughProxy) {
-        # Without a Content-Length the proxy cuts the body off itself and answers alone (runbook 15).
-        Assert-Step '04 the same body without a length through the proxy -> 413 (answered by the proxy)' 413 $chunked.Status
-    } else {
-        Assert-Step '04 the same body without a length, cut off by the server, is readable too' "413 | $readable" (Get-ReadableSummary $chunked $id)
-    }
+    foreach ($try in 1..4) { if ($chunked.Status -ne 0) { break }; Start-Sleep -Milliseconds 300; $chunked = Invoke-FromOrigin POST '/api/inventory/import' $frontendOrigin $id $admin $tooLarge -Chunked }
+    # Through a proxy too (task 026c): the body is below the proxy's limit, the API cuts it off and answers.
+    Assert-Step '04 the same body without a length, cut off by the server, is readable too' "413 | $readable" (Get-ReadableSummary $chunked $id)
 
     $foreign = Invoke-Refused POST '/api/inventory/import' 'https://not-the-frontend.example' "smoke-026b-other-$n" $admin $tooLarge
     Assert-Step '05 another origin gets the 413 without a CORS header' '413 | none' "$($foreign.Status) | $(Get-HardeningHeader $foreign 'access-control-allow-origin')"

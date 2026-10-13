@@ -328,3 +328,23 @@ describe('customers page: dialog opened again after it was closed completely', (
     expect(valuesOf(dialog)).toEqual(['', '', '', '']);
   });
 });
+
+describe('customers page: keyboard', () => {
+  it('opens the dialog from the keyboard with the focus inside it, and gives the focus back to the button on Escape', async () => {
+    serveCustomers([an]);
+    const { user: appUser } = renderApp({ route: '/customers', session: sessionOf(staffUser) });
+    await screen.findByText('Nguyễn Văn An');
+    const add = screen.getByRole('button', { name: /Thêm khách hàng/ });
+
+    add.focus();
+    await appUser.keyboard('{Enter}');
+    const dialog = await findDialog('Thêm khách hàng');
+    await waitFor(() => expect(dialog).toContainElement(document.activeElement as HTMLElement));
+
+    // (That Tab never leaves an open dialog was checked in a browser, report 026c: past the last control the library
+    // brings the focus back, which jsdom does not reproduce.)
+    await appUser.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    await waitFor(() => expect(add).toHaveFocus());
+  });
+});

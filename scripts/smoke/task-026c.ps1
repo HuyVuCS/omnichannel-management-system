@@ -175,8 +175,11 @@ try {
     $secondKey = Get-KeyOfLink ([string]$replaced.Body.image.url)
     Assert-Step '22 ... another final object' $true ($secondKey.StartsWith("products/$productId/") -and ($secondKey -cne $imageKey))
     Assert-Step '23 ... the link of the replaced image -> 404' 404 (Invoke-Storage GET $imageUrl $null $null).Status
-    $oldUpload = Invoke-ApiProblem PUT "/api/products/$productId/image" $manager @{ objectKey = $uploadKey } 'en'
-    Assert-Step '24 the first upload cannot bring the first image back: its staging object was deleted' '400 No file has been uploaded for this key.' "$($oldUpload.Status) $(Get-FieldError $oldUpload 'objectKey')"
+    # The staging key of the first upload holds what the link wrote in step 14. The image is no copy of that upload
+    # any more, so a confirmation is an ordinary one: the bytes are copied, checked and become a third object.
+    $rewritten = Invoke-ApiProblem PUT "/api/products/$productId/image" $manager @{ objectKey = $uploadKey } 'en'
+    $thirdKey = if ($rewritten.Body -and $rewritten.Body.image) { Get-KeyOfLink ([string]$rewritten.Body.image.url) } else { 'no image' }
+    Assert-Step '24 what the link wrote after the confirmation becomes an image only by a confirmation of its own (checked, a new object)' $true (($rewritten.Status -eq 200) -and $thirdKey.StartsWith("products/$productId/") -and ($thirdKey -cne $imageKey) -and ($thirdKey -cne $secondKey))
 
     # ---- B2: the clean-up (throwaway stack only) ----------------------------------------------------------------------
     if ($drill) {
