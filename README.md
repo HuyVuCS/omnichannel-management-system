@@ -118,7 +118,7 @@ dotnet run --project src/Omnichannel.Api --launch-profile http
 
 Run the API in Docker instead: `docker compose -f docker/docker-compose.yml --env-file docker/.env --profile app up -d --build` (port 8080).
 
-### 6. Workers (Outbox Publisher, Order Worker, Stock Sync Worker, Report Export Worker, Invoice Worker, Notification Worker, Reconciliation, stale-task sweep)
+### 6. Workers (Outbox Publisher, Order Worker, Stock Sync Worker, Report Export Worker, Invoice Worker, Notification Worker, Reconciliation, stale-task sweep, image clean-up)
 
 The Workers host runs these background workers in one process:
 
@@ -687,8 +687,9 @@ origin the API answers with CORS headers and the one the bucket allows.
   `Authorization`, `Cookie` or `Referer` header. The identity headers Tailscale adds for a device of the tailnet
   (`Tailscale-User-Login`, `-Name`, `-Profile-Pic`) are removed before a request reaches the API or the storage, and
   are not logged.
-- **Limits and headers (task 026).** A request body is at most **128 KiB** - in the API (`RequestBodyLimit`, Kestrel)
-  and at the API site of the proxy; a larger one is answered `413` with a problem document (`request_body_too_large`).
+- **Limits and headers (task 026).** A request body is at most **128 KiB** in the API (`RequestBodyLimit`, Kestrel);
+  a larger one is answered `413` with a problem document (`request_body_too_large`) - by the API itself, also through
+  the proxy, whose own limit is a backstop of 8 times as much (1 MiB, task 026c; above it the proxy answers a bare 413).
   Every answer of the API carries `nosniff`, `Referrer-Policy: no-referrer`,
   `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'` and `Cache-Control: no-store` (in Development
   too; the Swagger UI and the OpenAPI document are served without the policy). Every answer of the storage site
@@ -767,6 +768,10 @@ and exit code 0 / 1. Run one from the repository root: `powershell -ExecutionPol
   Workers run with short `StaleTasks` settings>` it also drills the stale-task sweep: it stops the Workers, submits an
   order, marks its message as sent by hand, starts the Workers and waits for the task to fail, then retries it. It
   refuses the projects `omnichannel-prod` and `omnichannel`.
+- `scripts\smoke\task-026c.ps1` (staging upload -> confirm -> final key served, the upload link after the
+  confirmation, the signed length) runs on development as it is; with `SMOKE_IMAGE_SWEEP=1` on a throwaway stack whose
+  Workers run with `ImageCleanup__Interval` of seconds and `ImageCleanup__MinAge=00:02:00` it also waits for the
+  clean-up to take an upload nobody confirmed and to leave the image in use (about three minutes).
 
 ## Load test of the reserve path
 
@@ -971,6 +976,20 @@ npm run dev     # http://localhost:5173 - needs the API on http://localhost:5080
   - **Conditions of a slow run:** the Browser pane closed and the machine otherwise idle (no API or Workers host, no
     backend build or test, no dev or preview server). A test that is red in such a run is **not** attributed to load
     without a second run of that file alone (`npm run test:slow -- <file>`); both results go into the task's report.
+  - **Accessibility (task 026c).** `src/test/accessibility.ts` runs **axe-core** (a dev dependency, pinned; it is not
+    in the bundle) on whatever a test has on screen when it ends - every page, dialog, form and error state the page
+    tests render - and a violation axe rates `serious` or `critical` fails that test with the rule and the elements.
+    Two things are different from a browser: colour contrast is not judged (jsdom has no colours: the rule is off, the
+    contrast of the theme was measured in a browser, report 026c), and the library's injected style sheets are taken
+    out while axe runs (jsdom matches every rule for every element: four times as fast without them; an element a
+    class would hide is then checked as well, nothing is skipped). One exception is written down in that file: the
+    list of options of an AntD `Select` has no accessible name and the component has no way to give it one (its
+    combobox is named). A new control needs a name a screen reader can say: a form label, or `aria-label` for an
+    icon-only button and for a filter without a visible label.
+  - **Required fields** have one text in every form, set once in `app/providers.tsx` (`validateMessages`):
+    "{label} là bắt buộc" / "{label} is required" (`common.requiredField`). A rule passes its own `message` only when
+    it says more than that. Each field shows its error when its own validation finished: a test waits for **each**
+    text (`findByText`), never for the first one only.
 - Product images (`features/products`): the list has a thumbnail column (40 x 40, cropped, lazy, `alt` = the product
   name; a placeholder when there is no image or it cannot be loaded) for every role. The edit dialog (Manager/Admin)
   has the image block: preview, "choose image", "remove image" (with a confirmation). Both act at once, not on "Save".
@@ -1330,24 +1349,32 @@ uses a local emulator (SeaweedFS, service `objectstorage` of `docker/docker-comp
   1. `POST /api/products/{id}/image/presign` with `{ contentType, sizeBytes }` - `contentType` is `image/jpeg`,
      `image/png` or `image/webp` (no SVG: it can carry script, and the storage serves what is stored; no GIF),
      `1 <= sizeBytes <= ObjectStorage:MaxImageBytes` (5 MiB). Answer: `{ objectKey, uploadUrl, method: "PUT",
-     headers: { "Content-Type": ... }, expiresAt }`. The key is generated by the server:
-     `products/{productId}/{uuidv7}`. Nothing is written to the database; 404 for an unknown product.
+     headers: { "Content-Type": ... }, expiresAt }`. The key is generated by the server and is a **staging key**:
+     `uploads/products/{productId}/{uuidv7}` (task 026c). Nothing is written to the database; 404 for an unknown
+     product.
   2. The client sends the file to `uploadUrl` with exactly `method` and `headers` - **to the storage, without the
-     API's `Authorization` header**. The link is valid for 5 minutes and signs the `Content-Type`; the storage
-     rejects another type, a changed signature and an expired link (403). The link stays valid for its **whole**
-     lifetime, also after the confirmation of step 3: a second `PUT` with it replaces the confirmed object with
-     content nobody checked (the stored size is then stale). Only a Manager/Admin holds such a link; task 026 closes
-     this by copying the object to a final key at confirmation.
-  3. `PUT /api/products/{id}/image` with `{ objectKey }` **confirms**. A presigned upload cannot limit size or
-     content, so the API checks the stored object, in this order and outside any transaction: the key has the exact
-     generated form and the prefix of **this** product; the object exists; it is not larger than the limit; its
-     content type is one of the three; its first bytes are the signature of that type (JPEG `FF D8 FF`, PNG
-     `89 50 4E 47 0D 0A 1A 0A`, WebP `RIFF....WEBP`). Each failure is a 400 on `objectKey` (localised), and an object
-     that fails the size, type or content check is **deleted**. Then one transaction locks the product row and stores
-     the image; after the commit the previous image's object is deleted (best effort: a failure is a warning and
-     leaves an orphan). Answer: the product. Confirming the current image again is a 200 that changes nothing.
-     Concurrent confirmations for one product run one after the other: the last one is the image, the others'
-     objects are deleted.
+     API's `Authorization` header**. The link is valid for 5 minutes and signs the `Content-Type` **and the
+     `Content-Length`** (the declared `sizeBytes`; a browser sets that header itself, so it is not among `headers`):
+     the storage rejects another type, a body of another length, a changed signature and an expired link (403 -
+     measured with SeaweedFS, directly and through the proxy; a provider that ignored a signed length would lose
+     nothing, the confirmation checks the size). The link stays valid for its whole lifetime, also after step 3 -
+     but it writes the staging key, which no product ever refers to: it **cannot change a confirmed image**.
+  3. `PUT /api/products/{id}/image` with `{ objectKey }` **confirms** - with the staging key of step 1; any other key
+     (also the final key of the product's own image) is a 400. Outside any transaction: the key has the exact
+     generated form and the prefix of **this** product; the upload exists, is not larger than the limit and has one of
+     the three content types; then the upload is **copied inside the storage** to a final key
+     `products/{productId}/{uuid}` that is new for this confirmation, and **the copy is what is checked** - size and
+     type again and its first bytes, which must be the signature of that type (JPEG `FF D8 FF`, PNG
+     `89 50 4E 47 0D 0A 1A 0A`, WebP `RIFF....WEBP`). Nothing but this confirmation can write the copy (no link leads
+     to it, no client can name it), so what the product refers to is exactly what was checked, also when the upload is
+     replaced through the link in between. Each failure is a 400 on `objectKey` (localised); an upload that fails
+     is **deleted**, with its copy. Then one transaction locks the product row and stores the final key; after the
+     commit the previous image's object and the staging object are deleted (best effort: a failure is a warning and
+     leaves an orphan for the clean-up). Answer: the product. Confirming the upload of the current image again is a
+     200 that changes nothing and calls no storage (the final key carries a digest of the upload id it was copied
+     from). Concurrent confirmations for one product run one after the other: the last one is the image, the others'
+     objects are deleted; concurrent confirmations of the **same** upload give one image and one object. Keys stored
+     before task 026c (`products/{productId}/{uuidv7}`) stay valid as they are.
 - **`DELETE /api/products/{id}/image`** (Manager/Admin) clears the image in a transaction and deletes the object after
   the commit; 204 also when the product has no image.
 - **Reading:** every product response (list, get, create, update, confirm) carries `image`: `{ url, expiresAt,
@@ -1357,11 +1384,33 @@ uses a local emulator (SeaweedFS, service `objectstorage` of `docker/docker-comp
   identifies the image (the frontend keeps the link it has for the same `updatedAt` until 60 s before it expires).
 - **Failures of the storage** (unreachable, timeout, refused) end a confirmation as **503** `storage_unavailable`; the
   product is unchanged and the upload can be confirmed later. The problem document, the log and the exception carry
-  no endpoint, no key id and no link: the log has one warning with the operation (`head`, `read`, `delete`) and the
+  no endpoint, no key id and no link: the log has one warning with the operation (`head`, `read`, `copy`, `list`,
+  `delete`) and the
   HTTP status / S3 error code or the exception type. Presigned links are credentials until they expire and are never
   logged.
-- **Orphans:** an upload that is never confirmed, and an object whose delete failed, stay in the bucket. They are
-  never referenced and never served (no link is ever signed for them); there is no sweep yet (task 026).
+- **Orphans and their clean-up (task 026c):** an upload that is never confirmed, an object whose delete failed and
+  the copy of a confirmation that did not finish stay in the bucket. They are never referenced and never served (no
+  link is ever signed for them). The **Workers host** removes them (`ImageCleanupService`, one run at a time over all
+  instances - a PostgreSQL advisory lock): every `ImageCleanup:Interval` it lists `uploads/products/` and `products/`
+  in pages and deletes an object when its key is one the application generates, the storage wrote it more than
+  `ImageCleanup:MinAge` ago **and** - for `products/` - no product row refers to it (asked after the page was
+  listed). `exports/` is never touched (its own retention). Why this cannot delete an image in use or one about to be:
+  a final object is written once, by the confirmation that will refer to it; that confirmation refers to it within
+  30 s after its copy or gives up (`ProductImageRules.ConfirmationDeadline`), and `MinAge` must be at least four times
+  that. A run that deleted something writes one event `product_image.orphans_deleted` (Information, correlation id
+  `image-cleanup-{runId}`: `uploads`, `images`, at most 50 `keys`, `notListed`), shown on **Logs / Audit**; every run
+  is one log line. A delete that fails is logged and found again by the next run.
+
+  | Setting (`ImageCleanup`, Workers host) | Default | Meaning |
+  | --- | --- | --- |
+  | `Enabled` | `true` | `false` = this host never deletes an image object by itself |
+  | `Interval` | `06:00:00` | pause between two runs (the first one comes at most 30 s after start-up); 1 s to 7 days |
+  | `MinAge` | `1.00:00:00` | only an object written at least this long ago is deleted; 2 minutes (four confirmation deadlines) to 365 days - the host does not start below |
+  | `MaxPerRun` | `500` | most objects one run deletes; the rest waits for the next run |
+
+  **What would the next run delete?** `dotnet Omnichannel.Workers.dll --image-cleanup-dry-run=true` (production stack:
+  `docker compose @stack run --rm --no-deps workers --image-cleanup-dry-run=true`) starts **no worker**, runs one
+  clean-up that deletes nothing and writes nothing, logs the counts and up to 100 keys of each kind, and ends.
 - **Configuration** (`ObjectStorage` section; `ObjectStorageOptions`, validated at start-up for presence and ranges -
   the API never connects to the storage at start-up):
 

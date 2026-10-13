@@ -104,7 +104,7 @@ try {
     # Presign: a key of this product and a link to the storage.
     $presign = Invoke-Api POST "/api/products/$productId/image/presign" $manager @{ contentType = 'image/png'; sizeBytes = $png.Length }
     Assert-Step '13 presign a PNG -> 200' 200 $presign.Status
-    Assert-Step '14 ... method PUT, key under products/{productId}/' $true (($presign.Body.method -ceq 'PUT') -and ([string]$presign.Body.objectKey).StartsWith("products/$productId/"))
+    Assert-Step '14 ... method PUT, staging key under uploads/products/{productId}/' $true (($presign.Body.method -ceq 'PUT') -and ([string]$presign.Body.objectKey).StartsWith("uploads/products/$productId/"))
     Assert-Step '15 ... the only header to send is Content-Type image/png' 'image/png' ([string]$presign.Body.headers.'Content-Type')
     $uploadUri = [uri]$presign.Body.uploadUrl
     $storageOrigin = $uploadUri.GetLeftPart([System.UriPartial]::Authority)
