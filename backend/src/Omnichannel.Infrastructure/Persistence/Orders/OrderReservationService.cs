@@ -47,10 +47,11 @@ internal sealed class OrderReservationService(
 
     public Task<AttemptStart?> StartAttemptAsync(
         Guid taskId,
+        string messageId,
         string workerName,
         string workerInstanceId,
         CancellationToken cancellationToken) =>
-        attempts.StartAttemptAsync(taskId, workerName, workerInstanceId, cancellationToken);
+        attempts.StartAttemptAsync(taskId, messageId, workerName, workerInstanceId, cancellationToken);
 
     public async Task<ReservationResult> ReserveAsync(
         OrderCreatedPayload order,

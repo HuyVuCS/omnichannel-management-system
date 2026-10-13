@@ -33,10 +33,11 @@ internal abstract class TaskRequestProcessingService(
 
     public Task<AttemptStart?> StartAttemptAsync(
         Guid taskId,
+        string messageId,
         string workerName,
         string workerInstanceId,
         CancellationToken cancellationToken) =>
-        attempts.StartAttemptAsync(taskId, workerName, workerInstanceId, cancellationToken);
+        attempts.StartAttemptAsync(taskId, messageId, workerName, workerInstanceId, cancellationToken);
 
     public Task RecordTransientFailureAsync(
         Guid taskId,

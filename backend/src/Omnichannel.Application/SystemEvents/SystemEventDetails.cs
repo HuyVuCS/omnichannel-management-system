@@ -60,6 +60,7 @@ public static class SystemEventDetails
             [ProcessingEvents.Failed] = ["taskId", "taskType", "attemptNo", "errorCode", "errorMessage", "queue"],
             [ProcessingEvents.RetryRequested] =
                 ["taskId", "taskType", "requestedBy", "previousMessageId", "newMessageId", "attemptBudgetStart"],
+            [ProcessingEvents.StaleTasksFailed] = ["runId", "staleAfterSeconds", "failed", "taskIds", "notListed"],
             // Never "lastError": broker or exception text.
             [OutboxEvents.PublishFailed] = ["outboxEventId", "eventType", "publishAttempts"],
             [AlertEvents.Acknowledged] = ["alertId", "type", "acknowledgedBy"],

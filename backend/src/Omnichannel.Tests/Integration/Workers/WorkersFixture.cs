@@ -138,6 +138,8 @@ public sealed class WorkersFixture : IAsyncLifetime
     /// it would add statements to tests that count them and expire the exports of other tests. Reconciliation is
     /// switched off the same way (<c>Reconciliation:Enabled</c>; a test of the service overrides it): a run would create
     /// stock-sync tasks for the mappings of every test in the database.
+    /// The stale-task sweep is switched off as well (<c>StaleTasks:Enabled</c>): tests that leave a task unfinished on
+    /// purpose must not find it failed.
     /// </para>
     /// </summary>
     public static IHost BuildWorkersHost(
@@ -168,6 +170,7 @@ public sealed class WorkersFixture : IAsyncLifetime
             ["OutboxPublisher:InitialBackoff"] = "00:00:00.200",
             ["OutboxPublisher:MaxBackoff"] = "00:00:02",
             ["Reconciliation:Enabled"] = "false",
+            ["StaleTasks:Enabled"] = "false",
             // Never connected (port 9, "discard"): only the options must be valid for the host to start.
             ["ObjectStorage:ServiceUrl"] = "http://127.0.0.1:9",
             ["ObjectStorage:BucketName"] = "not-used",

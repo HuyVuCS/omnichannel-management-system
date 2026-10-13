@@ -391,6 +391,11 @@ public sealed class SystemEventEndpointsTests(ApiFactory factory)
             """{"taskId":"01a10000-0000-7000-8000-000000000002","taskType":"OrderProcessing","requestedBy":"system","previousMessageId":"m-3","newMessageId":"m-4","attemptBudgetStart":5}"""
         },
         {
+            ProcessingEvents.StaleTasksFailed,
+            """{"runId":"01a10000-0000-7000-8000-000000000008","staleAfterSeconds":1800,"failed":2,"taskIds":["01a10000-0000-7000-8000-000000000002","01a10000-0000-7000-8000-000000000003"],"notListed":0,"extra":"dropped"}""",
+            """{"runId":"01a10000-0000-7000-8000-000000000008","staleAfterSeconds":1800,"failed":2,"taskIds":["01a10000-0000-7000-8000-000000000002","01a10000-0000-7000-8000-000000000003"],"notListed":0}"""
+        },
+        {
             OutboxEvents.PublishFailed,
             """{"outboxEventId":"01a10000-0000-7000-8000-000000000005","eventType":"order.created","publishAttempts":10,"lastError":"NO_ROUTE amqp://omni:secret@broker"}""",
             """{"outboxEventId":"01a10000-0000-7000-8000-000000000005","eventType":"order.created","publishAttempts":10}"""

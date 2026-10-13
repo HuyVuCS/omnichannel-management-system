@@ -101,6 +101,9 @@ public sealed record ProcessingTaskListQuery : PageQuery
     /// <summary>Tasks of this channel (stock sync).</summary>
     public Guid? ChannelId { get; init; }
 
+    /// <summary>Tasks of this product (stock sync: the pushes of its stock to the channels).</summary>
+    public Guid? ProductId { get; init; }
+
     public string? CorrelationId { get; init; }
     public DateTimeOffset? From { get; init; }
     public DateTimeOffset? To { get; init; }

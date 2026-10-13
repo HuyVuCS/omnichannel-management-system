@@ -249,8 +249,8 @@ internal static class ExportProbeExtensions
     {
         public Task<ReportExportTaskState?> GetTaskAsync(Guid taskId, CancellationToken cancellationToken) => inner.GetTaskAsync(taskId, cancellationToken);
 
-        public Task<AttemptStart?> StartAttemptAsync(Guid taskId, string workerName, string workerInstanceId, CancellationToken cancellationToken) =>
-            inner.StartAttemptAsync(taskId, workerName, workerInstanceId, cancellationToken);
+        public Task<AttemptStart?> StartAttemptAsync(Guid taskId, string messageId, string workerName, string workerInstanceId, CancellationToken cancellationToken) =>
+            inner.StartAttemptAsync(taskId, messageId, workerName, workerInstanceId, cancellationToken);
 
         public Task<GeneratedReport> GenerateAsync(Guid taskId, CancellationToken cancellationToken) => inner.GenerateAsync(taskId, cancellationToken);
 

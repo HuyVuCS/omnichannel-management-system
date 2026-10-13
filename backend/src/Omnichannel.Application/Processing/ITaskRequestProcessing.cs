@@ -19,7 +19,7 @@ public interface ITaskRequestProcessing
     /// Locks the task, marks stale Running attempts abandoned, inserts the next attempt and sets the task InProgress
     /// (committed before any work). Null when the task is already terminal.
     /// </summary>
-    Task<AttemptStart?> StartAttemptAsync(Guid taskId, string workerName, string workerInstanceId, CancellationToken cancellationToken);
+    Task<AttemptStart?> StartAttemptAsync(Guid taskId, string messageId, string workerName, string workerInstanceId, CancellationToken cancellationToken);
 
     /// <summary>Attempt Failed with a sanitised error; task RetryScheduled (unless completed meanwhile).</summary>
     Task RecordTransientFailureAsync(Guid taskId, Guid attemptId, string errorCode, string errorMessage, CancellationToken cancellationToken);

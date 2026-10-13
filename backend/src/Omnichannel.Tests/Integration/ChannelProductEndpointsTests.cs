@@ -570,6 +570,48 @@ public sealed class ChannelProductEndpointsTests(ApiFactory factory)
         Assert.Equal(["channelId"], (await ErrorsAsync(badFilter)).Keys);
     }
 
+    /// <summary>Task 026b D: the tasks of one product, alone and together with the other filters.</summary>
+    [Fact]
+    public async Task Task_list_filters_by_product_alone_and_together_with_the_other_filters()
+    {
+        var (website, pos) = (await ChannelAsync("website"), await ChannelAsync("pos"));
+        var (product, other) = (await CreateProductAsync(), await CreateProductAsync());
+        var correlationId = $"product-{TestData.UniqueSuffix()}";
+        var onWebsite = ProcessingTask.ForStockSync(website.ChannelId, product.ProductId, correlationId, null);
+        var onPos = ProcessingTask.ForStockSync(pos.ChannelId, product.ProductId, correlationId, null);
+        var ofOther = ProcessingTask.ForStockSync(website.ChannelId, other.ProductId, correlationId, null);
+        var orderTask = new ProcessingTask(ProcessingTaskType.OrderProcessing, null, correlationId, null);
+        var elsewhere = ProcessingTask.ForStockSync(website.ChannelId, product.ProductId, $"{correlationId}-x", null);
+        await factory.QueryDbAsync(async db =>
+        {
+            db.ProcessingTasks.AddRange(onWebsite, onPos, ofOther, orderTask, elsewhere);
+            return await db.SaveChangesAsync();
+        });
+
+        async Task<IEnumerable<Guid>> IdsAsync(string query) => (await TasksAsync(query)).Items.Select(t => t.TaskId).Order();
+
+        // Alone: every task of the product, whatever its correlation id; a task without a product never matches.
+        var ofProduct = await TasksAsync($"productId={product.ProductId}");
+        Assert.Equal(3, ofProduct.TotalCount);
+        Assert.Equal(new[] { onWebsite.TaskId, onPos.TaskId, elsewhere.TaskId }.Order(), ofProduct.Items.Select(t => t.TaskId).Order());
+        Assert.All(ofProduct.Items, t => Assert.Equal((product.ProductId, product.Sku), (t.ProductId, t.ProductSku)));
+
+        // With the other filters: all of them must hold.
+        Assert.Equal(new[] { onWebsite.TaskId, onPos.TaskId }.Order(), await IdsAsync($"productId={product.ProductId}&correlationId={correlationId}"));
+        Assert.Equal([onPos.TaskId], await IdsAsync($"productId={product.ProductId}&correlationId={correlationId}&channelId={pos.ChannelId}"));
+        Assert.Equal(
+            new[] { onWebsite.TaskId, onPos.TaskId }.Order(),
+            await IdsAsync($"productId={product.ProductId}&correlationId={correlationId}&taskType=StockSync&status=Pending"));
+        Assert.Empty(await IdsAsync($"productId={product.ProductId}&taskType=OrderProcessing"));
+        Assert.Empty(await IdsAsync($"productId={product.ProductId}&status=Failed"));
+        Assert.Equal([ofOther.TaskId], await IdsAsync($"productId={other.ProductId}"));
+        Assert.Empty(await IdsAsync($"productId={Guid.NewGuid()}"));
+
+        var badFilter = await _staff.GetAsync("/api/processing/tasks?productId=not-a-guid");
+        Assert.Equal(HttpStatusCode.BadRequest, badFilter.StatusCode);
+        Assert.Equal(["productId"], (await ErrorsAsync(badFilter)).Keys);
+    }
+
     [Fact]
     public async Task Task_list_and_detail_carry_the_product_sku_of_a_stock_sync_task_and_null_for_a_task_without_a_product()
     {

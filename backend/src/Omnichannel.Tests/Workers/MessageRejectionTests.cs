@@ -271,7 +271,7 @@ public sealed class MessageRejectionTests
             return Task.CompletedTask;
         }
 
-        public Task<AttemptStart?> StartAttemptAsync(Guid taskId, string workerName, string workerInstanceId, CancellationToken cancellationToken) =>
+        public Task<AttemptStart?> StartAttemptAsync(Guid taskId, string messageId, string workerName, string workerInstanceId, CancellationToken cancellationToken) =>
             throw new NotSupportedException();
 
         public Task<ReservationResult> ReserveAsync(OrderCreatedPayload order, Guid attemptId, string workerName, CancellationToken cancellationToken) =>
@@ -305,7 +305,7 @@ public sealed class MessageRejectionTests
             string channelSlug, Guid productId, string messageId, string correlationId, CancellationToken cancellationToken) =>
             throw new NotSupportedException();
 
-        public Task<AttemptStart?> StartAttemptAsync(Guid taskId, string workerName, string workerInstanceId, CancellationToken cancellationToken) =>
+        public Task<AttemptStart?> StartAttemptAsync(Guid taskId, string messageId, string workerName, string workerInstanceId, CancellationToken cancellationToken) =>
             throw new NotSupportedException();
 
         public Task<StockSyncTarget?> ReadTargetAsync(Guid channelId, Guid productId, CancellationToken cancellationToken) =>

@@ -95,10 +95,11 @@ internal sealed class StockSyncService(
 
     public Task<AttemptStart?> StartAttemptAsync(
         Guid taskId,
+        string messageId,
         string workerName,
         string workerInstanceId,
         CancellationToken cancellationToken) =>
-        attempts.StartAttemptAsync(taskId, workerName, workerInstanceId, cancellationToken);
+        attempts.StartAttemptAsync(taskId, messageId, workerName, workerInstanceId, cancellationToken);
 
     public async Task<StockSyncTarget?> ReadTargetAsync(Guid channelId, Guid productId, CancellationToken cancellationToken) =>
         await dbContext.ChannelProducts

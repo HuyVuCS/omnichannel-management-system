@@ -98,8 +98,8 @@ internal static class PaymentProbeExtensions
     {
         public Task<TaskRequestState?> GetTaskAsync(Guid taskId, CancellationToken cancellationToken) => inner.GetTaskAsync(taskId, cancellationToken);
 
-        public Task<AttemptStart?> StartAttemptAsync(Guid taskId, string workerName, string workerInstanceId, CancellationToken cancellationToken) =>
-            inner.StartAttemptAsync(taskId, workerName, workerInstanceId, cancellationToken);
+        public Task<AttemptStart?> StartAttemptAsync(Guid taskId, string messageId, string workerName, string workerInstanceId, CancellationToken cancellationToken) =>
+            inner.StartAttemptAsync(taskId, messageId, workerName, workerInstanceId, cancellationToken);
 
         public Task<InvoiceOrder> ReadOrderAsync(Guid orderId, CancellationToken cancellationToken) => inner.ReadOrderAsync(orderId, cancellationToken);
 

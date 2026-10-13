@@ -14,4 +14,13 @@ public static class ProcessingEvents
     /// <c>{taskId, taskType, requestedBy, previousMessageId, newMessageId, attemptBudgetStart}</c>.
     /// </summary>
     public const string RetryRequested = "processing.retry_requested";
+
+    /// <summary>
+    /// A run of the stale-task sweep that failed at least one task (Warning, the run's correlation id; every task has
+    /// its own <see cref="Failed"/> event as well). Payload: <c>{runId, staleAfterSeconds, failed, taskIds, notListed}</c>
+    /// - <c>taskIds</c> holds at most <see cref="StaleTasksFailedMaxListed"/> ids, <c>notListed</c> counts the rest.
+    /// </summary>
+    public const string StaleTasksFailed = "processing.stale_tasks_failed";
+
+    public const int StaleTasksFailedMaxListed = 50;
 }

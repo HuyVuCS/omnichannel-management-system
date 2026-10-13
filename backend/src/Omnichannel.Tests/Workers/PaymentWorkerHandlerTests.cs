@@ -603,7 +603,7 @@ public sealed class PaymentWorkerHandlerTests
             return Task.FromResult(TaskState);
         }
 
-        public Task<AttemptStart?> StartAttemptAsync(Guid taskId, string workerName, string workerInstanceId, CancellationToken cancellationToken)
+        public Task<AttemptStart?> StartAttemptAsync(Guid taskId, string messageId, string workerName, string workerInstanceId, CancellationToken cancellationToken)
         {
             Calls.Add("start");
             Started = (workerName, workerInstanceId);

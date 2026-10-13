@@ -563,7 +563,8 @@ public sealed class AlertLifecycleTests(WorkersFixture fixture) : IAsyncLifetime
                 .SingleAsync(e => e.EventType == EventTypes.OrderCreated && e.AggregateId == taskId.ToString()));
             await using var scope = host.Services.CreateAsyncScope();
             var reservations = scope.ServiceProvider.GetRequiredService<IOrderReservationService>();
-            var attempt = await reservations.StartAttemptAsync(taskId, OrderMessageHandler.WorkerName, "alert-statements", CancellationToken.None);
+            var attempt = await reservations.StartAttemptAsync(
+                taskId, message.OutboxEventId.ToString(), OrderMessageHandler.WorkerName, "alert-statements", CancellationToken.None);
 
             commands.Clear();
             var result = await reservations.ReserveAsync(

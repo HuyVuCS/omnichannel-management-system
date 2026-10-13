@@ -16,7 +16,7 @@ public interface IOrderReservationService
     /// Locks the task, marks stale Running attempts abandoned, inserts the next attempt and sets the task InProgress
     /// (committed before any business work). Null when the task is already terminal.
     /// </summary>
-    Task<AttemptStart?> StartAttemptAsync(Guid taskId, string workerName, string workerInstanceId, CancellationToken cancellationToken);
+    Task<AttemptStart?> StartAttemptAsync(Guid taskId, string messageId, string workerName, string workerInstanceId, CancellationToken cancellationToken);
 
     /// <summary>
     /// Reserves stock for every item atomically (all or nothing) and stores the Order, movements and <c>inventory.changed</c>
