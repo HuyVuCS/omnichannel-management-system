@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using Amazon.Runtime;
 using Amazon.S3;
@@ -53,10 +54,14 @@ internal sealed class S3ObjectStorage : IObjectStorage, IDisposable
         _logger = logger;
     }
 
-    public PresignedUrl PresignPut(string key, string contentType, TimeSpan lifetime) =>
-        Presign(HttpVerb.PUT, key, lifetime, contentType);
+    public PresignedUrl PresignPut(string key, string contentType, long contentLength, TimeSpan lifetime)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(contentLength);
+        return Presign(HttpVerb.PUT, key, lifetime, contentType, contentLength);
+    }
 
-    public PresignedUrl PresignGet(string key, TimeSpan lifetime) => Presign(HttpVerb.GET, key, lifetime, contentType: null);
+    public PresignedUrl PresignGet(string key, TimeSpan lifetime) =>
+        Presign(HttpVerb.GET, key, lifetime, contentType: null, contentLength: null);
 
     public async Task<StoredObject?> HeadAsync(string key, CancellationToken cancellationToken)
     {
@@ -127,6 +132,57 @@ internal sealed class S3ObjectStorage : IObjectStorage, IDisposable
         }
     }
 
+    public async Task<bool> CopyAsync(string sourceKey, string destinationKey, string contentType, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _client.CopyObjectAsync(
+                new CopyObjectRequest
+                {
+                    SourceBucket = _bucket,
+                    SourceKey = sourceKey,
+                    DestinationBucket = _bucket,
+                    DestinationKey = destinationKey,
+                    // Not the metadata of the source: the copy gets the content type the caller checked.
+                    MetadataDirective = S3MetadataDirective.REPLACE,
+                    ContentType = contentType
+                },
+                cancellationToken);
+            return true;
+        }
+        catch (AmazonS3Exception exception) when (exception.StatusCode == HttpStatusCode.NotFound)
+        {
+            return false;
+        }
+        catch (Exception exception) when (IsStorageFailure(exception, cancellationToken))
+        {
+            throw Failed("copy", exception);
+        }
+    }
+
+    public async Task<StoredObjectPage> ListAsync(string prefix, string? continuationToken, int maxKeys, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(prefix);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxKeys);
+
+        try
+        {
+            var listed = await _client.ListObjectsV2Async(
+                new ListObjectsV2Request { BucketName = _bucket, Prefix = prefix, ContinuationToken = continuationToken, MaxKeys = maxKeys },
+                cancellationToken);
+
+            // Without objects the SDK leaves the list null.
+            var objects = (listed.S3Objects ?? [])
+                .Select(o => new ListedObject(o.Key, o.Size ?? 0, new DateTimeOffset(o.LastModified.GetValueOrDefault().ToUniversalTime())))
+                .ToList();
+            return new StoredObjectPage(objects, listed.IsTruncated == true ? listed.NextContinuationToken : null);
+        }
+        catch (Exception exception) when (IsStorageFailure(exception, cancellationToken))
+        {
+            throw Failed("list", exception);
+        }
+    }
+
     public async Task DeleteAsync(string key, CancellationToken cancellationToken)
     {
         try
@@ -172,7 +228,7 @@ internal sealed class S3ObjectStorage : IObjectStorage, IDisposable
             });
 
     /// <summary>Computed locally from the secret key, for the origin the browsers reach: no request is sent.</summary>
-    private PresignedUrl Presign(HttpVerb verb, string key, TimeSpan lifetime, string? contentType)
+    private PresignedUrl Presign(HttpVerb verb, string key, TimeSpan lifetime, string? contentType, long? contentLength)
     {
         var expiresAt = _timeProvider.GetUtcNow().Add(lifetime);
         var request = new GetPreSignedUrlRequest
@@ -187,6 +243,13 @@ internal sealed class S3ObjectStorage : IObjectStorage, IDisposable
         {
             // Signed: the upload must carry exactly this Content-Type.
             request.ContentType = contentType;
+        }
+
+        if (contentLength is { } length)
+        {
+            // Signed as well: the upload must be exactly this long. Measured with the emulator in task 026c - a body
+            // of another length is refused with 403; with a provider that ignores a signed length nothing is lost.
+            request.Headers["Content-Length"] = length.ToString(CultureInfo.InvariantCulture);
         }
 
         return new PresignedUrl(_presignClient.GetPreSignedURL(request), expiresAt);
@@ -216,7 +279,7 @@ internal sealed class S3ObjectStorage : IObjectStorage, IDisposable
 /// </summary>
 internal sealed class UnconfiguredObjectStorage : IObjectStorage
 {
-    public PresignedUrl PresignPut(string key, string contentType, TimeSpan lifetime) => throw NotConfigured();
+    public PresignedUrl PresignPut(string key, string contentType, long contentLength, TimeSpan lifetime) => throw NotConfigured();
 
     public PresignedUrl PresignGet(string key, TimeSpan lifetime) => throw NotConfigured();
 
@@ -225,6 +288,12 @@ internal sealed class UnconfiguredObjectStorage : IObjectStorage
     public Task<byte[]> ReadStartAsync(string key, int count, CancellationToken cancellationToken) => throw NotConfigured();
 
     public Task PutAsync(string key, Stream content, string contentType, string contentDisposition, CancellationToken cancellationToken) =>
+        throw NotConfigured();
+
+    public Task<bool> CopyAsync(string sourceKey, string destinationKey, string contentType, CancellationToken cancellationToken) =>
+        throw NotConfigured();
+
+    public Task<StoredObjectPage> ListAsync(string prefix, string? continuationToken, int maxKeys, CancellationToken cancellationToken) =>
         throw NotConfigured();
 
     public Task DeleteAsync(string key, CancellationToken cancellationToken) => throw NotConfigured();

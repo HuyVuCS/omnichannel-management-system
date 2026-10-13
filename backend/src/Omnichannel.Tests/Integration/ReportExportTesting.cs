@@ -228,7 +228,8 @@ internal static class ExportProbeExtensions
 
     private sealed class CountingStorage(IObjectStorage inner, ExportProbe probe) : IObjectStorage
     {
-        public PresignedUrl PresignPut(string key, string contentType, TimeSpan lifetime) => inner.PresignPut(key, contentType, lifetime);
+        public PresignedUrl PresignPut(string key, string contentType, long contentLength, TimeSpan lifetime) =>
+            inner.PresignPut(key, contentType, contentLength, lifetime);
 
         public PresignedUrl PresignGet(string key, TimeSpan lifetime) => inner.PresignGet(key, lifetime);
 
@@ -241,6 +242,12 @@ internal static class ExportProbeExtensions
             await inner.PutAsync(key, content, contentType, contentDisposition, cancellationToken);
             probe.Stored(key);
         }
+
+        public Task<bool> CopyAsync(string sourceKey, string destinationKey, string contentType, CancellationToken cancellationToken) =>
+            inner.CopyAsync(sourceKey, destinationKey, contentType, cancellationToken);
+
+        public Task<StoredObjectPage> ListAsync(string prefix, string? continuationToken, int maxKeys, CancellationToken cancellationToken) =>
+            inner.ListAsync(prefix, continuationToken, maxKeys, cancellationToken);
 
         public Task DeleteAsync(string key, CancellationToken cancellationToken) => inner.DeleteAsync(key, cancellationToken);
     }

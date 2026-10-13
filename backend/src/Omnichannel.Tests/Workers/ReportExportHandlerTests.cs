@@ -376,7 +376,13 @@ public sealed class ReportExportHandlerTests
             return Task.CompletedTask;
         }
 
-        public PresignedUrl PresignPut(string key, string contentType, TimeSpan lifetime) => throw new NotSupportedException();
+        public PresignedUrl PresignPut(string key, string contentType, long contentLength, TimeSpan lifetime) => throw new NotSupportedException();
+
+        public Task<bool> CopyAsync(string sourceKey, string destinationKey, string contentType, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public Task<StoredObjectPage> ListAsync(string prefix, string? continuationToken, int maxKeys, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
 
         public PresignedUrl PresignGet(string key, TimeSpan lifetime) => throw new NotSupportedException();
 

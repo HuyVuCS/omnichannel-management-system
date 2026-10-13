@@ -7,15 +7,20 @@ namespace Omnichannel.Application.Products;
 /// </summary>
 public interface IProductImageService
 {
-    /// <summary>A link for one upload to a new key of this product. Writes nothing to the database.</summary>
+    /// <summary>
+    /// A link for one upload of exactly the declared type and size to a new staging key of this product. Writes
+    /// nothing to the database.
+    /// </summary>
     /// <exception cref="Common.Exceptions.NotFoundException">The product does not exist.</exception>
     /// <exception cref="FluentValidation.ValidationException">The declared size is above the limit.</exception>
     Task<PresignProductImageResponse> PresignAsync(Guid productId, PresignProductImageRequest request, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Makes the uploaded object the product's image after checking it (key of this product, exists, size, content type,
-    /// first bytes); an object that fails a check is deleted. The previous image's object is deleted after the commit.
-    /// Confirming the current image again changes nothing.
+    /// Makes the uploaded object the product's image: the upload (a staging key of this product) is copied to a final
+    /// key of its own inside the storage, the copy is checked (exists, size, content type, first bytes) and the product
+    /// then refers to the copy - never to the key the upload link can still write. An upload that fails a check is
+    /// deleted with its copy. The previous image's object and the staging object are deleted after the commit.
+    /// Confirming the upload of the current image again changes nothing.
     /// </summary>
     /// <exception cref="Common.Exceptions.NotFoundException">The product does not exist.</exception>
     /// <exception cref="FluentValidation.ValidationException">A check failed (field <c>objectKey</c>).</exception>

@@ -15,8 +15,9 @@ using Omnichannel.Infrastructure.S3;
 namespace Omnichannel.Tests.Integration;
 
 /// <summary>
-/// Task 019: product images. The API hands out presigned links, the "browser" of these tests (an <see cref="HttpClient"/>
-/// without the API's token) talks to the storage emulator directly, and the confirmation checks what was stored.
+/// Tasks 019 and 026c: product images. The API hands out presigned links for a staging key, the "browser" of these
+/// tests (an <see cref="HttpClient"/> without the API's token) talks to the storage emulator directly, and the
+/// confirmation copies the upload to a final key, checks the copy and makes the product refer to it.
 /// </summary>
 [Collection(ApiCollection.Name)]
 [Trait("Category", "Integration")]
@@ -86,10 +87,14 @@ public sealed class ProductImageEndpointsTests(ApiFactory factory) : IAsyncLifet
         Assert.Equal(contentType, download.Content.Headers.ContentType?.MediaType);
         Assert.Equal(image, await download.Content.ReadAsByteArrayAsync());
 
+        // The product refers to a copy under a final key - never to the key the upload link writes - and the upload
+        // is gone: the copy is the only object of the product.
         var row = await factory.QueryDbAsync(db => db.Products.AsNoTracking().SingleAsync(p => p.ProductId == product.ProductId));
-        Assert.Equal(
-            (presigned.ObjectKey, contentType, (long?)image.Length),
-            (row.ImageKey, row.ImageContentType, row.ImageSizeBytes));
+        Assert.Equal((contentType, (long?)image.Length), (row.ImageContentType, row.ImageSizeBytes));
+        Assert.True(ProductImageKey.TryParseStaging(presigned.ObjectKey, out _, out var uploadId));
+        Assert.True(ProductImageKey.IsFinalOf(row.ImageKey, uploadId));
+        Assert.StartsWith($"products/{product.ProductId}/", row.ImageKey, StringComparison.Ordinal);
+        Assert.Equal([row.ImageKey!], await ObjectsOfAsync(product.ProductId));
     }
 
     [Fact]
@@ -159,7 +164,7 @@ public sealed class ProductImageEndpointsTests(ApiFactory factory) : IAsyncLifet
         // Nothing in the database, nothing in the bucket: a link is only a link.
         var row = await factory.QueryDbAsync(db => db.Products.AsNoTracking().SingleAsync(p => p.ProductId == product.ProductId));
         Assert.Equal((null, product.UpdatedAt), (row.ImageKey, row.UpdatedAt));
-        Assert.Empty(await _storage.KeysAsync($"products/{product.ProductId}/"));
+        Assert.Empty(await ObjectsOfAsync(product.ProductId));
 
         var unknown = await _manager.PostAsJsonAsync(
             $"/api/products/{Guid.NewGuid()}/image/presign", new PresignProductImageRequest(ProductImageRules.Png, 10));
@@ -167,7 +172,7 @@ public sealed class ProductImageEndpointsTests(ApiFactory factory) : IAsyncLifet
     }
 
     [Fact]
-    public async Task Two_presigns_give_two_keys_under_the_product()
+    public async Task Two_presigns_give_two_staging_keys_under_the_product()
     {
         var product = await CreateProductAsync();
 
@@ -175,13 +180,13 @@ public sealed class ProductImageEndpointsTests(ApiFactory factory) : IAsyncLifet
         var second = await PresignAsync(product.ProductId, ProductImageRules.Png, 10);
 
         Assert.NotEqual(first.ObjectKey, second.ObjectKey);
-        Assert.All(new[] { first, second }, p => Assert.StartsWith($"products/{product.ProductId}/", p.ObjectKey, StringComparison.Ordinal));
+        Assert.All(new[] { first, second }, p => Assert.StartsWith($"uploads/products/{product.ProductId}/", p.ObjectKey, StringComparison.Ordinal));
     }
 
     // ---- what the storage enforces ------------------------------------------------------------------------------
 
     [Fact]
-    public async Task The_upload_link_takes_only_the_signed_content_type_and_expires()
+    public async Task The_upload_link_takes_only_the_signed_content_type_and_length_and_expires()
     {
         var product = await CreateProductAsync();
         var image = Image(PngSignature);
@@ -191,6 +196,14 @@ public sealed class ProductImageEndpointsTests(ApiFactory factory) : IAsyncLifet
         using (var wrongType = await UploadAsync(presigned, image, "text/html"))
         {
             Assert.Equal(HttpStatusCode.Forbidden, wrongType.StatusCode);
+        }
+
+        // Another length than the declared one (task 026c B3: the size is signed into the link): one byte more, one
+        // byte less, and the largest image there may be behind a small declaration.
+        foreach (var length in new[] { image.Length + 1, image.Length - 1, (int)MaxImageBytes })
+        {
+            using var wrongLength = await UploadAsync(presigned, Image(PngSignature, length));
+            Assert.True(wrongLength.StatusCode == HttpStatusCode.Forbidden, $"{length} bytes: HTTP {(int)wrongLength.StatusCode}");
         }
 
         // An expired link (the lifetime is configuration: two seconds for this test).
@@ -214,7 +227,7 @@ public sealed class ProductImageEndpointsTests(ApiFactory factory) : IAsyncLifet
             Assert.Equal(HttpStatusCode.Forbidden, expired.StatusCode);
         }
 
-        Assert.Empty(await _storage.KeysAsync($"products/{product.ProductId}/"));
+        Assert.Empty(await ObjectsOfAsync(product.ProductId));
         // Nothing was uploaded, so nothing can be confirmed.
         var confirm = await ConfirmAsync(product.ProductId, shortLived.ObjectKey);
         Assert.Equal(HttpStatusCode.BadRequest, confirm.StatusCode);
@@ -274,22 +287,28 @@ public sealed class ProductImageEndpointsTests(ApiFactory factory) : IAsyncLifet
         var product = await CreateProductAsync();
         var other = await CreateProductAsync();
         var otherKey = await UploadNewAsync(other.ProductId, ProductImageRules.Png, Image(PngSignature));
+        // The product has an image: its final key is not an upload key either (a confirmation takes staging keys only).
+        await SetImageAsync(product.ProductId, ProductImageRules.Png, Image(PngSignature));
+        var imageKey = await ImageKeyAsync(product.ProductId);
         var objectId = Guid.CreateVersion7();
 
         string[] keys =
         [
             otherKey,
-            "products",
-            $"products/{product.ProductId}",
-            $"products/{product.ProductId}/",
-            $"products/{product.ProductId}/{objectId}/extra",
-            $"products/{product.ProductId}/../{other.ProductId}/{objectId}",
-            $"products/{product.ProductId.ToString().ToUpperInvariant()}/{objectId}",
-            $"products/{product.ProductId:N}/{objectId:N}",
-            $"/products/{product.ProductId}/{objectId}",
+            imageKey!,
+            $"products/{product.ProductId}/{objectId}",
+            "uploads/products",
+            $"uploads/products/{product.ProductId}",
+            $"uploads/products/{product.ProductId}/",
+            $"uploads/products/{product.ProductId}/{objectId}/extra",
+            $"uploads/products/{product.ProductId}/../{other.ProductId}/{objectId}",
+            $"uploads/products/{product.ProductId.ToString().ToUpperInvariant()}/{objectId}",
+            $"uploads/products/{product.ProductId:N}/{objectId:N}",
+            $"/uploads/products/{product.ProductId}/{objectId}",
+            $"uploads/{product.ProductId}/{objectId}",
             $"images/{product.ProductId}/{objectId}",
-            $"products/{product.ProductId}/not-a-guid",
-            $"{_storage.ServiceUrl}/{StorageEmulator.Bucket}/products/{product.ProductId}/{objectId}"
+            $"uploads/products/{product.ProductId}/not-a-guid",
+            $"{_storage.ServiceUrl}/{StorageEmulator.Bucket}/uploads/products/{product.ProductId}/{objectId}"
         ];
         foreach (var key in keys)
         {
@@ -299,9 +318,10 @@ public sealed class ProductImageEndpointsTests(ApiFactory factory) : IAsyncLifet
             Assert.Equal(new Dictionary<string, string[]> { ["objectKey"] = [message] }, await ErrorsAsync(response));
         }
 
-        // The other product's upload is untouched and still its own.
+        // The other product's upload is untouched and still its own; this product keeps its image.
         Assert.True(await _storage.ExistsAsync(otherKey));
-        Assert.Null((await GetAsync(product.ProductId)).Image);
+        Assert.Equal(imageKey, await ImageKeyAsync(product.ProductId));
+        Assert.True(await _storage.ExistsAsync(imageKey!));
         Assert.Equal(HttpStatusCode.OK, (await ConfirmAsync(other.ProductId, otherKey)).StatusCode);
     }
 
@@ -333,7 +353,7 @@ public sealed class ProductImageEndpointsTests(ApiFactory factory) : IAsyncLifet
 
     public enum BadUpload
     {
-        /// <summary>One byte above the limit (the declared size was a lie).</summary>
+        /// <summary>One byte above the limit, under a staging key (a storage that does not enforce the signed length).</summary>
         TooLarge,
 
         /// <summary>Stored with a content type no presigned link of the API would sign.</summary>
@@ -369,7 +389,7 @@ public sealed class ProductImageEndpointsTests(ApiFactory factory) : IAsyncLifet
 
         var key = kind switch
         {
-            BadUpload.TooLarge => await UploadNewAsync(product.ProductId, ProductImageRules.Png, Image(PngSignature, (int)MaxImageBytes + 1), declaredSize: 100),
+            BadUpload.TooLarge => await PutDirectlyAsync(product.ProductId, Image(PngSignature, (int)MaxImageBytes + 1), ProductImageRules.Png),
             BadUpload.TextAsPng => await UploadNewAsync(product.ProductId, ProductImageRules.Png, Encoding.UTF8.GetBytes("<script>alert(1)</script> not an image")),
             BadUpload.PngAsJpeg => await UploadNewAsync(product.ProductId, ProductImageRules.Jpeg, Image(PngSignature)),
             BadUpload.Truncated => await UploadNewAsync(product.ProductId, ProductImageRules.WebP, WebPSignature[..8]),
@@ -382,9 +402,10 @@ public sealed class ProductImageEndpointsTests(ApiFactory factory) : IAsyncLifet
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Equal(new Dictionary<string, string[]> { ["objectKey"] = [message] }, await ErrorsAsync(response));
-        // The rejected object is gone; the image the product had is still there and still its image.
+        // The rejected upload is gone, and no copy of it is left; the image the product had is still there and still
+        // its image.
         Assert.False(await _storage.ExistsAsync(key));
-        Assert.True(await _storage.ExistsAsync(currentKey!));
+        Assert.Equal([currentKey!], await ObjectsOfAsync(product.ProductId));
         Assert.Equal(current.UpdatedAt, (await GetAsync(product.ProductId)).Image?.UpdatedAt);
     }
 
@@ -411,27 +432,80 @@ public sealed class ProductImageEndpointsTests(ApiFactory factory) : IAsyncLifet
         Assert.NotEqual(firstKey, secondKey);
         Assert.Equal((ProductImageRules.Jpeg, 300L), (second.ContentType, second.SizeBytes));
         Assert.True(second.UpdatedAt > first.UpdatedAt);
-        Assert.Equal([secondKey!], await _storage.KeysAsync($"products/{product.ProductId}/"));
+        Assert.Equal([secondKey!], await ObjectsOfAsync(product.ProductId));
         using var oldLink = await _browser.GetAsync(first.Url);
         Assert.Equal(HttpStatusCode.NotFound, oldLink.StatusCode);
     }
 
     [Fact]
-    public async Task Confirming_the_current_image_again_changes_nothing_and_deletes_nothing()
+    public async Task Confirming_the_upload_of_the_current_image_again_changes_nothing_and_deletes_nothing()
     {
         var product = await CreateProductAsync();
-        var image = await SetImageAsync(product.ProductId, ProductImageRules.Png, Image(PngSignature));
+        var (image, uploadKey) = await SetImageFromAsync(product.ProductId, ProductImageRules.Png, Image(PngSignature));
         var key = await ImageKeyAsync(product.ProductId);
         var updatedAt = (await GetAsync(product.ProductId)).UpdatedAt;
 
-        var again = await ConfirmAsync(product.ProductId, key!);
+        // The client did not see the first answer and asks again - with the key it has, the staging key.
+        var again = await ConfirmAsync(product.ProductId, uploadKey);
 
         Assert.Equal(HttpStatusCode.OK, again.StatusCode);
         var product2 = await again.ReadAsync<ProductResponse>();
         Assert.Equal((image.UpdatedAt, updatedAt), (product2.Image?.UpdatedAt, product2.UpdatedAt));
-        Assert.True(await _storage.ExistsAsync(key!));
+        Assert.Equal(key, await ImageKeyAsync(product.ProductId));
+        Assert.Equal([key!], await ObjectsOfAsync(product.ProductId));
         using var download = await _browser.GetAsync(product2.Image!.Url);
         Assert.Equal(HttpStatusCode.OK, download.StatusCode);
+    }
+
+    [Fact]
+    public async Task The_upload_link_cannot_change_the_image_after_the_confirmation()
+    {
+        // Review 019: the link is valid for some minutes after the confirmation and used to write the very object the
+        // product referred to.
+        var product = await CreateProductAsync();
+        var original = Image(PngSignature, 3000);
+        var presigned = await PresignAsync(product.ProductId, ProductImageRules.Png, original.Length);
+        using (var upload = await UploadAsync(presigned, original))
+        {
+            Assert.True(upload.IsSuccessStatusCode);
+        }
+
+        var confirmed = (await (await ConfirmAsync(product.ProductId, presigned.ObjectKey)).ReadAsync<ProductResponse>()).Image!;
+        var key = await ImageKeyAsync(product.ProductId);
+
+        // The same link again, with other bytes of the signed type and length - something no check would accept.
+        var other = new byte[original.Length];
+        using (var again = await UploadAsync(presigned, other))
+        {
+            Assert.True(again.IsSuccessStatusCode, $"second upload: HTTP {(int)again.StatusCode}");
+        }
+
+        // The link wrote the staging key, which nothing refers to: the image is served as it was confirmed.
+        using var download = await _browser.GetAsync(confirmed.Url);
+        Assert.Equal(original, await download.Content.ReadAsByteArrayAsync());
+        Assert.Equal(key, await ImageKeyAsync(product.ProductId));
+        // A confirmation of that key is the repeated one of the image the product has: nothing is looked at or changed.
+        var repeated = await ConfirmAsync(product.ProductId, presigned.ObjectKey);
+        Assert.Equal(HttpStatusCode.OK, repeated.StatusCode);
+        Assert.Equal(confirmed.UpdatedAt, (await repeated.ReadAsync<ProductResponse>()).Image?.UpdatedAt);
+        using var after = await _browser.GetAsync((await GetAsync(product.ProductId)).Image!.Url);
+        Assert.Equal(original, await after.Content.ReadAsByteArrayAsync());
+        // What the link left behind waits for the clean-up; it is the only other object of the product.
+        Assert.Equal(new[] { key!, presigned.ObjectKey }.Order(StringComparer.Ordinal), await ObjectsOfAsync(product.ProductId));
+    }
+
+    [Fact]
+    public async Task An_upload_that_was_confirmed_and_replaced_cannot_be_confirmed_again_without_a_new_upload()
+    {
+        var product = await CreateProductAsync();
+        var (_, firstUpload) = await SetImageFromAsync(product.ProductId, ProductImageRules.Png, Image(PngSignature));
+        var second = await SetImageAsync(product.ProductId, ProductImageRules.Jpeg, Image(JpegSignature));
+
+        // The image is no longer a copy of the first upload, and that upload is gone.
+        var again = await ConfirmAsync(product.ProductId, firstUpload);
+
+        Assert.Equal(HttpStatusCode.BadRequest, again.StatusCode);
+        Assert.Equal(second.UpdatedAt, (await GetAsync(product.ProductId)).Image?.UpdatedAt);
     }
 
     [Fact]
@@ -450,12 +524,37 @@ public sealed class ProductImageEndpointsTests(ApiFactory factory) : IAsyncLifet
         // Every confirmation succeeded in its turn (the product row is locked); the last one is the image.
         Assert.All(responses, r => Assert.Equal(HttpStatusCode.OK, r.StatusCode));
         var winner = await ImageKeyAsync(product.ProductId);
-        Assert.Contains(winner, keys);
-        // The objects of the confirmations that were replaced are deleted, not orphaned.
-        Assert.Equal([winner!], await _storage.KeysAsync($"products/{product.ProductId}/"));
+        Assert.Single(keys, key => ProductImageKey.TryParseStaging(key, out _, out var uploadId) && ProductImageKey.IsFinalOf(winner, uploadId));
+        // The copies of the confirmations that were replaced are deleted, not orphaned, and so is every upload.
+        Assert.Equal([winner!], await ObjectsOfAsync(product.ProductId));
         var final = await GetAsync(product.ProductId);
         using var download = await _browser.GetAsync(final.Image!.Url);
         Assert.Equal(final.Image.SizeBytes, (await download.Content.ReadAsByteArrayAsync()).Length);
+    }
+
+    [Fact]
+    public async Task Concurrent_confirms_of_the_same_upload_leave_one_image_and_one_object()
+    {
+        // A client that repeats its confirmation while the first one is still under way.
+        var product = await CreateProductAsync();
+        var image = Image(PngSignature, 4321);
+        var key = await UploadNewAsync(product.ProductId, ProductImageRules.Png, image);
+
+        var responses = await Task.WhenAll(Enumerable.Range(0, 4).Select(_ => ConfirmAsync(product.ProductId, key)));
+
+        // Each one answers with the image (one of them made it, the others found it made); every confirmation had a
+        // copy of its own, and all but the one the product refers to are deleted.
+        Assert.All(responses, r => Assert.Equal(HttpStatusCode.OK, r.StatusCode));
+        var updatedAt = (await GetAsync(product.ProductId)).Image!.UpdatedAt;
+        foreach (var response in responses)
+        {
+            Assert.Equal(updatedAt, (await response.ReadAsync<ProductResponse>()).Image?.UpdatedAt);
+        }
+
+        var imageKey = await ImageKeyAsync(product.ProductId);
+        Assert.Equal([imageKey!], await ObjectsOfAsync(product.ProductId));
+        using var download = await _browser.GetAsync((await GetAsync(product.ProductId)).Image!.Url);
+        Assert.Equal(image, await download.Content.ReadAsByteArrayAsync());
     }
 
     [Fact]
@@ -463,7 +562,7 @@ public sealed class ProductImageEndpointsTests(ApiFactory factory) : IAsyncLifet
     {
         var unknown = Guid.NewGuid();
 
-        var response = await ConfirmAsync(unknown, $"products/{unknown}/{Guid.CreateVersion7()}");
+        var response = await ConfirmAsync(unknown, $"uploads/products/{unknown}/{Guid.CreateVersion7()}");
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
@@ -502,11 +601,13 @@ public sealed class ProductImageEndpointsTests(ApiFactory factory) : IAsyncLifet
         var product = await CreateProductAsync();
         await SetImageAsync(product.ProductId, ProductImageRules.Png, Image(PngSignature));
         var key = await ImageKeyAsync(product.ProductId);
+        // An upload a Manager could confirm.
+        var uploadKey = await UploadNewAsync(product.ProductId, ProductImageRules.Jpeg, Image(JpegSignature));
         var client = role is null ? factory.CreateClient() : factory.CreateClientAs(role);
 
         var presign = await client.PostAsJsonAsync(
             $"/api/products/{product.ProductId}/image/presign", new PresignProductImageRequest(ProductImageRules.Png, 10));
-        var confirm = await client.PutAsJsonAsync($"/api/products/{product.ProductId}/image", new ConfirmProductImageRequest(key!));
+        var confirm = await client.PutAsJsonAsync($"/api/products/{product.ProductId}/image", new ConfirmProductImageRequest(uploadKey));
         var remove = await client.DeleteAsync($"/api/products/{product.ProductId}/image");
 
         Assert.Equal((expected, expected, expected), (presign.StatusCode, confirm.StatusCode, remove.StatusCode));
@@ -538,7 +639,7 @@ public sealed class ProductImageEndpointsTests(ApiFactory factory) : IAsyncLifet
     {
         var marker = TestData.UniqueSuffix().ToUpperInvariant();
         var withImage = await CreateProductAsync($"IMG-{marker}-A");
-        var image = await SetImageAsync(withImage.ProductId, ProductImageRules.Png, Image(PngSignature));
+        var (image, currentUploadKey) = await SetImageFromAsync(withImage.ProductId, ProductImageRules.Png, Image(PngSignature));
         var currentKey = await ImageKeyAsync(withImage.ProductId);
         var pending = await CreateProductAsync($"IMG-{marker}-B");
         var uploadedKey = await UploadNewAsync(pending.ProductId, ProductImageRules.Png, Image(PngSignature));
@@ -560,8 +661,8 @@ public sealed class ProductImageEndpointsTests(ApiFactory factory) : IAsyncLifet
 
             confirm = await ConfirmAsync(pending.ProductId, uploadedKey);
             replace = await ConfirmAsync(withImage.ProductId, replacementKey);
-            // The image it already has: no check of the storage is needed.
-            repeated = await ConfirmAsync(withImage.ProductId, currentKey!);
+            // The upload of the image it already has: no check of the storage is needed.
+            repeated = await ConfirmAsync(withImage.ProductId, currentUploadKey);
             // The row is cleared; the object could not be deleted and stays behind, unreferenced.
             remove = await _manager.DeleteAsync($"/api/products/{removable.ProductId}/image");
         }
@@ -655,6 +756,12 @@ public sealed class ProductImageEndpointsTests(ApiFactory factory) : IAsyncLifet
     private async Task<ProductResponse> GetAsync(Guid productId) =>
         (await _manager.GetFromJsonAsync<ProductResponse>($"/api/products/{productId}", TestData.Json))!;
 
+    /// <summary>Every object of the product in the bucket: its uploads (staging keys) and its final objects.</summary>
+    private async Task<List<string>> ObjectsOfAsync(Guid productId) =>
+    [
+        .. (await _storage.KeysAsync($"products/{productId}/")).Concat(await _storage.KeysAsync($"uploads/products/{productId}/")).Order(StringComparer.Ordinal)
+    ];
+
     private Task<string?> ImageKeyAsync(Guid productId) =>
         factory.QueryDbAsync(db => db.Products.AsNoTracking().Where(p => p.ProductId == productId).Select(p => p.ImageKey).SingleAsync());
 
@@ -675,19 +782,19 @@ public sealed class ProductImageEndpointsTests(ApiFactory factory) : IAsyncLifet
         return await _browser.SendAsync(request);
     }
 
-    /// <summary>Presign and upload, not confirmed. Returns the key.</summary>
-    private async Task<string> UploadNewAsync(Guid productId, string contentType, byte[] content, long? declaredSize = null)
+    /// <summary>Presign and upload, not confirmed. Returns the (staging) key.</summary>
+    private async Task<string> UploadNewAsync(Guid productId, string contentType, byte[] content)
     {
-        var presigned = await PresignAsync(productId, contentType, declaredSize ?? Math.Max(content.Length, 1));
+        var presigned = await PresignAsync(productId, contentType, content.Length);
         using var upload = await UploadAsync(presigned, content);
         Assert.True(upload.IsSuccessStatusCode, $"upload: HTTP {(int)upload.StatusCode}");
         return presigned.ObjectKey;
     }
 
-    /// <summary>An object under a key of the product that no presigned link of the API produced.</summary>
+    /// <summary>An object under a staging key of the product that no presigned link of the API produced.</summary>
     private async Task<string> PutDirectlyAsync(Guid productId, byte[] content, string contentType)
     {
-        var key = ProductImageKey.NewFor(productId);
+        var key = ProductImageKey.NewStagingFor(productId);
         await _storage.PutAsync(key, content, contentType);
         return key;
     }
@@ -696,12 +803,16 @@ public sealed class ProductImageEndpointsTests(ApiFactory factory) : IAsyncLifet
         _manager.PutAsJsonAsync($"/api/products/{productId}/image", new ConfirmProductImageRequest(key));
 
     /// <summary>Presign, upload, confirm. Returns the image of the product.</summary>
-    private async Task<ProductImageResponse> SetImageAsync(Guid productId, string contentType, byte[] content)
+    private async Task<ProductImageResponse> SetImageAsync(Guid productId, string contentType, byte[] content) =>
+        (await SetImageFromAsync(productId, contentType, content)).Image;
+
+    /// <summary>Presign, upload, confirm. Returns the image of the product and the staging key it was uploaded to.</summary>
+    private async Task<(ProductImageResponse Image, string UploadKey)> SetImageFromAsync(Guid productId, string contentType, byte[] content)
     {
         var key = await UploadNewAsync(productId, contentType, content);
         var confirm = await ConfirmAsync(productId, key);
         Assert.Equal(HttpStatusCode.OK, confirm.StatusCode);
-        return (await confirm.ReadAsync<ProductResponse>()).Image!;
+        return ((await confirm.ReadAsync<ProductResponse>()).Image!, key);
     }
 
     private async Task<HttpResponseMessage> SendAsync(HttpMethod method, string path, object body, string language)

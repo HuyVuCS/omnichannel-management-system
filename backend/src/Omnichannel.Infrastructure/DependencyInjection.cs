@@ -88,6 +88,8 @@ public static class DependencyInjection
         services.TryAddSingleton<IObjectStorage, UnconfiguredObjectStorage>();
         services.AddScoped<ProductImageLinks>();
         services.AddScoped<IProductImageService, ProductImageService>();
+        // Run by the Workers host only (its options are bound and validated there).
+        services.AddScoped<IProductImageCleanup, ProductImageCleanup>();
         services.AddScoped<IInventoryQueryService, InventoryQueryService>();
         services.AddScoped<IInventoryImportService, InventoryImportService>();
         services.AddScoped<IOrderIntakeService, OrderIntakeService>();
