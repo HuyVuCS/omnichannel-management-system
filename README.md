@@ -986,6 +986,14 @@ npm run dev     # http://localhost:5173 - needs the API on http://localhost:5080
     list of options of an AntD `Select` has no accessible name and the component has no way to give it one (its
     combobox is named). A new control needs a name a screen reader can say: a form label, or `aria-label` for an
     icon-only button and for a filter without a visible label.
+  - **Colours** (`THEME_COLORS` in `shared/components/layout.ts`): every colour that carries text has at least 4.5:1
+    (WCAG AA) on white and on the tint behind it - the brand blue `#0958d9`, the status colours of tags, alerts and
+    field errors, secondary text and placeholders. AntD's defaults did not (its blue 4.1:1, a "success" tag 2.2:1, a
+    placeholder 1.8:1; measured with axe in a browser). The light tints behind status texts are set explicitly: AntD
+    derives a grey one from a dark status colour. A new colour is measured before it is used for text.
+  - **Keyboard:** everything is reached with Tab in the order menu, header, page, table; a dialog takes the focus,
+    keeps it and gives it back to the button that opened it (test in `customers.test.tsx`); a table that scrolls
+    sideways and has nothing focusable in its rows gets a tab stop (`useKeyboardScrollableTable`).
   - **Required fields** have one text in every form, set once in `app/providers.tsx` (`validateMessages`):
     "{label} là bắt buộc" / "{label} is required" (`common.requiredField`). A rule passes its own `message` only when
     it says more than that. Each field shows its error when its own validation finished: a test waits for **each**
