@@ -49,6 +49,10 @@ public sealed class QueryShapeTests(WorkersFixture fixture)
             expected: 2);
         Assert.Equal(7, taskPage.TotalCount); // the order task + six more with attempts on OrderWorker
         Assert.All(taskPage.Items, t => Assert.Equal(t.AttemptCount, t.LastAttempt!.AttemptNo));
+        // The last attempt is looked up per row of the page (task 026c A2): numbering the attempts of every task in
+        // the table (ROW_NUMBER) costs time with the size of the table, not of the page.
+        Assert.DoesNotContain(commands.Texts, text => text.Contains("ROW_NUMBER", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(commands.Texts, text => text.Contains("max(", StringComparison.OrdinalIgnoreCase) && text.Contains("\"AttemptNo\"", StringComparison.Ordinal));
 
         // Task detail: task + attempts, then the outbox row by primary key.
         var orderTaskId = detail.Tasks.Single(t => t.TaskType == ProcessingTaskType.OrderProcessing).TaskId;
@@ -101,9 +105,13 @@ public sealed class QueryShapeTests(WorkersFixture fixture)
     {
         private int _count;
 
+        /// <summary>The statements of the last counted action (those that return rows).</summary>
+        public List<string> Texts { get; } = [];
+
         public async Task<T> CountAsync<T>(Func<Task<T>> action, int expected)
         {
             Interlocked.Exchange(ref _count, 0);
+            Texts.Clear();
             var result = await action();
             Assert.Equal(expected, Volatile.Read(ref _count));
             return result;
@@ -113,6 +121,7 @@ public sealed class QueryShapeTests(WorkersFixture fixture)
             DbCommand command, CommandEventData eventData, InterceptionResult<DbDataReader> result, CancellationToken cancellationToken = default)
         {
             Interlocked.Increment(ref _count);
+            Texts.Add(command.CommandText);
             return base.ReaderExecutingAsync(command, eventData, result, cancellationToken);
         }
 

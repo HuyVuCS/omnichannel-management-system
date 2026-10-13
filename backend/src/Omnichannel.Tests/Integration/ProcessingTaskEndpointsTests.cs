@@ -71,6 +71,50 @@ public sealed class ProcessingTaskEndpointsTests(ApiFactory factory)
         Assert.Equal([a.TaskId, b.TaskId, c.TaskId, d.TaskId], await TaskIdsAsync($"correlationId={correlationId}&sortDir=asc"));
     }
 
+    [Fact]
+    public async Task The_last_attempt_of_every_task_of_a_page_is_its_highest_attempt_however_many_there_are()
+    {
+        var correlationId = $"last-{TestData.UniqueSuffix()}";
+        // Five attempts, the last one succeeded on another instance than the four before.
+        var five = NewTask(ProcessingTaskType.OrderProcessing, correlationId);
+        foreach (var n in Enumerable.Range(1, 4))
+        {
+            FailAttempt(five, "OrderWorker", $"inst-{n}", "timeout");
+        }
+
+        five.Succeed(null, five.StartAttempt("OrderWorker", "inst-5", T0.AddHours(1)).AttemptId, T0.AddHours(2));
+        // Three attempts, the last one failed for good with another error than the two before.
+        var three = NewTask(ProcessingTaskType.Invoice, correlationId);
+        FailAttempt(three, "InvoiceWorker", "inst-a", "timeout");
+        FailAttempt(three, "InvoiceWorker", "inst-a", "deadlock");
+        FinalFail(three, "InvoiceWorker", "inst-b", "check_violation");
+        // One attempt, still running; and a task that was never started.
+        var one = NewTask(ProcessingTaskType.OrderProcessing, correlationId);
+        one.StartAttempt("OrderWorker", "inst-9", T0);
+        var none = NewTask(ProcessingTaskType.OrderProcessing, correlationId);
+        await SaveAsync((five, T0.AddMinutes(1)), (three, T0.AddMinutes(2)), (one, T0.AddMinutes(3)), (none, T0.AddMinutes(4)));
+
+        var page = await ListAsync($"correlationId={correlationId}");
+
+        Assert.Equal([none.TaskId, one.TaskId, three.TaskId, five.TaskId], page.Items.Select(t => t.TaskId));
+        Assert.Equal([0, 1, 3, 5], page.Items.Select(t => t.AttemptCount));
+        Assert.Null(page.Items[0].LastAttempt);
+        Assert.Equal(
+            new ProcessingAttemptResponse(1, ProcessingAttemptStatus.Running, "OrderWorker", "inst-9", null, null, T0, null),
+            page.Items[1].LastAttempt);
+        Assert.Equal(
+            new ProcessingAttemptResponse(3, ProcessingAttemptStatus.Failed, "InvoiceWorker", "inst-b", "check_violation", "check_violation (seeded)", T0, T0),
+            page.Items[2].LastAttempt);
+        Assert.Equal(
+            new ProcessingAttemptResponse(5, ProcessingAttemptStatus.Succeeded, "OrderWorker", "inst-5", null, null, T0.AddHours(1), T0.AddHours(2)),
+            page.Items[3].LastAttempt);
+        // The list says what the detail says.
+        foreach (var task in page.Items.Where(t => t.LastAttempt is not null))
+        {
+            Assert.Equal((await GetAsync(task.TaskId)).Attempts[^1], task.LastAttempt);
+        }
+    }
+
     [Theory]
     [InlineData("/api/processing/tasks?sortBy=totalAmount")]
     [InlineData("/api/processing/tasks?attemptNo=0")]

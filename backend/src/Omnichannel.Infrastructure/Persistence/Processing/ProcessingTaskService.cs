@@ -15,9 +15,9 @@ using Omnichannel.Infrastructure.RabbitMQ;
 namespace Omnichannel.Infrastructure.Persistence.Processing;
 
 /// <summary>
-/// Task search, detail and manual retry. The list is one COUNT plus one page query (attempt filters as <c>EXISTS</c>, attempt
-/// count and last attempt as correlated subqueries, the product's SKU from a left join); the detail is one query for
-/// task + attempts + SKU and one primary-key lookup of the outbox row.
+/// Task search, detail and manual retry. The list is one COUNT plus one page query (attempt filters as <c>EXISTS</c>, the
+/// attempt count as a correlated subquery, the last attempt as a lateral lookup per row of the page, the product's SKU
+/// from a left join); the detail is one query for task + attempts + SKU and one primary-key lookup of the outbox row.
 /// </summary>
 internal sealed class ProcessingTaskService(
     OmnichannelDbContext dbContext,
@@ -103,22 +103,43 @@ internal sealed class ProcessingTaskService(
             .Skip(query.Skip)
             .Take(query.PageSize)
             // Only stock-sync tasks have a product: a left join of the page, in the same statement.
-            .LeftJoin(dbContext.Products, t => t.ProductId, p => (Guid?)p.ProductId, (t, p) => new ProcessingTaskSummaryResponse(
-                t.TaskId,
-                t.TaskType,
-                t.Status,
-                t.OrderId,
-                t.ChannelId,
-                t.ProductId,
-                p != null ? p.Sku : null,
-                t.RetryCount,
-                t.AttemptBudgetStart,
-                t.CorrelationId,
-                t.MessageId,
-                t.CreatedAt,
-                t.UpdatedAt,
-                t.Attempts.Count,
-                t.Attempts.AsQueryable().OrderByDescending(a => a.AttemptNo).Select(ProcessingProjections.ToAttempt).FirstOrDefault()))
+            .LeftJoin(dbContext.Products, t => t.ProductId, p => (Guid?)p.ProductId, (t, p) => new { Task = t, ProductSku = p != null ? p.Sku : null })
+            // The last attempt: one lookup per row of the page through the unique (TaskId, AttemptNo) index - the
+            // attempt whose number is the task's highest. "OrderByDescending(AttemptNo).Take(1)" - from the navigation
+            // or correlated - is translated to ROW_NUMBER() over the attempts of every task in the table before the
+            // page is joined: a cost that grows with the whole table, not with the page.
+            .SelectMany(
+                row => dbContext.ProcessingAttempts
+                    .Where(a => a.TaskId == row.Task.TaskId
+                        && a.AttemptNo == dbContext.ProcessingAttempts.Where(b => b.TaskId == row.Task.TaskId).Max(b => (int?)b.AttemptNo))
+                    .DefaultIfEmpty(),
+                (row, last) => new ProcessingTaskSummaryResponse(
+                    row.Task.TaskId,
+                    row.Task.TaskType,
+                    row.Task.Status,
+                    row.Task.OrderId,
+                    row.Task.ChannelId,
+                    row.Task.ProductId,
+                    row.ProductSku,
+                    row.Task.RetryCount,
+                    row.Task.AttemptBudgetStart,
+                    row.Task.CorrelationId,
+                    row.Task.MessageId,
+                    row.Task.CreatedAt,
+                    row.Task.UpdatedAt,
+                    row.Task.Attempts.Count,
+                    // A task that was never started has no attempt (the fields of ProcessingProjections.ToAttempt).
+                    last == null
+                        ? null
+                        : new ProcessingAttemptResponse(
+                            last.AttemptNo,
+                            last.Status,
+                            last.WorkerName,
+                            last.WorkerInstanceId,
+                            last.ErrorCode,
+                            last.ErrorMessage,
+                            last.StartedAt,
+                            last.FinishedAt)))
             .ToListAsync(cancellationToken);
 
         return new PagedResult<ProcessingTaskSummaryResponse>(items, query.Page, query.PageSize, totalCount);
