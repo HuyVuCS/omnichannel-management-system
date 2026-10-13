@@ -222,7 +222,7 @@ public sealed class InventoryImportTests(ApiFactory factory)
 
         // Actors that are not a user: a system actor, a user id that no longer exists, no actor at all. The query compares
         // text with text, so none of them is an error (a cast of "system:..." to uuid would be).
-        foreach (var actor in new[] { "system:order-worker", Guid.NewGuid().ToString(), null })
+        foreach (var actor in new[] { "system:order-worker", "webhook:website", Guid.NewGuid().ToString(), null })
         {
             await factory.QueryDbAsync(db => db.Database.ExecuteSqlAsync(
                 $"UPDATE \"InventoryMovements\" SET \"CreatedBy\" = {actor} WHERE \"InventoryMovementId\" = {movement.InventoryMovementId}"));
@@ -315,6 +315,51 @@ public sealed class InventoryImportTests(ApiFactory factory)
 
         Assert.Equal(expectedLow, Assert.Single(all!.Items).IsLowStock);
         Assert.Equal(expectedLow ? 1 : 0, lowOnly!.TotalCount);
+    }
+
+    /// <summary>Task 026b B1: the e-mail addresses of a page come from one lookup of its user ids, with the answer unchanged.</summary>
+    [Fact]
+    public async Task A_page_of_movements_by_users_and_other_actors_carries_each_users_email_and_null_for_the_rest()
+    {
+        var product = await CreateProductAsync();
+        for (var n = 0; n < 7; n++)
+        {
+            var imported = await _manager.PostAsJsonAsync(
+                "/api/inventory/import", Import($"GRN-{TestData.UniqueSuffix()}", null, (product.ProductId, n + 1)));
+            Assert.Equal(HttpStatusCode.OK, imported.StatusCode);
+        }
+
+        var manager = factory.UserIdOf(AppRoles.Manager).ToString();
+        var admin = factory.UserIdOf(AppRoles.Admin).ToString();
+        var gone = Guid.NewGuid().ToString();
+        // By quantity 1..7: the manager twice (one lookup serves both rows), another user, a webhook, a worker, a user
+        // that is gone, and the manager's id in a spelling the application never stores (no user: as before).
+        string?[] actors = [manager, admin, "webhook:website", "system:order-worker", gone, manager.ToUpperInvariant(), manager];
+        for (var n = 0; n < actors.Length; n++)
+        {
+            var (actor, stock) = (actors[n], n + 1);
+            await factory.QueryDbAsync(db => db.Database.ExecuteSqlAsync(
+                $"UPDATE \"InventoryMovements\" SET \"CreatedBy\" = {actor} WHERE \"ProductId\" = {product.ProductId} AND \"Stock\" = {stock}"));
+        }
+
+        var response = await _manager.GetAsync($"/api/inventory/movements?productId={product.ProductId}&pageSize=50");
+        using var page = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+
+        var rows = page.RootElement.GetProperty("items").EnumerateArray()
+            .OrderBy(m => m.GetProperty("stock").GetInt32())
+            .Select(m => (m.GetProperty("createdBy").GetString(), m.GetProperty("createdByEmail").GetString()))
+            .ToList();
+        Assert.Equal(
+            [
+                (manager, "manager@integration.test"),
+                (admin, "admin@integration.test"),
+                ("webhook:website", null),
+                ("system:order-worker", null),
+                (gone, null),
+                (manager.ToUpperInvariant(), null),
+                (manager, "manager@integration.test")
+            ],
+            rows);
     }
 
     private async Task<ProductResponse> CreateProductAsync(int lowStockThreshold = 0)

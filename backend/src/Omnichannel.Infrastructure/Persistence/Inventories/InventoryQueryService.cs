@@ -100,7 +100,7 @@ internal sealed class InventoryQueryService(OmnichannelDbContext dbContext) : II
 
         var totalCount = await movements.CountAsync(cancellationToken);
 
-        var items = await movements
+        var page = await movements
             .OrderByDescending(m => m.CreatedAt)
             .ThenByDescending(m => m.InventoryMovementId)
             .Skip(query.Skip)
@@ -118,9 +118,12 @@ internal sealed class InventoryQueryService(OmnichannelDbContext dbContext) : II
                 m.DocumentSeries,
                 m.CreatedAt,
                 m.CreatedBy,
-                // Compared as text: CreatedBy also holds "system:{worker}", which a cast to uuid would reject.
-                dbContext.Users.Where(u => u.Id.ToString() == m.CreatedBy).Select(u => u.Email).FirstOrDefault()))
+                null))
             .ToListAsync(cancellationToken);
+
+        // CreatedBy also holds "system:{worker}" and "webhook:{slug}": only the user ids of the page are looked up.
+        var emails = await dbContext.UserEmailsAsync(page.Select(m => m.CreatedBy), cancellationToken);
+        var items = page.Select(m => m with { CreatedByEmail = emails.EmailOf(m.CreatedBy) }).ToList();
 
         return new PagedResult<InventoryMovementResponse>(items, query.Page, query.PageSize, totalCount);
     }

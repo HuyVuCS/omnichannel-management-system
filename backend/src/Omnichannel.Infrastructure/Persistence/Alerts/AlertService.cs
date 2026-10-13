@@ -11,8 +11,9 @@ using Omnichannel.Domain.Enums;
 namespace Omnichannel.Infrastructure.Persistence.Alerts;
 
 /// <summary>
-/// Alert list, detail and acknowledge. The list is one COUNT plus one page query: product, channel, the current stock of a
-/// low-stock alert and the e-mail of who acknowledged it come from joins of that statement.
+/// Alert list, detail and acknowledge. The list is one COUNT plus one page query: product, channel and the current stock
+/// of a low-stock alert come from joins of that statement; the e-mail addresses of who acknowledged the alerts of the
+/// page from one lookup, only when the page names a user.
 /// </summary>
 internal sealed class AlertService(
     OmnichannelDbContext dbContext,
@@ -79,13 +80,16 @@ internal sealed class AlertService(
             .Skip(query.Skip)
             .Take(query.PageSize);
 
-        var items = await ToResponse(page).ToListAsync(cancellationToken);
+        var items = await WithEmailsAsync(await ToRow(page).ToListAsync(cancellationToken), cancellationToken);
         return new PagedResult<AlertResponse>(items, query.Page, query.PageSize, totalCount);
     }
 
-    public async Task<AlertResponse> GetAsync(Guid alertId, CancellationToken cancellationToken) =>
-        await ToResponse(dbContext.Alerts.AsNoTracking().Where(a => a.AlertId == alertId)).SingleOrDefaultAsync(cancellationToken)
-        ?? throw NotFound(alertId);
+    public async Task<AlertResponse> GetAsync(Guid alertId, CancellationToken cancellationToken)
+    {
+        var row = await ToRow(dbContext.Alerts.AsNoTracking().Where(a => a.AlertId == alertId)).SingleOrDefaultAsync(cancellationToken)
+            ?? throw NotFound(alertId);
+        return (await WithEmailsAsync([row], cancellationToken))[0];
+    }
 
     public async Task<AlertResponse> AcknowledgeAsync(Guid alertId, CancellationToken cancellationToken)
     {
@@ -134,8 +138,17 @@ internal sealed class AlertService(
         return await GetAsync(alertId, cancellationToken);
     }
 
-    private IQueryable<AlertResponse> ToResponse(IQueryable<Alert> source) =>
-        source.Select(a => new AlertResponse(
+    private async Task<List<AlertResponse>> WithEmailsAsync(IReadOnlyList<AlertRow> rows, CancellationToken cancellationToken)
+    {
+        // AcknowledgedBy is text, like the actor of a stock movement: only user ids are looked up.
+        var emails = await dbContext.UserEmailsAsync(rows.Select(r => r.AcknowledgedBy), cancellationToken);
+        return rows.Select(r => r.Alert with { AcknowledgedByEmail = emails.EmailOf(r.AcknowledgedBy) }).ToList();
+    }
+
+    private sealed record AlertRow(string? AcknowledgedBy, AlertResponse Alert);
+
+    private static IQueryable<AlertRow> ToRow(IQueryable<Alert> source) =>
+        source.Select(a => new AlertRow(a.AcknowledgedBy, new AlertResponse(
             a.AlertId,
             a.Type,
             a.Status,
@@ -151,14 +164,13 @@ internal sealed class AlertService(
             a.LastOccurredAt,
             a.OccurrenceCount,
             a.AcknowledgedAt,
-            // Compared as text, like the actor of a stock movement.
-            dbContext.Users.Where(u => u.Id.ToString() == a.AcknowledgedBy).Select(u => u.Email).FirstOrDefault(),
+            null,
             a.ResolvedAt,
             // The stock and the threshold as they are now, for low stock only.
             a.Type == AlertType.LowStock && a.Product != null && a.Product.Inventory != null
                 ? (int?)a.Product.Inventory.AvailableStock
                 : null,
-            a.Type == AlertType.LowStock && a.Product != null ? (int?)a.Product.LowStockThreshold : null));
+            a.Type == AlertType.LowStock && a.Product != null ? (int?)a.Product.LowStockThreshold : null)));
 
     private static NotFoundException NotFound(Guid alertId) => new(nameof(Alert), alertId, AlertErrorCodes.AlertNotFound);
 }
