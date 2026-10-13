@@ -3,6 +3,7 @@
     "name": "Omnichannel"
   },
   "common": {
+    "requiredField": "${label} là bắt buộc",
     "cancel": "Huỷ",
     "close": "Đóng",
     "save": "Lưu",
@@ -826,6 +827,7 @@
       "processing_failed": "Tác vụ thất bại",
       "processing_retry_requested": "Chạy lại thủ công",
       "processing_stale_tasks_failed": "Tác vụ treo bị đánh dấu thất bại",
+      "product_image_orphans_deleted": "Xoá tệp ảnh không dùng",
       "outbox_publish_failed": "Gửi thông điệp thất bại",
       "alert_acknowledged": "Ghi nhận cảnh báo",
       "user_created": "Tạo người dùng",
@@ -881,6 +883,7 @@
       "processing_failed": "{{taskType}} · lần {{attemptNo}} · {{errorCode}}",
       "processing_retry_requested": "{{taskType}}: yêu cầu chạy lại",
       "processing_stale_tasks_failed": "{{failed}} tác vụ không có tiến triển trong {{minutes}} phút bị đánh dấu thất bại",
+      "product_image_orphans_deleted": "Đã xoá {{uploads}} tệp tải lên chưa xác nhận và {{images}} ảnh không sản phẩm nào dùng",
       "outbox_publish_failed": "{{eventType}} không gửi được sau {{publishAttempts}} lần",
       "alert_acknowledged": "Cảnh báo: {{type}}",
       "user_created": "Vai trò {{role}}",

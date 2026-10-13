@@ -184,6 +184,10 @@ export function eventSummary(t: TFunction, event: SystemEvent): EventSummary | n
         }),
       };
 
+    // What a run of the image clean-up removed from the storage: uploads nobody confirmed, images no product uses.
+    case 'product_image.orphans_deleted':
+      return { text: t(key, { uploads: count(details.uploads), images: count(details.images) }) };
+
     case 'outbox.publish_failed':
       return { text: t(key, { eventType: text(details.eventType), publishAttempts: count(details.publishAttempts) }) };
 

@@ -1,4 +1,5 @@
 import { Form, Input, Modal, Select } from 'antd';
+import { useId } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ProductSelect } from '@/features/products/components/ProductSelect';
 import { productLabel } from '@/features/products/productsApi';
@@ -66,6 +67,8 @@ export function ChannelProductFormModal({ channel, state, onClose, onSaved }: Ch
   const [createMapping, creating] = useCreateChannelProductMutation();
   const [updateMapping, updating] = useUpdateChannelProductMutation();
   const editing = state?.kind === 'edit' ? state.mapping : null;
+  const channelInputId = useId();
+  const productInputId = useId();
 
   const { submit, formErrors, clearErrors } = useFormSubmission(form, {
     action: async ({ productId, externalProductId, externalSku, status }) => {
@@ -128,12 +131,13 @@ export function ChannelProductFormModal({ channel, state, onClose, onSaved }: Ch
           void submit(values);
         }}
       >
-        <Form.Item label={t('channelDetail.form.channel')}>
-          <Input value={channel.name} disabled />
+        {/* Shown, not edited: no field of the form, so the label is tied to its input by hand. */}
+        <Form.Item label={t('channelDetail.form.channel')} htmlFor={channelInputId}>
+          <Input id={channelInputId} value={channel.name} disabled />
         </Form.Item>
         {editing ? (
-          <Form.Item label={t('channelDetail.form.product')}>
-            <Input value={productLabel({ sku: editing.sku, name: editing.productName })} disabled />
+          <Form.Item label={t('channelDetail.form.product')} htmlFor={productInputId}>
+            <Input id={productInputId} value={productLabel({ sku: editing.sku, name: editing.productName })} disabled />
           </Form.Item>
         ) : (
           <Form.Item name="productId" label={t('channelDetail.form.product')} rules={[{ required: true }]}>

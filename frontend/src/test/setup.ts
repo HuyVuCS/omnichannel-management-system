@@ -2,6 +2,7 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, configure } from '@testing-library/react';
 import { afterAll, afterEach, beforeAll, vi } from 'vitest';
 import i18n, { DEFAULT_LANGUAGE, loadLanguage } from '@/shared/i18n';
+import { seriousAccessibilityViolations } from './accessibility';
 import { takeUnansweredRequests, trackPendingRequests } from './pendingRequests';
 import { server } from './server';
 
@@ -51,11 +52,20 @@ beforeAll(() => loadLanguage(DEFAULT_LANGUAGE));
 afterEach(async () => {
   // What the test left on its way, taken before anything is torn down.
   const unanswered = takeUnansweredRequests();
+  // What the test ends on is checked as it stands (task 026c): a page, an open dialog, a form with its errors.
+  const inaccessible = document.body.childElementCount > 0 ? await seriousAccessibilityViolations() : [];
   cleanup();
   server.resetHandlers();
   await i18n.changeLanguage(DEFAULT_LANGUAGE);
   window.sessionStorage.clear();
   window.localStorage.clear();
+
+  if (inaccessible.length > 0) {
+    throw new Error(
+      `What the test ended on has ${inaccessible.length} serious or critical accessibility violation(s) (axe-core):\n  - ` +
+        inaccessible.join('\n  - '),
+    );
+  }
 
   if (unanswered.length > 0) {
     throw new Error(

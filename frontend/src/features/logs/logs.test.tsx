@@ -27,6 +27,7 @@ import {
   reconciliationEvent,
   reconciliationWithTroubleEvent,
   serveSystemEvents,
+  imageOrphansDeletedEvent,
   staleTasksFailedEvent,
   syncRejectedEvent,
   systemEvent,
@@ -132,6 +133,7 @@ describe('logs: who may read them', () => {
       'Tác vụ thất bại',
       'Chạy lại thủ công',
       'Tác vụ treo bị đánh dấu thất bại',
+      'Xoá tệp ảnh không dùng',
       'Gửi thông điệp thất bại',
       'Ghi nhận cảnh báo',
       'Yêu cầu xuất tệp',
@@ -149,8 +151,8 @@ describe('logs: who may read them', () => {
     await loaded();
 
     const options = await offeredOptions(user, 'Loại sự kiện');
-    expect(options).toHaveLength(21);
-    expect(options.slice(16)).toEqual([
+    expect(options).toHaveLength(22);
+    expect(options.slice(17)).toEqual([
       'Tạo người dùng',
       'Đổi vai trò',
       'Khoá người dùng',
@@ -627,6 +629,25 @@ describe('logs: rows', () => {
     await switchLanguage(user, 'EN');
     await screen.findByText('2 tasks without progress for 30 min marked as failed');
     expect(columnTexts('Event')).toEqual(['Stale tasks failed', 'Stale tasks failed']);
+    await settled();
+  });
+
+  it('says how many uploads and unused images a clean-up run deleted, in both languages', async () => {
+    // A run that says less than it should: no counts at all.
+    const empty = systemEvent({ logId: 149, eventType: 'product_image.orphans_deleted', details: {} });
+    serveSystemEvents([imageOrphansDeletedEvent, empty]);
+    const { user } = renderLogs();
+    await screen.findByText('Đã xoá 1 tệp tải lên chưa xác nhận và 2 ảnh không sản phẩm nào dùng');
+
+    expect(columnTexts('Sự kiện')).toEqual(['Xoá tệp ảnh không dùng', 'Xoá tệp ảnh không dùng']);
+    expect(columnTexts('Nội dung')).toEqual([
+      'Đã xoá 1 tệp tải lên chưa xác nhận và 2 ảnh không sản phẩm nào dùng',
+      'Đã xoá — tệp tải lên chưa xác nhận và — ảnh không sản phẩm nào dùng',
+    ]);
+
+    await switchLanguage(user, 'EN');
+    await screen.findByText('1 unconfirmed uploads and 2 images no product uses deleted');
+    expect(columnTexts('Event')).toEqual(['Unused image files deleted', 'Unused image files deleted']);
     await settled();
   });
 
