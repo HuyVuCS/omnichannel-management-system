@@ -71,7 +71,8 @@ internal sealed class StaleTaskSweep(
         var now = timeProvider.GetUtcNow();
         var unchangedSince = now - settings.StaleAfter;
 
-        // The statuses are written out (not a parameter), so the statement matches the partial index of unfinished tasks.
+        // Read through IX_ProcessingTasks_Status_UpdatedAt: only the unfinished tasks are looked at, however many
+        // finished ones there are; their age is checked on those rows.
         var stale = await dbContext.ProcessingTasks
             .AsNoTracking()
             .Where(t => (t.Status == ProcessingTaskStatus.Pending

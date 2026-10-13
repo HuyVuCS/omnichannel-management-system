@@ -783,6 +783,9 @@ namespace Omnichannel.Infrastructure.Persistence.Migrations
                     b.HasIndex("InventoryMovementId")
                         .IsUnique();
 
+                    b.HasIndex(new[] { "CreatedAt" }, "IX_OutboxEvents_Failed_CreatedAt")
+                        .HasFilter("\"Status\" = 'Failed'");
+
                     b.ToTable("OutboxEvents", (string)null);
                 });
 
@@ -910,6 +913,8 @@ namespace Omnichannel.Infrastructure.Persistence.Migrations
                     b.HasIndex("OrderId");
 
                     b.HasIndex("ProductId");
+
+                    b.HasIndex("Status", "UpdatedAt");
 
                     b.HasIndex("TaskType", "Status", "CreatedAt");
 
