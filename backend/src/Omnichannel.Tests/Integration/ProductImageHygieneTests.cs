@@ -394,6 +394,36 @@ public sealed class ProductImageHygieneTests(ApiFactory factory) : IAsyncLifetim
     }
 
     [Fact]
+    public async Task A_dry_run_reports_what_a_run_would_delete_and_deletes_and_writes_nothing()
+    {
+        var product = await CreateProductAsync();
+        var upload = await UploadNewAsync(product.ProductId, Image(100));
+        await SetImageAsync(product.ProductId, Image(200));
+        var imageKey = (await ImageKeyAsync(product.ProductId))!;
+        var orphan = await PutOrphanAsync(product.ProductId);
+        var clock = new FixedClock(DateTimeOffset.UtcNow + MinAge + TimeSpan.FromHours(1));
+        var deletes = 0;
+        var hooks = new StorageHooks { FailDelete = _ => { deletes++; return false; } };
+
+        var dry = await RunCleanupAsync(clock, hooks, dryRun: true);
+
+        Assert.True(dry.Ran);
+        Assert.Contains(upload, dry.DeletedUploads);
+        Assert.Contains(orphan, dry.DeletedImages);
+        Assert.DoesNotContain(imageKey, dry.DeletedImages);
+        // Nothing was deleted - no delete was even sent - and no event was written.
+        Assert.Equal(0, deletes);
+        Assert.Equal(new[] { imageKey, orphan, upload }.Order(StringComparer.Ordinal), await ObjectsOfAsync(product.ProductId));
+        Assert.False(await factory.QueryDbAsync(db => db.SystemEventLogs.AnyAsync(e => e.CorrelationId == ImageCleanupIds.CorrelationIdOf(dry.RunId))));
+
+        // The run that follows deletes exactly what the dry run named (of this product).
+        var real = await RunCleanupAsync(clock);
+        Assert.Contains(upload, real.DeletedUploads);
+        Assert.Contains(orphan, real.DeletedImages);
+        Assert.Equal([imageKey], await ObjectsOfAsync(product.ProductId));
+    }
+
+    [Fact]
     public async Task While_another_instance_runs_a_clean_up_a_round_looks_at_nothing()
     {
         var product = await CreateProductAsync();
@@ -467,12 +497,13 @@ public sealed class ProductImageHygieneTests(ApiFactory factory) : IAsyncLifetim
         return services.BuildServiceProvider();
     }
 
-    private async Task<ImageCleanupResult> RunCleanupAsync(TimeProvider clock, StorageHooks? hooks = null, int? maxPerRun = null)
+    private async Task<ImageCleanupResult> RunCleanupAsync(
+        TimeProvider clock, StorageHooks? hooks = null, int? maxPerRun = null, bool dryRun = false)
     {
         await using var tools = Tools(clock, hooks, maxPerRun);
         await using var scope = tools.CreateAsyncScope();
         return await scope.ServiceProvider.GetRequiredService<IProductImageCleanup>()
-            .RunAsync(Guid.CreateVersion7(), "ImageCleanupTest", CancellationToken.None);
+            .RunAsync(Guid.CreateVersion7(), "ImageCleanupTest", dryRun, CancellationToken.None);
     }
 
     private static async Task<List<ListedObject>> ListAllAsync(IObjectStorage storage, string prefix)

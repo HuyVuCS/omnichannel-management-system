@@ -1,4 +1,5 @@
 using Omnichannel.Workers;
+using Omnichannel.Workers.ImageCleanupWorker;
 using Serilog;
 using Serilog.Formatting.Compact;
 
@@ -35,6 +36,13 @@ try
     builder.Services.AddWorkerServices(builder.Configuration);
 
     var host = builder.Build();
+    if (builder.Configuration.GetValue<bool>(ImageCleanupDryRun.Switch))
+    {
+        // An operator's question, not the host: no worker is started, nothing is deleted or written (runbook 16).
+        await ImageCleanupDryRun.RunAsync(host.Services, CancellationToken.None);
+        return;
+    }
+
     await host.RunAsync();
 }
 catch (Exception ex) when (ex is not HostAbortedException)

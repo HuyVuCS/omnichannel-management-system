@@ -100,8 +100,8 @@ public static class ImageCleanupIds
 
 /// <param name="Ran">False when another instance was running a clean-up: nothing was looked at.</param>
 /// <param name="Listed">Objects under the two image prefixes the run looked at.</param>
-/// <param name="DeletedUploads">Keys of the staging objects it deleted.</param>
-/// <param name="DeletedImages">Keys of the final objects it deleted.</param>
+/// <param name="DeletedUploads">Keys of the staging objects it deleted (a dry run: would have deleted).</param>
+/// <param name="DeletedImages">Keys of the final objects it deleted (a dry run: would have deleted).</param>
 /// <param name="Referenced">Final objects old enough that a product refers to: the images in use, left alone.</param>
 /// <param name="Unknown">Objects under an image prefix whose key is not one the application generates: left alone (logged).</param>
 /// <param name="Errors">Objects that could not be deleted (logged); the next run finds them again.</param>
@@ -130,5 +130,9 @@ public interface IProductImageCleanup
 {
     /// <param name="runId">Id of the run; its correlation id is <see cref="ImageCleanupIds.CorrelationIdOf"/>.</param>
     /// <param name="workerName">Worker name of the event the run writes.</param>
-    Task<ImageCleanupResult> RunAsync(Guid runId, string workerName, CancellationToken cancellationToken);
+    /// <param name="dryRun">
+    /// True = look only: the run lists, asks the database and reports what it would delete, but deletes nothing and
+    /// writes nothing (no event). For an operator who wants to know what the next run takes before it runs.
+    /// </param>
+    Task<ImageCleanupResult> RunAsync(Guid runId, string workerName, bool dryRun, CancellationToken cancellationToken);
 }
