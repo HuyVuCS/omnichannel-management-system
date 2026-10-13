@@ -1058,3 +1058,35 @@ not done: needs the user** → 026b Part 0. Review: `docs/tasks/026-*.review.md`
 | Stale non-terminal tasks | Periodic sweep in the Workers host (advisory lock): non-terminal and no change for `StaleAfter` (default 30 min, validated against the longest retry / publisher backoff) → `Failed` with `stale_no_progress` through the normal failure path (alert, hint, counters); manual retry then works; a message whose id is not the task's current one is acknowledged and dropped | Lost messages (RabbitMQ is not backed up) otherwise leave tasks that nobody can retry and that reconciliation trusts for good; reusing `Failed` needs no new status or contract | False positives seen (a legitimate step longer than `StaleAfter`) |
 | `ReportExports` rows | Kept, no purge | ~1 KB each, the audit of exports; files already deleted after 7 days | 100k rows |
 | Load test | k6 from its pinned container image, on a throwaway stack only; contention, spread, duplicates; invariants checked by SQL; numbers are a baseline, no target | A demo on one machine; correctness under load is the point, not a throughput figure | A real deployment target |
+
+## Task 026b result (reviewed 2026-10-13)
+
+Task 026 released (`0d7abc5`, tag `0d7abc5f5f16`; report 026 completed) and 026b released (`a980747`, tag
+`a980747a49fc`, migration `PerformanceIndexes`, 42 s downtime). CORS before the body limit and `X-Correlation-Id` in
+`OnStarting` (401 / 413 / 429 / 500 readable cross-origin from the API); third-party and tool images pinned by digest;
+`UserEmailLookup` (one primary-key lookup per page); indexes `ProcessingTasks ("Status", "UpdatedAt")` and
+`OutboxEvents ("CreatedAt") WHERE Status = 'Failed'`, chosen by `EXPLAIN` on a seeded database
+(`scripts/perf/seed-task-026b.sql`); stale-task sweep (`StaleTasks` options, advisory lock, `stale_no_progress`,
+event `processing.stale_tasks_failed`) and the old-message guard in `StartAttemptAsync`; product filter on processing
+tasks; k6 load scripts (`scripts/load/`). Backend 1872 (CI green; local connection timeouts since a WSL upgrade),
+frontend 524. Review: `docs/tasks/026b-*.review.md`.
+
+| Topic | Decision | Reason | Revisit when |
+| --- | --- | --- | --- |
+| Load-test baseline (one machine, two Workers) | Contention 300 orders / 1 SKU / stock 100: 100 reserved, 200 rejected, intake p95 58 ms, all done in ≈ 3.1 s (≈ 88 tasks/s, serialised per inventory row by design). Spread 2,001 orders at 20/s over 50 SKUs: intake p95 22 ms, intake → finished p95 612 ms. Duplicates 200 requests / 100 ids: 100 orders. Zero invariant violations | Doc §16: no oversell, duplicates once, under load | A real deployment target |
+| Indexes | Only measured ones; the partial "unfinished" index, the `lastSucceededAt` index and `(ProductId, CreatedAt)` were not added (plans did not use / need them) | Rule of the 026b plan | — |
+| Unused indexes | Not dropped (`IX_Alerts_TaskId`, `IX_Alerts_OrderId`, `IX_ProcessingAttempts_Status_StartedAt`, …) | Small tables, no measurable write cost; some serve pages not exercised | An insert-heavy path shows the cost |
+| Stale-task options | `StaleAfter` ≥ 2 × max(longest consumer retry delay, sum of the Outbox Publisher's backoffs); first run after one `Interval` | A task is healthy while the publisher still retries; consumers get time after an outage | — |
+| Sweep after a long outage (review 026b q2) | Accepted as designed: a task failed while its message still waits is safe (the message is dropped by the guard; the operator retries) | No broker management API in the Workers | Seen in practice |
+| Proxy body limit (review 026b q1) | Proxy `max_size` = 8 × the API's limit (1 MiB) so the API answers a readable 413; bare 413 above 1 MiB accepted (026c A1) | Equal limits race (Caddy fails only when it reads past the limit) | — |
+| Requests to production | Only by a step of a part, or after telling the user first — also read-only ones | Review 026b deviation 11 | — |
+
+## Task 026c plan — storage hygiene, forms, accessibility (2026-10-13)
+
+| Topic | Decision | Reason | Revisit when |
+| --- | --- | --- | --- |
+| Upload keys | Presign for `uploads/products/{productId}/{uuidv7}`; confirm checks it, copies server-side to `products/{productId}/{uuidv7}` (today's format — stored keys stay valid), sets `ImageKey`, deletes the staging object | The upload link can never replace a confirmed image (review 019 P3) without depending on provider features | — |
+| Orphans | Periodic sweep in the Workers host (`ImageCleanup`, advisory lock): staging objects and unreferenced `products/` objects older than 24 h; `exports/` untouched | Works on any S3-compatible provider (no lifecycle rule needed); age + reference check makes a race with a confirmation impossible | A provider with lifecycle rules |
+| Signed `Content-Length` | Kept only if SeaweedFS through the proxy refuses a mismatched length; otherwise recorded and not used | A signature the provider ignores is false comfort | Another provider |
+| Required-field text | One `validateMessages` in the `ConfigProvider`: "{label} là bắt buộc" / "{label} is required" | Review 024b q2 | — |
+| Accessibility | `axe-core` (dev dependency) on every rendered page in tests, no serious / critical violations; keyboard and contrast checked in the browser; local fixes only | jsdom cannot judge contrast; structural changes need their own task | — |
