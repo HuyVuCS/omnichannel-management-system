@@ -60,6 +60,12 @@ internal sealed class ProcessingTaskConfiguration : IEntityTypeConfiguration<Pro
         builder.HasIndex(x => x.CorrelationId);
         builder.HasIndex(x => new { x.TaskType, x.Status, x.CreatedAt });
 
+        // Task 026b, measured on 24,000 tasks (report 026b, B2). One index for three readers that would otherwise read
+        // every task: the dashboard's tasks by type and status (the unfinished ones, or the ones finished in a time
+        // range - both arms of its OR are ranges of this index), the stale-task sweep (the unfinished ones; their age
+        // is checked on the few rows found) and the count of the task list filtered by status (index only).
+        builder.HasIndex(x => new { x.Status, x.UpdatedAt });
+
         // Intake idempotency: the same external order (key) can create only one task, before any Order exists.
         builder.HasIndex(x => x.IdempotencyKey)
             .IsUnique()

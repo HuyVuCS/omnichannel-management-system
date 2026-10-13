@@ -36,5 +36,10 @@ internal sealed class OutboxEventConfiguration : IEntityTypeConfiguration<Outbox
             .HasFilter("\"Status\" = 'Pending'")
             .IncludeProperties(x => x.NextAttemptAt)
             .HasDatabaseName("IX_OutboxEvents_Pending_CreatedAt");
+
+        // Task 026b, measured on 40,000 rows (report 026b, B2): the dashboard counts the rows whose publishing failed
+        // for good - a handful among all messages ever sent. Without this index the count reads the whole table.
+        builder.HasIndex(x => x.CreatedAt, "IX_OutboxEvents_Failed_CreatedAt")
+            .HasFilter("\"Status\" = 'Failed'");
     }
 }

@@ -181,6 +181,25 @@ public sealed class StaleTaskSweepTests(WorkersFixture fixture) : IAsyncLifetime
         Assert.Equal(ProcessingTaskStatus.RetryScheduled, (await LoadAsync(changedAtTheLimit.TaskId)).Status);
     }
 
+    [Fact]
+    public async Task A_run_that_finds_nothing_is_one_statement_that_names_the_unfinished_statuses()
+    {
+        await SeedAsync(ProcessingTaskStatus.Succeeded, age: TimeSpan.FromDays(1));
+        await SeedAsync(ProcessingTaskStatus.Pending, age: TimeSpan.FromMinutes(1));
+        var commands = new CommandTexts();
+
+        var result = await RunAsync(configureServices: s => s.ConfigureDbContext<OmnichannelDbContext>(o => o.AddInterceptors(commands)));
+
+        Assert.Equal((true, 0), (result.Ran, result.Stale));
+        // The statement of the plans in report 026b (B2): the statuses as constants, the age on the last change, the
+        // oldest first, a limit. It is read through IX_ProcessingTasks_Status_UpdatedAt.
+        var statement = Assert.Single(commands.Texts);
+        Assert.Contains("""p."Status" IN ('Pending', 'InProgress', 'RetryScheduled')""", statement);
+        Assert.Contains("""COALESCE(p."UpdatedAt", p."CreatedAt") < @""", statement);
+        Assert.Contains("ORDER BY COALESCE(p.\"UpdatedAt\", p.\"CreatedAt\"), p.\"TaskId\"", statement);
+        Assert.Contains("LIMIT @", statement);
+    }
+
     // ---- a worker and the sweep at the same task -------------------------------------------------------------------
 
     [Theory]
@@ -607,6 +626,26 @@ public sealed class StaleTaskSweepTests(WorkersFixture fixture) : IAsyncLifetime
     private sealed class FixedClock(DateTimeOffset now) : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => now;
+    }
+
+    /// <summary>The text of every command of the context, in order.</summary>
+    private sealed class CommandTexts : DbCommandInterceptor
+    {
+        public List<string> Texts { get; } = [];
+
+        public override ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(
+            DbCommand command, CommandEventData eventData, InterceptionResult<DbDataReader> result, CancellationToken cancellationToken = default)
+        {
+            Texts.Add(command.CommandText);
+            return base.ReaderExecutingAsync(command, eventData, result, cancellationToken);
+        }
+
+        public override ValueTask<InterceptionResult<int>> NonQueryExecutingAsync(
+            DbCommand command, CommandEventData eventData, InterceptionResult<int> result, CancellationToken cancellationToken = default)
+        {
+            Texts.Add(command.CommandText);
+            return base.NonQueryExecutingAsync(command, eventData, result, cancellationToken);
+        }
     }
 
     /// <summary>Runs <paramref name="action"/> once, before the first statement that locks a task row.</summary>
