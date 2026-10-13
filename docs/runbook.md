@@ -142,9 +142,17 @@ docker image rm omnichannel-api:<old tag> omnichannel-workers:<old tag> omnichan
   that the old frontend cannot live with needs a maintenance moment: say so in the task that makes the change.
 - `scripts\smoke\task-025.ps1` is **not** part of a release: it writes smoke products, orders and users. It ran once at
   go-live (decision in the log) and runs on production again only when a task says so.
-- Updating a third-party image (`postgres:17`, `rabbitmq:4-management`, `caddy:2.11`, SeaweedFS) is its own deliberate
-  release: `docker compose @stack pull <service>`, `up -d --wait`, check (section 15: a new image can need other
-  capabilities or another user). `up` alone never pulls a newer image.
+- **Updating a third-party image** (`postgres:17`, `rabbitmq:4-management`, `caddy:2.11`,
+  `chrislusf/seaweedfs:4.48`). The four are pinned by digest in `docker/docker-compose.prod.yml`
+  (`image: tag@sha256:...`; the tool image of `scripts/deploy/_stack.ps1` is the same `postgres` digest): the stack
+  runs exactly those builds, whatever the tag points to today, and a drill runs the same ones. An update is its own
+  deliberate release: on a throwaway stack first, put the new digest into the compose file (and `_stack.ps1` for
+  `postgres`) - `docker buildx imagetools inspect <image>:<tag>` shows the digest of a tag without fetching it into
+  the local store -, start the stack, run the smoke scripts, check section 15 (a new image can need other capabilities
+  or another user); then commit and release (`up -d --wait` fetches the image by its digest and recreates only that
+  service). **Never `docker pull <image>:<tag>` and never `docker compose pull` on this machine**: nothing would
+  change for the stack, but the local tag would move away from what is pinned and the digest list of this file
+  would no longer describe the local store. There is no backup: a broker or database upgrade cannot be taken back.
 
 ### Rollback
 

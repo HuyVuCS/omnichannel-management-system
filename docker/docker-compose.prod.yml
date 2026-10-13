@@ -14,6 +14,10 @@
 # environment file (production: the short commit of the release) - never a shell variable, so "up" cannot quietly
 # switch to other images and two stacks on one machine never share a tag. docs/runbook.md "Release".
 #
+# The images this project does not build (postgres, rabbitmq, seaweedfs, caddy) are pinned by digest - tag@sha256, the
+# tag is for the reader, the digest decides: no pull and no reset of Docker can bring another build of the same tag.
+# A new one is a release that changes the digest here. docs/runbook.md "Updating a third-party image".
+#
 # No value in this file is a secret: every password and key comes from the environment file, which is never committed.
 name: omnichannel-prod
 
@@ -43,7 +47,7 @@ x-object-storage: &object-storage
 
 services:
   postgres:
-    image: postgres:17
+    image: postgres:17@sha256:d74eeac9a635390a49bc21bd49fccd973de707e2a53a76ac49b552b8712ec46f
     restart: unless-stopped
     <<: *hardening
     # The entrypoint starts as root, takes the data directory and the socket directory for the postgres user and
@@ -72,7 +76,7 @@ services:
 
   rabbitmq:
     # The management UI is in the image but no port of this service is published.
-    image: rabbitmq:4-management
+    image: rabbitmq:4-management@sha256:ddc75301edf58a8332934cf2d801be7cbf8d65c6458d747364a8046238ff1c89
     restart: unless-stopped
     <<: *hardening
     # The broker's own user from the start (the image allows it): no capability is needed, and the health check and
@@ -100,7 +104,7 @@ services:
   # S3-compatible object storage (SeaweedFS, everything in one process): product images and export files. The bucket is
   # private - every request needs a signature. Browsers reach it through the proxy's storage site only.
   objectstorage:
-    image: chrislusf/seaweedfs:4.48
+    image: chrislusf/seaweedfs:4.48@sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d
     restart: unless-stopped
     <<: *hardening
     # The image's "seaweed" user (1000:1000) from the start, instead of an entrypoint that begins as root. The volume
@@ -238,7 +242,7 @@ services:
 
   # The only service with host ports.
   proxy:
-    image: caddy:2.11
+    image: caddy:2.11@sha256:f2a1290d0463aad60660d4ec134943f183ee2a5f6c3eb7bf32dd984f2f020772
     restart: unless-stopped
     <<: *hardening
     # Not root: its ports (8080, 8081, 8090) need no privilege. NET_BIND_SERVICE is added back only because the binary
