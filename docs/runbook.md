@@ -272,19 +272,52 @@ secrets, the users keep their passwords (they are in the database).
    and this runbook change with it), or remove the old volumes by hand and restore into `omnichannel-prod`.
 Removing a production volume is the one command in this runbook that cannot be undone: it is typed by the user.
 
-## 8. After a restore: tasks whose messages are gone
+## 8. Tasks whose messages are gone (RabbitMQ lost, a restore, a message that could not be published)
 
-A backup holds PostgreSQL and the storage, not RabbitMQ. What that means:
+RabbitMQ holds messages in transit only, and no backup contains it. A task whose message is gone - the broker's
+volume was lost, the database was restored from a backup, an outbox row ended `Failed` after the publisher's
+attempts, a message was removed by hand - stays `Pending`, `InProgress` or `RetryScheduled`: nothing will ever pick
+it up, it cannot be retried in that status, and reconciliation waits for it.
 
-- Outbox events that were not yet published at backup time are published by the Outbox Publisher after the restore —
+**Such a task fails by itself** (stale-task sweep of the Workers host, task 026b):
+
+- Every 5 minutes (`StaleTasks:Interval`) one Workers instance fails every unfinished task that nothing changed for
+  30 minutes (`StaleTasks:StaleAfter`) - at most 200 per run (`StaleTasks:MaxPerRun`), the longest standing first.
+  So a lost message shows **within 35 minutes** (`StaleAfter + Interval`; after a start of the Workers the first run
+  is one interval later).
+- The task becomes `Failed` with the error code **`stale_no_progress`** (attempt of the worker `StaleTaskSweep`), as
+  any final failure: an open alert on **Alerts**, the event "Task failed" on **Logs / audit**, and one event "Stale
+  tasks failed" per run with the number and the first 50 task ids.
+- **What to do:** **Sync & Processing** -> status *Failed*, error code `stale_no_progress` -> **Retry** on each
+  (Manager / Admin). A retry sends a new message; should the old one turn up later (a retry queue, a broker that came
+  back), it is acknowledged and dropped - the task never runs twice.
+- A stock-sync task needs no retry: once it is failed, the next reconciliation (every 15 minutes) pushes the stock of
+  that product and channel again when it still differs.
+
+After **RabbitMQ lost its volume**: `docker compose @stack up -d --wait` (the Workers declare exchanges and queues
+again; messages that were not yet published are published), wait 35 minutes, then retry what failed as above.
+
+Things to know:
+
+- **After a long time without Workers** (longer than `StaleAfter`) the queues may still hold the messages of tasks
+  that look stale. The consumers get one interval (5 minutes) to start them - a started task is not stale - before
+  the first run; a task they did not reach by then is failed although its message is still waiting. Retry it: the
+  waiting message is dropped when it arrives. Nothing is processed twice and nothing is lost, but it is a retry by
+  hand. With a large backlog, start the Workers once with the sweep off - `StaleTasks__Enabled: "false"` under
+  `environment:` of the `workers` service in the compose file, `up -d --wait`, and take the line out again (another
+  `up -d --wait`) when the queues are empty.
+- `StaleAfter` must be at least twice the longest time a healthy task waits untouched: the longest retry delay
+  (`RabbitMq:RetryDelays`, 10 minutes) and the time the Outbox Publisher keeps trying one message (about 9 minutes
+  with the defaults). **The Workers do not start with a shorter value** (the log names the setting).
+- Switched off nothing fails by itself: find such tasks with the status filters and the
+  creation time, as before 026b - they cannot be retried until they are `Failed`.
+
+After a **restore** (section 7) also:
+
+- Outbox events that were not yet published at backup time are published by the Outbox Publisher after the restore -
   nothing to do.
-- A task that was **already published but not finished** at backup time (`Pending`, `Processing` or waiting for a
-  retry) has no message any more. It stays in that status and nothing picks it up: open **Sync & Processing**,
-  filter by those statuses, and use **Retry** on each (Manager / Admin) once it shows as failed — a task that never
-  fails by itself is the known gap "stale non-terminal tasks" (roadmap 026b). Until then the reliable way to find
-  them is the filter plus the creation time (older than the restore).
 - Everything written after the backup is lost: orders, stock movements, uploads. Channels that sent webhooks in that
-  window must send them again (the same external order id is accepted once — idempotency).
+  window must send them again (the same external order id is accepted once - idempotency).
 - Export files whose rows are newer than the backup do not exist; export again.
 
 ## 9. Secrets
