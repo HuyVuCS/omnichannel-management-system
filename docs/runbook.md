@@ -138,6 +138,11 @@ docker image rm omnichannel-api:<old tag> omnichannel-workers:<old tag> omnichan
   without changing what production runs. Never `docker image prune -a` and never `docker image rm` of the running or
   the previous tag while a rollback might be needed; `docker builder prune` (build cache) is always safe.
 
+- **The downtime starts at step 3, not at step 4, when the definition of a service changed** (its image digest,
+  environment, command, limits): `compose run migrate` first brings up what `migrate` depends on, and that recreates
+  `postgres` when its definition differs from the running container (seen in the release of 026: the API was without
+  its database from then until step 4). A release that touches a third-party service is a maintenance moment from
+  step 3 on; `docker compose @stack config --images` and the diff of `docker-compose.prod.yml` say beforehand.
 - Between step 4 and the end of the Vercel build (about a minute) the old frontend talks to the new API. An API change
   that the old frontend cannot live with needs a maintenance moment: say so in the task that makes the change.
 - `scripts\smoke\task-025.ps1` is **not** part of a release: it writes smoke products, orders and users. It ran once at
@@ -389,10 +394,13 @@ all host-local connections from that address. Accepted on a single-user machine.
 | The frontend loads, every request fails ("cannot reach the server") | machine asleep or off; nobody logged on after a reboot; Docker Desktop not started; Funnel off | wake / log on; Docker Desktop; `docker compose @stack ps`; `tailscale funnel status`; section 3 |
 | `https://<host>/health` fails from outside, works on `http://127.0.0.1:8080/health` | Funnel or Tailscale | `tailscale status`; Funnel on again (section 2); the node attribute `funnel` in the tailnet policy; Tailscale's status page |
 | `127.0.0.1:8080/health` fails | proxy or API down | `docker compose @stack ps`, `logs --since 15m api proxy`; `up -d --wait` |
+| `docker ps` answers "cannot connect" / Docker Desktop says it "is unable to start", usually after a Windows update | Windows upgraded WSL underneath Docker Desktop, which did not come back by itself (2026-10-13: production was down about 40 minutes until somebody looked; `%LOCALAPPDATA%\Docker\log\host\com.docker.backend.exe.log` said "WSL is finishing an upgrade" / "WSL update required") | `wsl --status` (and `wsl --version`) until WSL answers without an update notice; then `docker desktop restart`. The engine and **every container of the stack come back by themselves** (`restart: unless-stopped`; nothing is reset, the volumes are untouched) - check `docker compose @stack ps` and `/health`. The same after a deliberate `wsl --shutdown` (start Docker Desktop again; about a minute of downtime). Tasks caught in between: section 8 |
+| A throwaway stack or a test cannot bind its port ("access permissions"), production is fine | after a restart of WSL / Hyper-V Windows reserves other port ranges (2026-10-13: 55199-55858) | `netsh interface ipv4 show excludedportrange protocol=tcp`; choose a port outside the ranges (below 49152 is never reserved dynamically). Production's ports (8080, 8081, 8443) are not affected |
 | Login answers 429 | more than 10 login attempts a minute from that client address (section 10) | wait a minute; the sender is in the proxy's access log (`client_ip`) |
 | A user cannot log in although the password is right | the account is locked: 5 wrong passwords (by the user or by somebody who knows the address), 15 minutes (section 10) | wait, or unlock under **Users** |
-| A request is answered 413 | a body above 128 KiB (section 15); a webhook above 64 KiB | nothing the dashboard sends is that large: look at the sender (`client_ip`) |
+| A request is answered 413 | a body above 128 KiB (section 15; above 1 MiB the proxy answers, without a body); a webhook above 64 KiB | nothing the dashboard sends is that large: look at the sender (`client_ip`) |
 | The browser console shows "violates the following Content Security Policy directive" and images or requests fail | the frontend was built with a wrong `VITE_API_BASE_URL` / `VITE_STORAGE_ORIGIN`, or a new feature loads from a source the policy does not name | Vercel -> Environment Variables (section 13), then a release; a new source goes into `frontend/vite/contentSecurityPolicy.ts` |
+| An upload of an image is refused by the storage (403), other uploads work | the file is not exactly as long as the size the page announced (the length is signed into the upload link, section 16) - a client that is not the dashboard, or a proxy in front that changes the body | the dashboard sends the file as it is; look at the sender |
 | Uploads fail, pages work | storage stopped (a backup is running: a quarter of a minute), storage unhealthy, or disk full | `ps`, `logs objectstorage`; free disk space |
 | Disk full | Docker's virtual disk (images, build cache), logs (bounded: 5 x 10 MB per container), backups | `docker system df`; `docker builder prune` (build cache only — **never** `docker system prune --volumes`); old backups are removed by the retention |
 | A dead-letter queue fills up / tasks `Failed` | a real failure of a worker or of the storage / database | Alerts and **Sync & Processing** show the task and its attempts (`ErrorCode`, `CorrelationId`); `logs workers`; fix the cause, then **Retry** |
@@ -410,8 +418,7 @@ all host-local connections from that address. Accepted on a single-user machine.
 - **Backups**: none are taken (section 13). Losing Docker Desktop's data (reset, purge, uninstall, a broken virtual
   disk) or the disk loses everything. When they are switched on (section 6), they are as far from the machine as the
   chosen destination is.
-- Hardening of task 026 (section 15) is in place; what is left of the old roadmap row: database and performance
-  items (026b), object-storage and frontend follow-ups (026c). The third-party images are pinned by tag, not by digest.
+- Hardening of tasks 026, 026b and 026c (sections 15 and 16) is in place.
 - The `<style>` elements of the UI library need `style-src 'unsafe-inline'` in the frontend's policy (a static host
   cannot issue nonces); scripts are restricted to the files of the build.
 - TLS mode of the proxy (public host names, `docker-compose.prod.tls.yml`) is validated as configuration only.
@@ -512,11 +519,14 @@ docker compose @stack up -d --wait objectstorage
   would have been killed before the broker slowed publishers down). `docker/rabbitmq/20-memory.conf` tells it 1 GiB
   (watermark 614 MiB). **Change `mem_limit` of the service and that file together.**
 - **Request bodies:** the API reads at most 128 KiB (`RequestBodyLimit.MaxBytes`; twice the largest body it accepts by
-  its own rules - a webhook of 64 KiB; a stock import of 200 lines is about 20 kB). The API site of the proxy has the
-  same limit (`request_body max_size`; a test of the backend compares the two). A larger body is answered `413` with
-  a problem document (`errorCode` `request_body_too_large`, the correlation id); only a body **without**
-  Content-Length through the proxy gets the proxy's bare 413. The storage site has no limit (images are checked by the
-  API when they are confirmed).
+  its own rules - a webhook of 64 KiB; a stock import of 200 lines is about 20 kB). The API site of the proxy allows
+  **8 times as much, 1 MiB** (`request_body max_size`; `RequestBodyLimit.ProxyLimitFactor`, a test of the backend
+  asserts the relation): a backstop. With equal limits the answer was a race - the proxy fails only when it reads
+  past its limit, and then with a bare 413 no page can read (task 026b); now every body between the two limits
+  reaches the API, which answers `413` with a problem document (`errorCode` `request_body_too_large`, the correlation
+  id, the CORS headers), with or without a Content-Length. Above 1 MiB the proxy refuses by itself (status only).
+  **Change the two numbers together.** The storage site has no limit (the size of an image is signed into its upload
+  link and checked again when it is confirmed).
 - **Headers:** every answer of the API carries `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`,
   `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'` and `Cache-Control: no-store`; every answer of
   the storage origin `nosniff` and `Content-Security-Policy: default-src 'none'; sandbox`; the static host
@@ -526,3 +536,37 @@ docker compose @stack up -d --wait objectstorage
 - **The volumes `omnichannel-prod_proxy-data` and `_proxy-config`** are no longer used (Caddy keeps its state in
   memory without TLS). They are empty of anything needed and were left in place: removing a volume of production is
   the user's to do (`docker volume rm omnichannel-prod_proxy-data omnichannel-prod_proxy-config` - these two names only).
+
+## 16. Image objects in the storage (task 026c)
+
+Product images live in the bucket under two prefixes; export files under `exports/` (their own retention, section 1).
+
+| Prefix | What | Who writes it | Who deletes it |
+| --- | --- | --- | --- |
+| `uploads/products/{productId}/{uploadId}` | an upload (staging) | the browser, with a presigned link that is valid 5 minutes for exactly one type and length | the confirmation, after its commit; the clean-up when it is older than `MinAge` |
+| `products/{productId}/{objectId}` | what a product's image refers to (`Products.ImageKey`) | the API, by copying a confirmed upload inside the storage - once, never again | replacing or removing the image; the clean-up when it is older than `MinAge` **and no product refers to it** |
+
+- **The clean-up** runs in the Workers (`ImageCleanup`: every 6 hours, objects older than 24 hours, at most 500 per
+  run; the first run comes within 30 seconds after the Workers start; one run at a time over both replicas). Each
+  run is one line in `logs workers` - `Image clean-up run ...: N objects listed, N uploads and N unreferenced images
+  deleted, N old images in use kept, ...` - and a run that deleted something is one event on **Logs / Audit**
+  ("Unused image files deleted", with the keys). `N old images in use kept` is the number of images the products
+  have that are older than a day: it should be the number of products with an image, and it never appears among the
+  deleted ones.
+- **What would the next run delete?** Read-only, without starting a worker and without deleting or writing anything:
+
+  ```powershell
+  docker compose @stack run --rm --no-deps workers --image-cleanup-dry-run=true
+  ```
+
+  The last lines name the counts and up to 100 keys of each kind. (It needs the images of a release that has the
+  clean-up: after step 2 of section 4 the new image exists while the old containers still run.)
+- **Nothing a product refers to can be deleted**, also not an image that is being confirmed while a run is under way:
+  a final object is written once, by the confirmation that refers to it within 30 seconds or removes it, and the
+  clean-up only looks at objects older than `MinAge` (at least 2 minutes; the Workers do not start with less). There
+  is no backup: an object that was deleted is gone - which is why the age is a day in production and why the dry run
+  exists. To stop the clean-up: `ImageCleanup__Enabled=false` in the environment of `workers` and `up -d`.
+- An object under one of the prefixes that the application did not write (another key form) is never deleted; a run
+  logs it as "no key of the application".
+- Settings are environment variables of `workers` (`ImageCleanup__Interval`, `ImageCleanup__MinAge`,
+  `ImageCleanup__MaxPerRun`, `ImageCleanup__Enabled`); the compose file sets none, the defaults apply.
