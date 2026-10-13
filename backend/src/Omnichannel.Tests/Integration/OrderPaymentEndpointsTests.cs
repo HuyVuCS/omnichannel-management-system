@@ -406,17 +406,25 @@ public sealed class OrderPaymentEndpointsTests(ApiFactory factory)
         Assert.Equal(2, invoiced.Tasks.Count);
     }
 
-    [Fact]
-    public async Task A_payment_recorded_by_a_user_that_is_gone_has_no_e_mail_address()
+    [Theory]
+    [InlineData("a user that is gone")]
+    [InlineData("webhook:website")]
+    [InlineData("system:order-worker")]
+    public async Task A_payment_recorded_by_a_user_that_is_gone_or_by_another_actor_has_no_e_mail_address(string actor)
     {
         var order = await SeedOrderAsync(factory);
         await PaidAsync(_manager, order.OrderId);
+        var before = await DetailAsync(_staff, order.OrderId);
+        Assert.Equal("manager@integration.test", before.Payment.PaidByEmail);
+        var paidBy = actor.Contains(':') ? actor : Guid.NewGuid().ToString();
         await factory.QueryDbAsync(db => db.Database.ExecuteSqlAsync(
-            $"""UPDATE "Orders" SET "PaidBy" = {Guid.NewGuid().ToString()} WHERE "OrderId" = {order.OrderId}"""));
+            $"""UPDATE "Orders" SET "PaidBy" = {paidBy} WHERE "OrderId" = {order.OrderId}"""));
 
         var detail = await DetailAsync(_staff, order.OrderId);
 
-        Assert.Equal((PaymentStatus.Paid, (string?)null), (detail.Payment.Status, detail.Payment.PaidByEmail));
+        // Nothing but the e-mail address changed.
+        Assert.Equal(before.Payment with { PaidByEmail = null }, detail.Payment);
+        Assert.Equal(PaymentStatus.Paid, detail.Payment.Status);
     }
 
     [Fact]

@@ -410,6 +410,34 @@ public sealed class AlertEndpointsTests(ApiFactory factory)
 
     // ---- helpers --------------------------------------------------------------------------------------------------
 
+    /// <summary>Task 026b B1: the e-mail addresses of a page come from one lookup of its user ids, with the answer unchanged.</summary>
+    [Fact]
+    public async Task A_page_of_alerts_acknowledged_by_users_and_other_actors_carries_each_users_email_and_null_for_the_rest()
+    {
+        var manager = factory.UserIdOf(AppRoles.Manager).ToString();
+        var gone = Guid.NewGuid().ToString();
+        string?[] actors = [manager, factory.UserIdOf(AppRoles.Admin).ToString(), "system", "webhook:website", gone];
+        string?[] expected = ["manager@integration.test", "admin@integration.test", null, null, null];
+        var alertIds = new List<Guid>();
+        foreach (var actor in actors)
+        {
+            var product = await CreateProductAsync(threshold: 5);
+            var open = Assert.Single((await ListAsync($"productId={product.ProductId}")).Items);
+            Assert.Equal(HttpStatusCode.OK, (await _manager.PostAsync($"/api/alerts/{open.AlertId}/acknowledge", null)).StatusCode);
+            await factory.QueryDbAsync(db => db.Database.ExecuteSqlAsync(
+                $"UPDATE \"Alerts\" SET \"AcknowledgedBy\" = {actor} WHERE \"AlertId\" = {open.AlertId}"));
+            alertIds.Add(open.AlertId);
+        }
+
+        // One page that holds all five (the newest alerts of this type and status come first), and each one alone.
+        var page = (await ListAsync("type=LowStock&status=Acknowledged&pageSize=100")).Items.ToDictionary(a => a.AlertId);
+        for (var n = 0; n < alertIds.Count; n++)
+        {
+            Assert.Equal(expected[n], page[alertIds[n]].AcknowledgedByEmail);
+            Assert.Equal(page[alertIds[n]], await GetAsync(alertIds[n]));
+        }
+    }
+
     private async Task<PagedResult<AlertResponse>> ListAsync(string query)
     {
         var response = await _staff.GetAsync($"/api/alerts?{query}");
