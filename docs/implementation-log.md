@@ -1025,3 +1025,36 @@ Roadmap row 026 split (review 025b): **026** security of edge, API, containers a
 | Token-in-URL at the proxy (roadmap 026 item) | **Closed by 025**: the Caddy log filter drops query strings and `Authorization`, the API enricher redacts the hub token | Verified in review 025 | — |
 | Containers | `no-new-privileges` everywhere; `cap_drop: ALL` with measured add-backs; read-only roots where they work without hacks; Caddy and SeaweedFS non-root (one-shot `chown` of the storage volume, drilled first); RabbitMQ memory from the container limit | Review 025 q5; only least privilege that is measured, not guessed | A service update changes its needs |
 | Third-party image digests | Not pinned unless the user agrees (question in the 026 report) | Floating tags accepted in review 025; `up` never pulls by itself | — |
+
+## Task 026 result (reviewed 2026-10-13; release pending)
+
+`omnichannel-*:${IMAGE_TAG}` with the tag in the stack's env file (`set-image-tag.ps1`; release = short commit,
+rollback = previous tag); runbook without backup steps; `Tailscale-User-*` stripped at the proxy and in its log; API
+headers on every answer (`nosniff`, `Referrer-Policy: no-referrer`, `default-src 'none'; frame-ancestors 'none'`,
+`no-store` unless set) in `OnStarting`; 128 KiB body limit (one constant: Kestrel, early `Content-Length` check,
+Caddyfile, compared by a test) with 413 ProblemDetails; binder errors under the field key, localised, without .NET
+texts; encoded request path in the request log; storage site `nosniff` + `default-src 'none'; sandbox`; every
+container `no-new-privileges` + `cap_drop: ALL` with measured add-backs (PostgreSQL five, Caddy `NET_BIND_SERVICE`),
+Caddy / SeaweedFS / RabbitMQ non-root on read-only roots; RabbitMQ memory = container limit; build-time CSP `<meta>`
+from `VITE_API_BASE_URL` / `VITE_STORAGE_ORIGIN` + `vercel.json` headers. Backend 1825/1825, frontend 518/518, CI
+green; hardened throwaway stack smoke 53/53 + 9/9, zero CSP violations in two browser sessions. **Release (Part F)
+not done: needs the user** → 026b Part 0. Review: `docs/tasks/026-*.review.md`.
+
+| Topic | Decision | Reason | Revisit when |
+| --- | --- | --- | --- |
+| PostgreSQL user | Stays root-started with five capabilities (`CHOWN`, `DAC_READ_SEARCH`, `FOWNER`, `SETGID`, `SETUID`); not `user: postgres` | Internal service without a published port; `user: postgres` would change every operating script's `exec` | A reason to touch the scripts anyway |
+| RabbitMQ user | `user: rabbitmq`, no capability, read-only root | As root without DAC capabilities the health check cannot read the cookie | — |
+| Third-party images | **Pinned by digest** (026b A2): `tag@sha256:…`, updated only by a release that changes the digest | No backups: a silent minor upgrade (e.g. broker feature flags) must not happen by a `pull` or a Docker reset; drills and production identical | — |
+| Error answers cross-origin | CORS evaluated before the body limit; `X-Correlation-Id` in `OnStarting` (026b A1) | On the live path a 413 without `Access-Control-Allow-Origin` is hidden by the browser; the 500 lost the header | — |
+| CSP sources | Tighter than planned: no `data:` / `blob:` / `font-src`; add a source together with the feature that needs it | Measured on the build and in the browser | A feature that previews a picked file, or a web font |
+
+## Task 026b plan — release of 026, database, stale tasks, load test (2026-10-13)
+
+| Topic | Decision | Reason | Revisit when |
+| --- | --- | --- | --- |
+| Order of releases | 026 is released first (026b Part 0, from `master` before any 026b commit); 026b released at its end with its migration | Two smaller releases; the security changes do not wait for the database work | — |
+| User e-mail lookups | Per-page `WHERE Id = ANY(...)` as in `SystemEventService`; no `Id::text` comparison | The text comparison cannot use the primary key | — |
+| Indexes | Only those an `EXPLAIN (ANALYZE)` on a seeded database shows used and useful; one additive migration; plain `CREATE INDEX` (production tables are small); no drops | Review 015's candidates were guesses until measured | Tables in the millions → `CONCURRENTLY` in its own migration |
+| Stale non-terminal tasks | Periodic sweep in the Workers host (advisory lock): non-terminal and no change for `StaleAfter` (default 30 min, validated against the longest retry / publisher backoff) → `Failed` with `stale_no_progress` through the normal failure path (alert, hint, counters); manual retry then works; a message whose id is not the task's current one is acknowledged and dropped | Lost messages (RabbitMQ is not backed up) otherwise leave tasks that nobody can retry and that reconciliation trusts for good; reusing `Failed` needs no new status or contract | False positives seen (a legitimate step longer than `StaleAfter`) |
+| `ReportExports` rows | Kept, no purge | ~1 KB each, the audit of exports; files already deleted after 7 days | 100k rows |
+| Load test | k6 from its pinned container image, on a throwaway stack only; contention, spread, duplicates; invariants checked by SQL; numbers are a baseline, no target | A demo on one machine; correctness under load is the point, not a throughput figure | A real deployment target |
