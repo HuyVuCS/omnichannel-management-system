@@ -14,7 +14,7 @@ import { isGuid } from '@/shared/utils/guid';
 import { AttemptsTable } from './components/AttemptsTable';
 import { RetryTaskButton } from './components/RetryTaskButton';
 import { TaskStatusTag } from './components/TaskStatusTag';
-import { PROCESSING_PATH, processingListAddress } from './paths';
+import { PROCESSING_PATH, processingListAddress, processingListPath } from './paths';
 import { useGetProcessingTaskQuery, type MessageStatus } from './processingApi';
 
 /** One colour per publish state of a message. */
@@ -130,7 +130,21 @@ export function ProcessingTaskPage() {
               },
               { key: 'status', label: t('processing.detail.status'), children: <TaskStatusTag status={task.status} /> },
               { key: 'channel', label: t('processing.detail.channel'), children: channelName },
-              { key: 'productSku', label: t('processing.detail.productSku'), children: task.productSku ?? '' },
+              {
+                key: 'productSku',
+                label: t('processing.detail.productSku'),
+                // Every task of the product: its pushes to the other channels, the ones before and after this one.
+                children: task.productId ? (
+                  <Space size={12}>
+                    {task.productSku ?? ''}
+                    <Link to={processingListPath({ productId: task.productId })} style={{ color: token.colorLink }}>
+                      {t('processing.detail.productTasks')}
+                    </Link>
+                  </Space>
+                ) : (
+                  ''
+                ),
+              },
               {
                 key: 'order',
                 label: t('processing.detail.order'),

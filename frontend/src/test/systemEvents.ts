@@ -247,6 +247,23 @@ export const reconciliationWithTroubleEvent = systemEvent({
 });
 
 /** One event per type the API has an allowlist entry for, newest first; the last five are the Admin's. */
+/** A run of the stale-task sweep that failed two tasks nothing had touched for half an hour. */
+export const staleTasksFailedEvent = systemEvent({
+  logId: 151,
+  level: 'Warning',
+  eventType: 'processing.stale_tasks_failed',
+  createdAt: new Date(2026, 9, 13, 16, 5).toISOString(),
+  correlationId: 'stale-tasks-0199c3c27d1e7c4a9f00aabbccddee01',
+  workerName: 'StaleTaskSweep',
+  details: {
+    runId: '0199c3c2-7d1e-7c4a-9f00-aabbccddee01',
+    staleAfterSeconds: 1800,
+    failed: 2,
+    taskIds: [SYNC_TASK_ID, '0199a1b2-0000-7000-8000-0000000000cc'],
+    notListed: 0,
+  },
+});
+
 export const everyEventType: SystemEvent[] = [
   importedEvent,
   insufficientEvent,

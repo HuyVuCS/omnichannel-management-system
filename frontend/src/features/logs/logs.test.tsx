@@ -27,6 +27,7 @@ import {
   reconciliationEvent,
   reconciliationWithTroubleEvent,
   serveSystemEvents,
+  staleTasksFailedEvent,
   syncRejectedEvent,
   systemEvent,
   userLockedEvent,
@@ -130,6 +131,7 @@ describe('logs: who may read them', () => {
       'Thông điệp đồng bộ bị từ chối',
       'Tác vụ thất bại',
       'Chạy lại thủ công',
+      'Tác vụ treo bị đánh dấu thất bại',
       'Gửi thông điệp thất bại',
       'Ghi nhận cảnh báo',
       'Yêu cầu xuất tệp',
@@ -147,8 +149,8 @@ describe('logs: who may read them', () => {
     await loaded();
 
     const options = await offeredOptions(user, 'Loại sự kiện');
-    expect(options).toHaveLength(20);
-    expect(options.slice(15)).toEqual([
+    expect(options).toHaveLength(21);
+    expect(options.slice(16)).toEqual([
       'Tạo người dùng',
       'Đổi vai trò',
       'Khoá người dùng',
@@ -602,6 +604,30 @@ describe('logs: rows', () => {
       'Message msg-51 rejected: task does not match the message',
       'Message msg-52 rejected: task does not exist',
     ]);
+  });
+
+  it('says how many tasks a sweep failed for standing still and after how long, in both languages', async () => {
+    // A run that says less than it should: no counts at all.
+    const empty = systemEvent({
+      logId: 150,
+      level: 'Warning',
+      eventType: 'processing.stale_tasks_failed',
+      details: {},
+    });
+    serveSystemEvents([staleTasksFailedEvent, empty]);
+    const { user } = renderLogs();
+    await screen.findByText('2 tác vụ không có tiến triển trong 30 phút bị đánh dấu thất bại');
+
+    expect(columnTexts('Sự kiện')).toEqual(['Tác vụ treo bị đánh dấu thất bại', 'Tác vụ treo bị đánh dấu thất bại']);
+    expect(columnTexts('Nội dung')).toEqual([
+      '2 tác vụ không có tiến triển trong 30 phút bị đánh dấu thất bại',
+      '— tác vụ không có tiến triển trong — phút bị đánh dấu thất bại',
+    ]);
+
+    await switchLanguage(user, 'EN');
+    await screen.findByText('2 tasks without progress for 30 min marked as failed');
+    expect(columnTexts('Event')).toEqual(['Stale tasks failed', 'Stale tasks failed']);
+    await settled();
   });
 
   it('says what a reconciliation run found and did, and which channels it could not read, in both languages', async () => {

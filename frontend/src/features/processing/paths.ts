@@ -19,6 +19,7 @@ export interface ProcessingListFilter {
   taskType?: string;
   status?: string;
   channelId?: string;
+  productId?: string;
   correlationId?: string;
   errorCode?: string;
   from?: string;

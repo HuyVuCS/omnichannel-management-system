@@ -19,6 +19,7 @@ export const EVENT_TYPES = [
   'stock_sync.message_rejected',
   'processing.failed',
   'processing.retry_requested',
+  'processing.stale_tasks_failed',
   'outbox.publish_failed',
   'alert.acknowledged',
   'report.export_requested',

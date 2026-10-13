@@ -97,6 +97,7 @@ export interface ProcessingTaskListArgs {
   taskType?: TaskType;
   status?: TaskStatus;
   channelId?: string;
+  productId?: string;
   correlationId?: string;
   errorCode?: string;
   from?: string;
