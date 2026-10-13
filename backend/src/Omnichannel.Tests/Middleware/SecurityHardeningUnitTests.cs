@@ -53,14 +53,18 @@ public sealed class SecurityHardeningUnitTests
     }
 
     [Fact]
-    public void The_reverse_proxy_limits_the_api_site_to_the_same_size()
+    public void The_reverse_proxy_limit_of_the_api_site_is_ProxyLimitFactor_times_the_api_limit()
     {
         var caddyfile = File.ReadAllText(Path.Combine(RepositoryRoot(), "docker", "proxy", "Caddyfile"));
 
         var sizes = Regex.Matches(caddyfile, @"^\s*max_size\s+(\d+)KiB\s*$", RegexOptions.Multiline);
 
-        // One limit in the file (the API site; the storage site has none), written in KiB.
-        Assert.Equal(RequestBodyLimit.MaxBytes, 1024L * int.Parse(Assert.Single(sizes).Groups[1].Value));
+        // One limit in the file (the API site; the storage site has none), written in KiB: a backstop of 1 MiB, so
+        // the API answers every body between the two limits with its readable 413.
+        Assert.Equal(8, RequestBodyLimit.ProxyLimitFactor);
+        Assert.Equal(
+            RequestBodyLimit.ProxyLimitFactor * RequestBodyLimit.MaxBytes,
+            1024L * int.Parse(Assert.Single(sizes).Groups[1].Value));
         Assert.Single(Regex.Matches(caddyfile, @"^\s*max_size\b", RegexOptions.Multiline));
     }
 

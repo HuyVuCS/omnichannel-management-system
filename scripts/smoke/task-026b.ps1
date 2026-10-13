@@ -132,17 +132,9 @@ try {
     $tooLarge[0] = 0x7B ; $tooLarge[1] = 0x7D
     $id = "smoke-026b-413-$n"
     $announced = Invoke-Refused POST '/api/inventory/import' $frontendOrigin $id $admin $tooLarge
-    if ($throughProxy) {
-        # The proxy has the same limit and usually refuses first, with a bare 413 no page on another origin can read;
-        # only when the API is faster the answer is the problem document with the CORS headers (report 026b, question 1).
-        $by = if ((Get-HardeningHeader $announced 'x-correlation-id') -cne 'none') { 'the API' } else { 'the proxy' }
-        Write-Host "   (02: answered by $by)"
-        Assert-Step '02 a 413 for an announced length through the proxy (the proxy or the API answers)' 413 $announced.Status
-        Assert-Step '03 ... readable from the frontend origin when it is the API that answered' $true (($by -ceq 'the proxy') -or ((Get-ReadableSummary $announced $id) -ceq "413 | $readable"))
-    } else {
-        Assert-Step '02 a 413 for an announced length is readable from the frontend origin' "413 | $readable" (Get-ReadableSummary $announced $id)
-        Assert-Step '03 ... as the problem document request_body_too_large' 'request_body_too_large' (Get-ErrorCode $announced)
-    }
+    # Through a proxy too: its own limit is 8 times the API's (task 026c), so the API is the one that answers.
+    Assert-Step '02 a 413 for an announced length is readable from the frontend origin' "413 | $readable" (Get-ReadableSummary $announced $id)
+    Assert-Step '03 ... as the problem document request_body_too_large' 'request_body_too_large' (Get-ErrorCode $announced)
 
     $id = "smoke-026b-413c-$n"
     $chunked = Invoke-FromOrigin POST '/api/inventory/import' $frontendOrigin $id $admin $tooLarge -Chunked

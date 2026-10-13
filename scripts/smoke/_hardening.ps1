@@ -4,8 +4,10 @@
 
 $script:ApiPolicy = "default-src 'none'; frame-ancestors 'none'"
 $script:StoragePolicy = "default-src 'none'; sandbox"
-# RequestBodyLimit.MaxBytes of the API = request_body max_size of the proxy's API site.
+# RequestBodyLimit.MaxBytes of the API. The proxy's API site allows 8 times as much (request_body max_size, 1 MiB), so
+# a body between the two limits always reaches the API, which answers a 413 a page can read.
 $script:BodyLimitBytes = 131072
+$script:ProxyBodyLimitBytes = 8 * $script:BodyLimitBytes
 
 # One request without following a redirect and without throwing on an error status (Status 0 = no HTTP answer).
 # $Body with -Chunked is sent without a Content-Length.
@@ -36,6 +38,26 @@ function Invoke-HardeningRequest([string]$Method, [string]$Url, [byte[]]$Body, [
     } finally { $response.Close() }
 }
 
+# A body that is refused without being read: the answer can arrive while this client is still sending, and the
+# connection is then closed under it (no HTTP answer, Status 0). That is this client, not the server: asked again.
+function Invoke-HardeningRefused([string]$Method, [string]$Url, [byte[]]$Body, [switch]$Chunked) {
+    foreach ($try in 1..5) {
+        $answer = Invoke-HardeningRequest $Method $Url $Body -Chunked:$Chunked
+        if ($answer.Status -ne 0) { return $answer }
+        Start-Sleep -Milliseconds 300
+    }
+    return $answer
+}
+
+# "errorCode | the correlationId of the body is the X-Correlation-Id header" of a problem document.
+function Get-ProblemSummary($Answer) {
+    $problem = $null
+    try { $problem = $Answer.Text | ConvertFrom-Json } catch { }
+    $code = if ($problem) { [string]$problem.errorCode } else { 'no problem document' }
+    $correlation = if ($problem -and $problem.correlationId) { ([string]$problem.correlationId -ceq (Get-HardeningHeader $Answer 'x-correlation-id')) } else { $false }
+    return "$code | correlation id $correlation"
+}
+
 function Get-HardeningHeader($Answer, [string]$Name) { if ($Answer.Headers.ContainsKey($Name)) { return [string]$Answer.Headers[$Name] } else { return 'none' } }
 
 # "status | nosniff | referrer policy | content security policy | no-store?" of an answer of the API.
@@ -55,19 +77,21 @@ function Invoke-HardeningChecks([string]$ApiOrigin, [string]$StorageOrigin, [int
     Assert-Step ('{0:00} API 401 (no token): the same headers' -f $n) "401 $expected" (Get-ApiHeaderSummary $anonymous); $n++
     Assert-Step ('{0:00} ... and no Cross-Origin-Resource-Policy (the frontend is another site)' -f $n) 'none' (Get-HardeningHeader $anonymous 'cross-origin-resource-policy'); $n++
 
-    # B2: a body above the limit is answered, not dropped.
+    # B2: a body above the API's limit is answered by the API itself - also through the proxy, whose own limit is
+    # 8 times as high - and not dropped.
     $tooLarge = New-Object byte[] ($script:BodyLimitBytes + 1)
     for ($i = 0; $i -lt $tooLarge.Length; $i++) { $tooLarge[$i] = 32 }
-    $announced = Invoke-HardeningRequest POST "$ApiOrigin/api/auth/login" $tooLarge
-    Assert-Step ('{0:00} a body of limit + 1 bytes -> 413 with the same headers' -f $n) "413 $expected" (Get-ApiHeaderSummary $announced); $n++
-    $problem = $null
-    try { $problem = $announced.Text | ConvertFrom-Json } catch { }
-    $code = if ($problem) { [string]$problem.errorCode } else { 'no problem document' }
-    $correlation = if ($problem -and $problem.correlationId) { ([string]$problem.correlationId -ceq (Get-HardeningHeader $announced 'x-correlation-id')) } else { $false }
-    Assert-Step ('{0:00} ... as a problem document: request_body_too_large' -f $n) 'request_body_too_large' $code; $n++
-    Assert-Step ('{0:00} ... with the correlation id of the X-Correlation-Id header' -f $n) $true $correlation; $n++
-    $chunked = Invoke-HardeningRequest POST "$ApiOrigin/api/auth/login" $tooLarge -Chunked
-    Assert-Step ('{0:00} the same body without a Content-Length -> 413 (answered, not a dropped connection)' -f $n) 413 $chunked.Status; $n++
+    $announced = Invoke-HardeningRefused POST "$ApiOrigin/api/auth/login" $tooLarge
+    Assert-Step ('{0:00} a body of limit + 1 bytes -> 413 of the API, with the same headers' -f $n) "413 $expected" (Get-ApiHeaderSummary $announced); $n++
+    Assert-Step ('{0:00} ... as a problem document with the correlation id of the X-Correlation-Id header' -f $n) 'request_body_too_large | correlation id True' (Get-ProblemSummary $announced); $n++
+    $chunked = Invoke-HardeningRefused POST "$ApiOrigin/api/auth/login" $tooLarge -Chunked
+    Assert-Step ('{0:00} the same body without a Content-Length -> the same 413 of the API' -f $n) "413 $expected" (Get-ApiHeaderSummary $chunked); $n++
+    Assert-Step ('{0:00} ... as the same problem document' -f $n) 'request_body_too_large | correlation id True' (Get-ProblemSummary $chunked); $n++
+    # Above the proxy's limit: refused, by the proxy or by the API - only the status counts.
+    $huge = New-Object byte[] ($script:ProxyBodyLimitBytes + 1)
+    for ($i = 0; $i -lt $huge.Length; $i++) { $huge[$i] = 32 }
+    Assert-Step ('{0:00} a body above 1 MiB (the limit of the proxy) is refused: 413' -f $n) 413 (Invoke-HardeningRefused POST "$ApiOrigin/api/auth/login" $huge).Status; $n++
+    Assert-Step ('{0:00} ... and without a Content-Length: 413' -f $n) 413 (Invoke-HardeningRefused POST "$ApiOrigin/api/auth/login" $huge -Chunked).Status; $n++
     $atLimit = New-Object byte[] $script:BodyLimitBytes
     for ($i = 0; $i -lt $atLimit.Length; $i++) { $atLimit[$i] = 32 }
     $atLimit[0] = 123; $atLimit[1] = 125

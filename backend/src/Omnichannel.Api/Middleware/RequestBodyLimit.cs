@@ -8,13 +8,22 @@ namespace Omnichannel.Api.Middleware;
 /// about 20 KiB, an order of 100 lines about 10 KiB - measured by a test). Twice the largest: 128 KiB. Images and
 /// export files never pass through the API (presigned links to the storage).
 /// <para>
-/// The same number is Kestrel's <c>MaxRequestBodySize</c> (a body without a Content-Length is cut off there) and the
-/// <c>request_body max_size</c> of the reverse proxy's API site (<c>docker/proxy/Caddyfile</c>; a test compares them).
+/// The same number is Kestrel's <c>MaxRequestBodySize</c> (a body without a Content-Length is cut off there). The
+/// reverse proxy's API site allows <see cref="ProxyLimitFactor"/> times as much (<c>request_body max_size</c> in
+/// <c>docker/proxy/Caddyfile</c>; a test asserts the relation), so the API is the one that answers.
 /// </para>
 /// </summary>
 public static class RequestBodyLimit
 {
     public const long MaxBytes = 128 * 1024;
+
+    /// <summary>
+    /// The reverse proxy's own limit is this many times <see cref="MaxBytes"/> (1 MiB): a backstop. With equal limits
+    /// the answer to a body that is too large was a race between this API's readable 413 and the proxy's bare one (the
+    /// proxy only fails when it reads past its limit); with the proxy clearly above, every such body up to its limit
+    /// is answered here.
+    /// </summary>
+    public const int ProxyLimitFactor = 8;
 
     /// <summary><c>errorCode</c> of the 413 answer.</summary>
     public const string ErrorCode = "request_body_too_large";
