@@ -1,7 +1,7 @@
 # Report 026 — Security hardening: image tags per release, API and storage headers, body limits, container hardening, frontend CSP; first release
 
-Status: Partially done — Parts A to E done and verified locally; **Part F (the release to production) not started: it
-waits for the user** (the Vercel variable of step F1, and the go-ahead for production commands — see "Blocked").
+Status: Done — Parts A to E as below; **Part F (the release to production) done on 2026-10-13** as task 026b Part 0
+("Production steps (applied)"). One step is the user's: the live browser check F6 ("Manual steps for the user").
 Commit: `c8f31d7` (task), `0fc116b` (Cowork's review 025d / task 026 / log, committed first). Pushed to `master`;
 CI run 38278736237 green (backend, frontend, three images).
 
@@ -13,7 +13,8 @@ and a localised text without .NET names; the request log holds the encoded path.
 and adds `nosniff` + a sandbox policy on the storage site. Every container runs with `no-new-privileges` and
 `cap_drop: ALL` plus measured add-backs; Caddy, SeaweedFS and RabbitMQ run as non-root on read-only roots; RabbitMQ
 sees its 1 GiB limit. The frontend build writes a CSP `<meta>` from `VITE_API_BASE_URL` / `VITE_STORAGE_ORIGIN`, and
-`vercel.json` sends the header-only parts. Production is untouched.
+`vercel.json` sends the header-only parts. Released to production on 2026-10-13 (commit `0d7abc5`, image tag
+`0d7abc5f5f16`).
 
 ## Files changed
 - `docker/docker-compose.prod.yml` — `IMAGE_TAG`; `x-hardening` on every service; users, capabilities, read-only roots, tmpfs; RabbitMQ memory file; Caddy's state in memory
@@ -166,17 +167,49 @@ None: no migration, no change of `docker/docker-compose.yml`, no storage key. Th
 touched. No host of mine is running (the two `vite preview` servers and both throwaway stacks are gone).
 
 ## Production steps (applied)
-None yet. Planned exactly as Part F / runbook 4 (as amended) and 15:
-`set-image-tag.ps1 -EnvFile docker\.env.prod` → `--profile migrate build` → `run --rm migrate` (nothing pending
-expected) → `stop objectstorage` → the one-shot `chown` of `omnichannel-prod_objectstorage-data` → `up -d --wait` →
-push to `production` → `task-025b.ps1` live → remove `omnichannel-*:local` by name. Rollback of this release = the
-checkout of `8fc1e5e` (its compose file names the `:local` images, which stay until the last step) and `up -d --wait`.
+Run on 2026-10-13 as task 026b Part 0, after the user's answers in the chat (F1: `VITE_STORAGE_ORIGIN` is set in
+Vercel; go-ahead for F2–F7). Released commit: `0d7abc5` (`master` = `origin/master` before any 026b commit; the code
+is `c8f31d7`, the later commits are documents). `$stack` as in the runbook.
+
+**Before the release: Docker's engine was down** (not caused by this task). `docker` answered "Docker Desktop is
+unable to start"; Docker Desktop's log: the WSL distribution failed to bootstrap at 15:06 while Windows was
+upgrading WSL ("WSL is finishing an upgrade...", then "WSL update required"), and the engine stayed stopped — so
+production was off from 14:57 local time (start of Docker Desktop) at the latest until the restart at about 15:35. With WSL
+answering again (3.0.3) `docker desktop restart` brought the engine back (no reset, nothing purged): all eight
+volumes present, every container of `omnichannel-prod` and of development healthy by itself.
+
+| # | Step (command, no secret) | Result |
+| --- | --- | --- |
+| F1 | USER: `VITE_STORAGE_ORIGIN` in Vercel (Production) | confirmed in the chat; the deployed page's policy names the storage origin (step 16 below) |
+| 0 | `git log production..origin/master`, `git diff --stat ... Migrations` | 11 commits (`431c876` … `0d7abc5`), no migration file |
+| F2 | `scripts\deploy\set-image-tag.ps1 -EnvFile docker\.env.prod` | `IMAGE_TAG: (not set) -> 0d7abc5f5f16`; no other line (no body-limit variable exists) |
+| F3 | `$env:GIT_COMMIT = git rev-parse HEAD`; `docker compose @stack --profile migrate build` | exit 0 in 8 s (layers cached from the `omni026` drill of the same code); three images `:0d7abc5f5f16`, label `org.opencontainers.image.revision` = `0d7abc5f…` |
+| F3 | `Get-AppliedMigrations` against the checkout's files (runbook 5) | 14 applied = the 14 of the checkout, nothing pending |
+| F3 | `docker compose @stack --profile migrate run --rm migrate` | exit 0, "No migrations were applied. The database is already up to date." — **it recreated `postgres` first** (hardened definition; started 15:35:36), so the old API lost its database about 23 s before the `stop` below |
+| F3 | `docker compose @stack stop objectstorage` (15:35:59) | exit 0 |
+| F3 | `docker run --rm --network none -v omnichannel-prod_objectstorage-data:/data --entrypoint chown postgres:17 -R 1000:1000 /data` | exit 0; the volume already was `1000:1000` before (`stat`), so nothing changed |
+| F3 | `docker compose @stack up -d --wait` | exit 0, every service healthy at 15:36:38; `ps`: `api` / `workers` x2 on `:0d7abc5f5f16`, restart count 0 everywhere |
+| F3 | `/health` on `https://omni.tail70815b.ts.net` and on `127.0.0.1:8080`; `tailscale funnel status` | 200 / 200; both Funnel ports on |
+| F4 | `git push origin 0d7abc5…:refs/heads/production` | `264270c..0d7abc5`; Vercel served the new build (page with the CSP `<meta>`) within a minute |
+| F5 | `scripts\smoke\task-025b.ps1` live (`SMOKE_*` of runbook 13, `SMOKE_EXPECT_HSTS=true`) | **PASSED: all 26 checks** (first full run: 13–17 static host headers and the page's policy, 18–25 API headers and the 413, 26 storage headers) |
+| F7 | `docker image rm omnichannel-api:local omnichannel-workers:local omnichannel-migrate:local` | removed; left: the three `:0d7abc5f5f16` |
+
+**Downtime:** 39 s from `stop objectstorage` to every service healthy (15:35:59 → 15:36:38); counted from the
+recreation of `postgres` by the migrate step, about 62 s (15:35:36 → 15:36:38). For the next release: the first
+`compose run` after a changed service definition recreates that service — runbook step 3 is where the downtime starts
+in that case.
+
+API and Workers log after the start: the three expected DataProtection warnings (runbook 2), the line
+`libgssapi_krb5.so.2: cannot open shared object file` once per host (Npgsql probing for Kerberos, also printed by
+`migrate`; harmless, seen on the drills), a first reconciliation run with 0 pairs; no error.
+
+Rollback of this release is no longer the `:local` images (removed in F7): `git checkout 8fc1e5e`,
+`set-image-tag.ps1`, `build`, `up -d --wait` (runbook 4, "the images of that tag were removed").
 
 ## Manual steps for the user
-1. Vercel → project → Settings → Environment Variables → add `VITE_STORAGE_ORIGIN` =
-   `https://omni.tail70815b.ts.net:8443`, environment **Production** only → Save (no redeploy: the release pushes
-   `production`). Then say so in the chat.
-2. Say that Part F may run on production (see "Blocked" 1).
-3. After the release (F6): on the live site with the browser console open — login, dashboard, upload a product image
-   and see it, download an export (the file must really be saved), open an order — and report any message that
-   mentions "Content Security Policy".
+1. ~~`VITE_STORAGE_ORIGIN` in Vercel~~ — done by the user (2026-10-13).
+2. ~~Go-ahead for Part F~~ — given in the chat (2026-10-13).
+3. **Open — F6:** on the live site with the browser console open — login, dashboard, upload a product image and see
+   it, download an export (the file must really be saved), open an order — and report any message that mentions
+   "Content Security Policy". (Claude Code does not log in to production: the Admin password is only with the user.)
+4. Optional: the volumes `omnichannel-prod_proxy-data` / `_proxy-config` are unused now (runbook 15).
