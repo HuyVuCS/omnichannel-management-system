@@ -18,7 +18,16 @@ public sealed class CorrelationIdMiddleware(RequestDelegate next)
         var correlationId = Resolve(context.Request.Headers[HeaderName].ToString());
 
         context.Items[ItemKey] = correlationId;
-        context.Response.Headers[HeaderName] = correlationId;
+        // When the answer starts, not now: the exception handler clears the headers of an answer it replaces, and a
+        // 500 is the answer whose correlation id is quoted.
+        context.Response.OnStarting(
+            static state =>
+            {
+                var (response, id) = ((HttpResponse, string))state;
+                response.Headers[HeaderName] = id;
+                return Task.CompletedTask;
+            },
+            (context.Response, correlationId));
 
         using (LogContext.PushProperty("CorrelationId", correlationId))
         {

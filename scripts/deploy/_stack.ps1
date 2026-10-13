@@ -4,8 +4,9 @@
 $ErrorActionPreference = 'Stop'
 $script:RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $script:ComposeFile = Join-Path $script:RepoRoot 'docker\docker-compose.prod.yml'
-# An image every stack already has, used as a plain tool box (tar) for the storage volume.
-$script:ToolImage = 'postgres:17'
+# An image every stack already has, used as a plain tool box (tar) for the storage volume: the postgres image of
+# docker/docker-compose.prod.yml, by the same digest (change both together).
+$script:ToolImage = 'postgres:17@sha256:d74eeac9a635390a49bc21bd49fccd973de707e2a53a76ac49b552b8712ec46f'
 $script:DumpName = 'postgres.dump'
 $script:ArchiveName = 'objectstorage.tar'
 $script:ManifestName = 'manifest.json'

@@ -4,11 +4,14 @@ using System.Net;
 using System.Net.Http.Headers;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Omnichannel.Application.Auth;
 using Omnichannel.Infrastructure.Identity;
 using Omnichannel.Infrastructure.Persistence;
@@ -164,6 +167,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
             services.AddSingleton<ILogEventSink>(Logs);
             services.ConfigureDbContext<OmnichannelDbContext>(options => options.AddInterceptors(CommitFailures));
             services.AddTransient<IStartupFilter, TestRemoteIpStartupFilter>();
+            services.AddTransient<IStartupFilter, ServerBodyLimitStartupFilter>();
         });
     }
 
@@ -248,6 +252,59 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
             });
             next(app);
         };
+    }
+}
+
+/// <summary>
+/// TestServer reads a body of any length; Kestrel stops reading one that announced no length at
+/// <c>Limits.MaxRequestBodySize</c> and fails the read with a 413 <see cref="Microsoft.AspNetCore.Http.BadHttpRequestException"/>. This filter
+/// does the same in front of the pipeline, so the answer the application builds for that failure can be tested here
+/// (the real server: <c>scripts/smoke/task-026b.ps1</c>).
+/// </summary>
+internal sealed class ServerBodyLimitStartupFilter(IOptions<KestrelServerOptions> kestrel) : IStartupFilter
+{
+    public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) => app =>
+    {
+        app.Use((context, nextMiddleware) =>
+        {
+            if (context.Request.ContentLength is null && kestrel.Value.Limits.MaxRequestBodySize is { } limit)
+            {
+                context.Request.Body = new LimitedStream(context.Request.Body, limit);
+            }
+
+            return nextMiddleware(context);
+        });
+        next(app);
+    };
+
+    private sealed class LimitedStream(Stream inner, long limit) : Stream
+    {
+        private long _read;
+
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            var count = await inner.ReadAsync(buffer, cancellationToken);
+            _read += count;
+            return _read > limit
+                ? throw new Microsoft.AspNetCore.Http.BadHttpRequestException(
+                    $"Request body too large. The max request body size is {limit} bytes.", StatusCodes.Status413PayloadTooLarge)
+                : count;
+        }
+
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
+            ReadAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
+
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        public override void Flush() => throw new NotSupportedException();
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
     }
 }
 

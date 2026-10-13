@@ -125,7 +125,6 @@ try
     app.UseSerilogRequestLogging(options => options.GetMessageTemplateProperties = RequestLogProperties.Create);
     app.UseExceptionHandler();
     app.UseStatusCodePages();
-    app.UseMiddleware<RequestBodyLimitMiddleware>();
 
     if (app.Environment.IsDevelopment())
     {
@@ -149,8 +148,15 @@ try
         options.ApplyCurrentCultureToResponseHeaders = true;
     });
 
+    // CORS before everything that can answer a request of the frontend: the browser hides an answer without
+    // Access-Control-Allow-Origin from a page on another origin, an error answer included. The CORS headers are added
+    // when the answer starts, so the 413 of the body limit, the 429 of the rate limiter, a 401 / 403 and what the
+    // exception handler writes for a failure further in all carry them. Only the redirect to HTTPS comes first: a
+    // request over plain HTTP is not answered with content at all. The body limit stays ahead of the rate limiter (a
+    // refused body is not read and uses up no permit) and of everything that reads a body.
     app.UseHttpsRedirectionBehindProxy();
     app.UseCors(FrontendCorsPolicy);
+    app.UseMiddleware<RequestBodyLimitMiddleware>();
     app.UseRateLimiter();
     app.UseAuthentication();
     app.UseAuthorization();
