@@ -77,5 +77,40 @@ export const DASHBOARD_PRESETS_WIDTH = 480;
 /** Dashboard: "Cập nhật lúc 08:05:09" / "Updated at 08:05:09" next to the refresh button. */
 export const DASHBOARD_UPDATED_WIDTH = 190;
 
-/** The one brand colour (AntD `token.colorPrimary`); status colours are used for states only. */
-export const PRIMARY_COLOR = '#1677ff';
+/**
+ * The one brand colour (AntD `token.colorPrimary`); status colours are used for states only. AntD's blue-7: as text
+ * on white 6.2:1 and under white text the same (its default, blue-6 `#1677ff`, gives 4.1:1 - below the 4.5:1 of
+ * WCAG AA, measured with axe in the browser in task 026c).
+ */
+export const PRIMARY_COLOR = '#0958d9';
+
+/**
+ * The colours of the theme that carry text, each at least 4.5:1 (WCAG AA) on white and on the tinted background AntD
+ * derives from it (tags, alerts, the selected menu item). Measured in the browser with axe (report 026c); AntD's
+ * defaults in brackets with what they gave.
+ */
+export const THEME_COLORS = {
+  colorPrimary: PRIMARY_COLOR,
+  /** "Processing" tags and info alerts follow the brand colour. */
+  colorInfo: PRIMARY_COLOR,
+  /** green-8 (`#52c41a`: 2.2:1 as tag text). */
+  colorSuccess: '#237804',
+  /** (`#faad14`: below 2:1 as tag text.) */
+  colorWarning: '#a35a00',
+  /** red-7 (`#ff4d4f`: 3.3:1 - also the text of a field error). */
+  colorError: '#cf1322',
+  // The tints behind a status text stay AntD's light ones: derived from the darker colours above they would turn
+  // grey and dark (seen in the browser: a success tag on #adb8a5).
+  colorSuccessBg: '#f6ffed',
+  colorSuccessBorder: '#b7eb8f',
+  colorWarningBg: '#fffbe6',
+  colorWarningBorder: '#ffe58f',
+  colorErrorBg: '#fff2f0',
+  colorErrorBorder: '#ffccc7',
+  /** Secondary text, statistic titles, hints (45 % black: 3.3:1). */
+  colorTextDescription: 'rgba(0, 0, 0, 0.65)',
+  /** Labels of a description list (the same 45 % black). */
+  colorTextTertiary: 'rgba(0, 0, 0, 0.65)',
+  /** Placeholders - in the filters they are the visible name of the field (25 % black: 1.8:1). */
+  colorTextPlaceholder: 'rgba(0, 0, 0, 0.6)',
+} as const;

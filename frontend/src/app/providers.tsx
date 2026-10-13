@@ -5,7 +5,7 @@ import type { ReactNode } from 'react';
 import { I18nextProvider, useTranslation } from 'react-i18next';
 import { Provider as ReduxProvider } from 'react-redux';
 import i18n, { currentLanguage, type Language } from '@/shared/i18n';
-import { PRIMARY_COLOR } from '@/shared/components/layout';
+import { THEME_COLORS } from '@/shared/components/layout';
 import type { AppStore } from './store';
 
 const ANTD_LOCALES = { vi: viVN, en: enUS } satisfies Record<Language, typeof viVN>;
@@ -25,7 +25,7 @@ function AntdProvider({ children }: { children: ReactNode }) {
   return (
     <ConfigProvider
       locale={ANTD_LOCALES[currentLanguage()]}
-      theme={{ token: { colorPrimary: PRIMARY_COLOR } }}
+      theme={{ token: THEME_COLORS }}
       form={{ validateMessages: { required: t('common.requiredField') } }}
     >
       <AntApp>{children}</AntApp>

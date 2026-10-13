@@ -335,6 +335,8 @@ export function DashboardPage() {
               type="secondary"
               ellipsis
               data-testid="dashboard-updated"
+              // The numbers below change without a click when a hint arrives: said once, without taking the focus.
+              aria-live="polite"
               style={{ width: DASHBOARD_UPDATED_WIDTH, textAlign: 'end' }}
             >
               {summary ? t('dashboard.updatedAt', { time: dayjs(summary.generatedAt).format('HH:mm:ss') }) : ''}

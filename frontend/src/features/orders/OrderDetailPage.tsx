@@ -271,7 +271,11 @@ export function OrderDetailPage() {
                     {task.attempts.length === 0 ? (
                       <Typography.Text type="secondary">{t('orderDetail.tasks.noAttempts')}</Typography.Text>
                     ) : (
-                      <AttemptsTable attempts={task.attempts} />
+                      <AttemptsTable
+                        attempts={task.attempts}
+                        // One table per task on this page: each scroll region gets a name of its own.
+                        label={`${t('processing.detail.attempts.title')}: ${t(`processing.taskTypes.${task.taskType}`, task.taskType)}`}
+                      />
                     )}
                     <div style={{ marginTop: 12 }}>
                       <RetryTaskButton taskId={task.taskId} status={task.status} orderId={order.orderId} />

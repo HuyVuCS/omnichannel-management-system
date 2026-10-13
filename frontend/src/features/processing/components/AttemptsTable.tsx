@@ -2,6 +2,7 @@ import { Table, Tag, type TableProps } from 'antd';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { TruncatedText } from '@/shared/components/TruncatedText';
+import { useKeyboardScrollableTable } from '@/shared/hooks/useKeyboardScrollableTable';
 import { formatDateTime } from '@/shared/utils/format';
 import type { AttemptStatus, ProcessingAttempt } from '../processingApi';
 
@@ -20,8 +21,10 @@ const LABELLED_ERROR_CODES: readonly string[] = ['stale_no_progress'];
  * and what went wrong. Long values are one truncated line with the full text as a tooltip. The error message is the one
  * the API sanitised for display.
  */
-export function AttemptsTable({ attempts }: { attempts: ProcessingAttempt[] }) {
+export function AttemptsTable({ attempts, label }: { attempts: ProcessingAttempt[]; label?: string }) {
   const { t } = useTranslation();
+  // The table is wider than its card and its rows hold nothing to tab to.
+  const scrollRegion = useKeyboardScrollableTable(label ?? t('processing.detail.attempts.title'));
 
   const columns = useMemo<TableProps<ProcessingAttempt>['columns']>(
     () => [
@@ -105,6 +108,7 @@ export function AttemptsTable({ attempts }: { attempts: ProcessingAttempt[] }) {
 
   return (
     <Table<ProcessingAttempt>
+      ref={scrollRegion}
       rowKey="attemptNo"
       size="small"
       columns={columns}
