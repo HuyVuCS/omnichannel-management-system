@@ -63,7 +63,9 @@ function Invoke-Sql([string]$Sql, [switch]$Table) {
     try {
         [void](Invoke-Docker @('cp', $file, "$($script:Postgres):/tmp/omni-load.sql"))
         $format = if ($Table) { @() } else { @('-At') }
-        return @(Invoke-Docker (@('exec', $script:Postgres, 'psql', '-h', '127.0.0.1', '-U', 'postgres', '-d', 'omnichannel', '-v', 'ON_ERROR_STOP=1') + $format + @('-f', '/tmp/omni-load.sql')))
+        $rows = @(Invoke-Docker (@('exec', $script:Postgres, 'psql', '-h', '127.0.0.1', '-U', 'postgres', '-d', 'omnichannel', '-v', 'ON_ERROR_STOP=1') + $format + @('-f', '/tmp/omni-load.sql')))
+        # The comma keeps a single row an array: unrolled, its [0] would be the first character.
+        return , $rows
     } finally { Remove-Item $file -ErrorAction SilentlyContinue }
 }
 
@@ -157,14 +159,20 @@ from "ProcessingTasks" t join "Orders" o on o."OrderId" = t."OrderId"
 where t."TaskType" = 'OrderProcessing' and o."ExternalOrderId" like '$prefix%';
 "@)[0].Split('|')
     $stock = (Invoke-Sql "select sum(i.`"TotalStock`"), sum(i.`"ReservedStock`"), sum(i.`"AvailableStock`") from `"Inventories`" i join `"Products`" p on p.`"ProductId`" = i.`"ProductId`" where p.`"Sku`" like '$($prefix.ToUpperInvariant())%';")[0]
-    $queues = @(Invoke-Docker @('exec', $rabbit, 'rabbitmqctl', '-q', 'list_queues', 'name', 'messages') | Where-Object { $_ -match '\s[1-9]\d*$' })
+    # The last inventory.changed messages are still on their way to the stock-sync consumers when the tasks are done:
+    # the queues get half a minute to empty. A message in a dead-letter queue never leaves it.
+    $queueDeadline = (Get-Date).AddSeconds(30)
+    do {
+        $queues = @(Invoke-Docker @('exec', $rabbit, 'rabbitmqctl', '-q', 'list_queues', 'name', 'messages') | Where-Object { $_ -match '\s[1-9]\d*$' })
+        if ($queues.Count -gt 0) { Start-Sleep -Seconds 2 }
+    } while (($queues.Count -gt 0) -and ((Get-Date) -lt $queueDeadline))
 
     Write-Host ("  intake: {0} requests in {1:N1} s = {2:N1}/s; answer p50 {3:N0} ms, p95 {4:N0} ms, p99 {5:N0} ms, max {6:N0} ms; dropped iterations {7}" -f `
         $summary.requests, $summary.testSeconds, $summary.requestsPerSecond, $summary.durationMs.p50, $summary.durationMs.p95, $summary.durationMs.p99, $summary.durationMs.max, $summary.droppedIterations)
     $statuses = @($summary.statuses.PSObject.Properties | Where-Object { $_.Value -gt 0 } | ForEach-Object { "$($_.Name): $($_.Value)" }) -join ', '
     Write-Host "  intake answers: $statuses"
     Write-Host ("  Order Worker: {0} tasks, intake -> finished p50 {1} ms, p95 {2} ms, max {3} ms; {4} tasks/s over the run; {5} attempts; drained {6:N0} s after k6 ended" -f `
-        $worker[0], $worker[1], $worker[2], $worker[3], $worker[4], $worker[5], ($drained - $started).TotalSeconds - $summary.testSeconds)
+        $worker[0], $worker[1], $worker[2], $worker[3], $worker[4], $worker[5], (($drained - $started).TotalSeconds - $summary.testSeconds))
     Write-Host "  orders: $(@($byStatus.Keys | Sort-Object | ForEach-Object { "$_ $($byStatus[$_])" }) -join ', '); stock of the products (total|reserved|available): $stock"
     if (Test-Path $statsFile) {
         $samples = Get-Content $statsFile | ForEach-Object { $p = $_.Split(';') ; [pscustomobject]@{ Name = $p[0]; Cpu = [double]($p[1].TrimEnd('%')); Mem = [double](($p[2] -split '/')[0] -replace '[^0-9.]', '') ; Unit = (($p[2] -split '/')[0] -replace '[0-9. ]', '') } }
@@ -179,7 +187,7 @@ where t."TaskType" = 'OrderProcessing' and o."ExternalOrderId" like '$prefix%';
 
     # 5. What the scenario must show.
     Expect 'unfinished tasks and waiting messages after the drain' 0 $open
-    Expect 'messages left in a queue or a dead-letter queue' 0 $queues.Count
+    Expect 'queues and dead-letter queues that still hold a message' 0 $queues.Count
     Expect 'requests the intake did not accept (not 202)' 0 ($summary.requests - $summary.statuses.'202')
     switch ($name) {
         'contention' {
@@ -189,8 +197,10 @@ where t."TaskType" = 'OrderProcessing' and o."ExternalOrderId" like '$prefix%';
             Expect 'stock total|reserved|available' '100|100|0' $stock
         }
         'spread' {
-            Expect 'orders' 2000 $orders
-            Expect 'orders Reserved (the stock was enough for all)' 2000 ([int]$byStatus['Reserved'])
+            # 20 per second for 100 s: k6 starts 2,000 or 2,001 iterations (one at each end of the time).
+            Expect 'requests at least' $true ($summary.requests -ge 2000)
+            Expect 'orders = accepted requests' $summary.requests $orders
+            Expect 'orders Reserved (the stock was enough for all)' $orders ([int]$byStatus['Reserved'])
             Expect 'iterations k6 could not start in time' 0 $summary.droppedIterations
         }
         'duplicates' {
