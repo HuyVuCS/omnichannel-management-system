@@ -14,6 +14,7 @@ using Omnichannel.Application.Processing;
 using Omnichannel.Domain.Entities;
 using Omnichannel.Domain.Enums;
 using Omnichannel.Infrastructure.ExternalProviders;
+using Omnichannel.Infrastructure.Persistence;
 using Omnichannel.Infrastructure.RabbitMQ;
 using Omnichannel.Workers;
 using Omnichannel.Workers.InvoiceWorker;
@@ -235,7 +236,10 @@ public sealed partial class PaymentWorkersTests(WorkersFixture fixture) : IAsync
             BeforeInvoiceCompletion = () => fixture.WithServicesAsync(async services =>
             {
                 var invoices = services.GetRequiredService<IInvoiceProcessingService>();
-                var attempt = await invoices.StartAttemptAsync(paid.InvoiceTaskId, InvoiceMessageHandler.WorkerName, "other-instance", CancellationToken.None);
+                var messageId = await services.GetRequiredService<OmnichannelDbContext>().ProcessingTasks
+                    .Where(t => t.TaskId == paid.InvoiceTaskId).Select(t => t.MessageId).SingleAsync();
+                var attempt = await invoices.StartAttemptAsync(
+                    paid.InvoiceTaskId, messageId!, InvoiceMessageHandler.WorkerName, "other-instance", CancellationToken.None);
                 await invoices.CompleteAsync(
                     paid.InvoiceTaskId,
                     attempt!.AttemptId,

@@ -22,10 +22,16 @@ internal sealed class ProcessingAttemptStore(
 {
     /// <summary>
     /// Marks stale Running attempts abandoned, inserts the next attempt and sets the task InProgress (committed before any
-    /// business work). Null when the task is already terminal.
+    /// business work). Null when there is nothing to start: the task is already terminal, or
+    /// <paramref name="messageId"/> is not the message the task waits for.
     /// </summary>
+    /// <param name="messageId">
+    /// The id of the delivered message. A manual retry gives the task a new message; a copy of the one before it that is
+    /// still on its way (a retry queue, a redelivery after the task was failed as stale) must not run next to the new one.
+    /// </param>
     public async Task<AttemptStart?> StartAttemptAsync(
         Guid taskId,
+        string messageId,
         string workerName,
         string workerInstanceId,
         CancellationToken cancellationToken)
@@ -34,6 +40,15 @@ internal sealed class ProcessingAttemptStore(
         var task = await LockTaskAsync(taskId, cancellationToken);
         if (task.IsTerminal)
         {
+            return null;
+        }
+
+        // Under the row lock: a manual retry that commits after this check waits for this attempt's bookkeeping.
+        if (task.MessageId is { } current && !string.Equals(current, messageId, StringComparison.Ordinal))
+        {
+            logger.LogInformation(
+                "Message {MessageId} is not the message task {TaskId} waits for ({CurrentMessageId}): replaced by a manual retry; no attempt is started",
+                messageId, taskId, current);
             return null;
         }
 
@@ -71,7 +86,7 @@ internal sealed class ProcessingAttemptStore(
     /// in one transaction.
     /// </summary>
     /// <returns>The failed attempt number; null when the task was already completed (nothing to fail).</returns>
-    public async Task<int?> RecordFinalFailureAsync(
+    public Task<int?> RecordFinalFailureAsync(
         Guid taskId,
         Guid? attemptId,
         string errorCode,
@@ -79,6 +94,36 @@ internal sealed class ProcessingAttemptStore(
         string workerName,
         string workerInstanceId,
         string queue,
+        CancellationToken cancellationToken) =>
+        FailAsync(taskId, attemptId, errorCode, errorMessage, workerName, workerInstanceId, queue, unchangedSince: null, cancellationToken);
+
+    /// <summary>
+    /// The final failure of a task nothing has touched since <paramref name="unchangedSince"/> (the stale-task sweep): a
+    /// new attempt of <paramref name="workerName"/> that fails with <see cref="AttemptErrorCodes.StaleNoProgress"/>, and
+    /// everything <see cref="RecordFinalFailureAsync"/> writes. Status and age are checked again under the row lock, so a
+    /// task a worker started, finished or rescheduled meanwhile is left alone.
+    /// </summary>
+    /// <returns>The failed attempt number; null when the task is no longer stale (nothing was written).</returns>
+    public Task<int?> FailStaleAsync(
+        Guid taskId,
+        DateTimeOffset unchangedSince,
+        string errorMessage,
+        string workerName,
+        string workerInstanceId,
+        CancellationToken cancellationToken) =>
+        FailAsync(
+            taskId, attemptId: null, AttemptErrorCodes.StaleNoProgress, errorMessage, workerName, workerInstanceId, queue: null,
+            unchangedSince, cancellationToken);
+
+    private async Task<int?> FailAsync(
+        Guid taskId,
+        Guid? attemptId,
+        string errorCode,
+        string errorMessage,
+        string workerName,
+        string workerInstanceId,
+        string? queue,
+        DateTimeOffset? unchangedSince,
         CancellationToken cancellationToken)
     {
         dbContext.ChangeTracker.Clear();
@@ -86,7 +131,7 @@ internal sealed class ProcessingAttemptStore(
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
         var now = timeProvider.GetUtcNow();
         var task = await LockTaskAsync(taskId, cancellationToken);
-        if (task.IsTerminal)
+        if (task.IsTerminal || (unchangedSince is { } since && (task.UpdatedAt ?? task.CreatedAt) >= since))
         {
             return null;
         }
@@ -131,9 +176,19 @@ internal sealed class ProcessingAttemptStore(
 
         await transaction.CommitAsync(cancellationToken);
 
-        logger.LogError(
-            "Task {TaskId} failed permanently at attempt {AttemptNo} ({ErrorCode}); message goes to the DLQ",
-            task.TaskId, attemptNo, errorCode);
+        if (queue is null)
+        {
+            logger.LogError(
+                "Task {TaskId} failed at attempt {AttemptNo} ({ErrorCode}): no progress, no message is expected any more",
+                task.TaskId, attemptNo, errorCode);
+        }
+        else
+        {
+            logger.LogError(
+                "Task {TaskId} failed permanently at attempt {AttemptNo} ({ErrorCode}); message goes to the DLQ",
+                task.TaskId, attemptNo, errorCode);
+        }
+
         return attemptNo;
     }
 

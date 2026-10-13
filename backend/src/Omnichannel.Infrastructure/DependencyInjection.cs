@@ -75,6 +75,8 @@ public static class DependencyInjection
         });
 
         services.AddScoped<ProcessingAttemptStore>();
+        // Run by the Workers host only (its options are bound and validated there).
+        services.AddScoped<IStaleTaskSweep, StaleTaskSweep>();
         services.AddScoped<AlertStore>();
         services.AddScoped<IAlertService, AlertService>();
         services.AddScoped<IChannelService, ChannelService>();

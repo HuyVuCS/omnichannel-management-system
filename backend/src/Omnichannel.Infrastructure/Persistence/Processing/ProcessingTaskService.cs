@@ -53,6 +53,11 @@ internal sealed class ProcessingTaskService(
             tasks = tasks.Where(t => t.ChannelId == channelId);
         }
 
+        if (query.ProductId is { } productId)
+        {
+            tasks = tasks.Where(t => t.ProductId == productId);
+        }
+
         if (!string.IsNullOrWhiteSpace(query.CorrelationId))
         {
             var correlationId = query.CorrelationId.Trim();

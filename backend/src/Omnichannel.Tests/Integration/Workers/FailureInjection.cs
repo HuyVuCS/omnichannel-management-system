@@ -89,10 +89,10 @@ internal static class FailureInjectionExtensions
         public Task<ProcessingTaskStatus?> GetTaskStatusAsync(Guid taskId, CancellationToken cancellationToken) =>
             inner.GetTaskStatusAsync(taskId, cancellationToken);
 
-        public Task<AttemptStart?> StartAttemptAsync(Guid taskId, string workerName, string workerInstanceId, CancellationToken cancellationToken) =>
+        public Task<AttemptStart?> StartAttemptAsync(Guid taskId, string messageId, string workerName, string workerInstanceId, CancellationToken cancellationToken) =>
             failures.NextStartAttemptFails(taskId)
                 ? throw new InvalidOperationException("injected crash before the attempt started")
-                : inner.StartAttemptAsync(taskId, workerName, workerInstanceId, cancellationToken);
+                : inner.StartAttemptAsync(taskId, messageId, workerName, workerInstanceId, cancellationToken);
 
         public Task<ReservationResult> ReserveAsync(OrderCreatedPayload order, Guid attemptId, string workerName, CancellationToken cancellationToken) =>
             failures.NextReserveFails(order.TaskId)

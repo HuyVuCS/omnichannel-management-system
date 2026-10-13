@@ -47,7 +47,7 @@ public sealed class SystemEventDetailsTests
                 typeof(ReconciliationEvents), typeof(ReportEvents), typeof(StockSyncEvents), typeof(UserEvents)
             }.Select(t => t.Name),
             EventClasses.Select(t => t.Name).Order(StringComparer.Ordinal));
-        Assert.Equal(20, EventTypeConstants().Count());
+        Assert.Equal(21, EventTypeConstants().Count());
     }
 
     [Fact]

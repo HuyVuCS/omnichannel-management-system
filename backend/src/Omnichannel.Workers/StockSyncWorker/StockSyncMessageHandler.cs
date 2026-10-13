@@ -90,10 +90,10 @@ public sealed class StockSyncMessageHandler(
             return HandlerResult.Ack;
         }
 
-        var attempt = await stockSync.StartAttemptAsync(taskId, WorkerName, instanceId, cancellationToken);
+        var attempt = await stockSync.StartAttemptAsync(taskId, message.Envelope.MessageId, WorkerName, instanceId, cancellationToken);
         if (attempt is null)
         {
-            logger.LogInformation("Duplicate delivery of message {MessageId}: task completed meanwhile; acknowledged", message.Envelope.MessageId);
+            logger.LogInformation("Delivery of message {MessageId} starts no attempt: the task was completed meanwhile, or a manual retry replaced the message; acknowledged", message.Envelope.MessageId);
             return HandlerResult.Ack;
         }
 

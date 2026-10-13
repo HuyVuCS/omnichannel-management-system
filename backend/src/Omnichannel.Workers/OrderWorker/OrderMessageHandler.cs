@@ -60,10 +60,10 @@ public sealed class OrderMessageHandler(
             return HandlerResult.Ack;
         }
 
-        var attempt = await reservations.StartAttemptAsync(message.TaskId, WorkerName, instanceId, cancellationToken);
+        var attempt = await reservations.StartAttemptAsync(message.TaskId, message.Envelope.MessageId, WorkerName, instanceId, cancellationToken);
         if (attempt is null)
         {
-            logger.LogInformation("Duplicate delivery of message {MessageId}: task completed meanwhile; acknowledged", message.Envelope.MessageId);
+            logger.LogInformation("Delivery of message {MessageId} starts no attempt: the task was completed meanwhile, or a manual retry replaced the message; acknowledged", message.Envelope.MessageId);
             return HandlerResult.Ack;
         }
 

@@ -149,6 +149,10 @@ Content-Type: application/json
 GET {{baseUrl}}/api/processing/tasks?taskType=StockSync&channelId={{channelId}}
 Authorization: Bearer {{token}}
 
+### Tasks of one product (combinable with every other filter of the list)
+GET {{baseUrl}}/api/processing/tasks?productId={{productId}}&status=Failed
+Authorization: Bearer {{token}}
+
 ### Dashboard summary (default range: the last 24 hours)
 GET {{baseUrl}}/api/dashboard/summary
 Authorization: Bearer {{token}}

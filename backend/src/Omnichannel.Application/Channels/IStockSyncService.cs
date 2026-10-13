@@ -30,7 +30,7 @@ public interface IStockSyncService
     /// Locks the task, marks stale Running attempts abandoned, inserts the next attempt and sets the task InProgress
     /// (committed before the push). Null when the task is already terminal.
     /// </summary>
-    Task<AttemptStart?> StartAttemptAsync(Guid taskId, string workerName, string workerInstanceId, CancellationToken cancellationToken);
+    Task<AttemptStart?> StartAttemptAsync(Guid taskId, string messageId, string workerName, string workerInstanceId, CancellationToken cancellationToken);
 
     /// <summary>
     /// What to push right now: the mapping, the SKU and the <b>current</b> available stock, in one query without a lock.

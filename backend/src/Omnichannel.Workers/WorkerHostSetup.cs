@@ -3,6 +3,7 @@ using Omnichannel.Application;
 using Omnichannel.Application.Channels;
 using Omnichannel.Application.Common.Abstractions;
 using Omnichannel.Application.Notifications;
+using Omnichannel.Application.Processing;
 using Omnichannel.Infrastructure;
 using Omnichannel.Infrastructure.ExternalChannels;
 using Omnichannel.Infrastructure.ExternalProviders;
@@ -15,6 +16,7 @@ using Omnichannel.Workers.OrderWorker;
 using Omnichannel.Workers.OutboxPublisher;
 using Omnichannel.Workers.ReconciliationWorker;
 using Omnichannel.Workers.ReportExportWorker;
+using Omnichannel.Workers.StaleTaskWorker;
 using Omnichannel.Workers.StockSyncWorker;
 
 namespace Omnichannel.Workers;
@@ -68,6 +70,12 @@ public static class WorkerHostSetup
         services.AddSingleton<IValidateOptions<ReconciliationOptions>, ReconciliationOptionsValidator>();
         services.AddScoped<StockReconciliation>();
 
+        // Tasks whose message is lost: failed after StaleAfter, which must leave room for the waits configured above.
+        services.AddOptions<StaleTaskOptions>()
+            .Bind(configuration.GetSection(StaleTaskOptions.SectionName))
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<StaleTaskOptions>, StaleTaskOptionsValidator>();
+
         services.AddOptions<ReportExportWorkerOptions>()
             .Bind(configuration.GetSection(ReportExportWorkerOptions.SectionName))
             .ValidateOnStart();
@@ -116,6 +124,7 @@ public static class WorkerHostSetup
         services.AddHostedService<NotificationWorkerService>();
         services.AddHostedService<ReportExportCleanupService>();
         services.AddHostedService<ReconciliationService>();
+        services.AddHostedService<StaleTaskSweepService>();
 
         return services;
     }

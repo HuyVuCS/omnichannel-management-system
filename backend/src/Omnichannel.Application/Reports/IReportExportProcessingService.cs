@@ -17,7 +17,7 @@ public interface IReportExportProcessingService
     /// Locks the task, marks stale Running attempts abandoned, inserts the next attempt and sets the task InProgress
     /// (committed before any work). Null when the task is already terminal.
     /// </summary>
-    Task<AttemptStart?> StartAttemptAsync(Guid taskId, string workerName, string workerInstanceId, CancellationToken cancellationToken);
+    Task<AttemptStart?> StartAttemptAsync(Guid taskId, string messageId, string workerName, string workerInstanceId, CancellationToken cancellationToken);
 
     /// <summary>
     /// Reads the rows of the export in one <c>REPEATABLE READ, READ ONLY</c> transaction - every sheet from the same
