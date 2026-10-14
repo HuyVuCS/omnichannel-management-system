@@ -72,6 +72,13 @@ internal sealed class ProcessingTaskConfiguration : IEntityTypeConfiguration<Pro
         // list sorts both in the same direction, so one index serves "newest first" and "oldest first".
         builder.HasIndex(x => new { x.CreatedAt, x.TaskId });
 
+        // Task 027 A2, measured on the same 24,000 tasks plus a channel that never had a successful stock sync (stock
+        // sync switched off): the dashboard's "last successful sync" per channel. Through (Status, UpdatedAt) that
+        // channel walked every succeeded task before answering null (channels statement 0.2 ms -> 13 ms); here it is
+        // one step backwards per channel, found or not (0.1-0.2 ms either way).
+        builder.HasIndex(x => new { x.ChannelId, x.UpdatedAt })
+            .HasFilter("\"TaskType\" = 'StockSync' AND \"Status\" = 'Succeeded'");
+
         // Intake idempotency: the same external order (key) can create only one task, before any Order exists.
         builder.HasIndex(x => x.IdempotencyKey)
             .IsUnique()

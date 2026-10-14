@@ -116,13 +116,17 @@ internal sealed class ProductImageService(
 
         // The storage is asked before the transaction, never inside it.
         var staged = await CheckStagedAsync(productId, stagingKey, cancellationToken);
+        if (staged is null)
+        {
+            return await AlreadyConfirmedOrNotUploadedAsync(productId, uploadId, cancellationToken);
+        }
 
         var finalKey = ProductImageKey.NewFinalFor(productId, uploadId);
         var copiedAt = timeProvider.GetUtcNow();
-        if (!await storage.CopyAsync(stagingKey, finalKey, staged.ContentType, cancellationToken))
+        if (!await storage.CopyAsync(stagingKey, finalKey, staged.Value.ContentType, cancellationToken))
         {
-            // Deleted between the look and the copy (a rejected concurrent confirmation of the same upload).
-            throw InvalidKey(ValidationMessages.Keys.ImageNotUploaded);
+            // Deleted between the look and the copy (a concurrent confirmation of the same upload, finished or rejected).
+            return await AlreadyConfirmedOrNotUploadedAsync(productId, uploadId, cancellationToken);
         }
 
         string? previousKey;
@@ -202,13 +206,41 @@ internal sealed class ProductImageService(
     }
 
     /// <summary>
-    /// The upload as it is now, before anything is copied: it exists, is not too large and has an allowed content type.
-    /// The cheap part of the checks - an upload that can never become an image is deleted without being copied.
+    /// The upload is gone. Either nothing was uploaded, or a concurrent confirmation of the same upload committed and
+    /// deleted the staging object after this one read the product (review 026c F1: a double click). The product is read
+    /// again: when its image is a copy of this upload, the answer is the one of a repeated confirmation.
     /// </summary>
-    private async Task<(string ContentType, long Length)> CheckStagedAsync(Guid productId, string stagingKey, CancellationToken cancellationToken)
+    private async Task<ProductResponse> AlreadyConfirmedOrNotUploadedAsync(
+        Guid productId,
+        Guid uploadId,
+        CancellationToken cancellationToken)
     {
-        var staged = await storage.HeadAsync(stagingKey, cancellationToken)
-            ?? throw InvalidKey(ValidationMessages.Keys.ImageNotUploaded);
+        var imageKey = await dbContext.Products
+            .AsNoTracking()
+            .Where(p => p.ProductId == productId)
+            .Select(p => p.ImageKey)
+            .SingleOrDefaultAsync(cancellationToken);
+
+        if (ProductImageKey.IsFinalOf(imageKey, uploadId))
+        {
+            return await products.GetAsync(productId, cancellationToken);
+        }
+
+        throw InvalidKey(ValidationMessages.Keys.ImageNotUploaded);
+    }
+
+    /// <summary>
+    /// The upload as it is now, before anything is copied: it exists (null when it does not), is not too large and has
+    /// an allowed content type. The cheap part of the checks - an upload that can never become an image is deleted
+    /// without being copied.
+    /// </summary>
+    private async Task<(string ContentType, long Length)?> CheckStagedAsync(Guid productId, string stagingKey, CancellationToken cancellationToken)
+    {
+        var staged = await storage.HeadAsync(stagingKey, cancellationToken);
+        if (staged is null)
+        {
+            return null;
+        }
 
         if (RejectionOf(staged) is { } rejection)
         {

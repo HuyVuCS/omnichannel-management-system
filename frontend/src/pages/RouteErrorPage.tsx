@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate, useRouteError } from 'react-router';
 import { PageLoadError } from '@/app/lazyPage';
 import { PAGE_ACTION_WIDTH } from '@/shared/components/layout';
+import { ResultTitle } from '@/shared/components/ResultTitle';
 import { browser } from '@/shared/utils/browser';
 
 interface RouteErrorPageProps {
@@ -51,7 +52,7 @@ export function RouteErrorPage({ fullScreen = false }: RouteErrorPageProps) {
     >
       <Result
         status={outdated ? 'info' : 'error'}
-        title={t(outdated ? 'pages.routeError.outdatedTitle' : 'pages.routeError.title')}
+        title={<ResultTitle>{t(outdated ? 'pages.routeError.outdatedTitle' : 'pages.routeError.title')}</ResultTitle>}
         subTitle={t(outdated ? 'pages.routeError.outdatedDescription' : 'pages.routeError.description')}
         extra={outdated || fullScreen ? [reload] : [toDashboard, reload]}
       />

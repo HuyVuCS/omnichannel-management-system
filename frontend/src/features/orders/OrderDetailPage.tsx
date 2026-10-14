@@ -30,6 +30,7 @@ import {
   WIDE_ACTION_WIDTH,
 } from '@/shared/components/layout';
 import { PageHeader } from '@/shared/components/PageHeader';
+import { ResultTitle } from '@/shared/components/ResultTitle';
 import { TruncatedText } from '@/shared/components/TruncatedText';
 import { formatDateTime, formatMoney, formatNumber } from '@/shared/utils/format';
 import { isGuid } from '@/shared/utils/guid';
@@ -127,7 +128,7 @@ export function OrderDetailPage() {
     return (
       <Result
         status="404"
-        title={t('orderDetail.notFound.title')}
+        title={<ResultTitle>{t('orderDetail.notFound.title')}</ResultTitle>}
         subTitle={t('orderDetail.notFound.description')}
         extra={
           <Button type="primary" onClick={() => void navigate(ORDERS_PATH)} style={{ width: PAGE_ACTION_WIDTH }}>

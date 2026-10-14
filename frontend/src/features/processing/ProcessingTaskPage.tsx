@@ -9,6 +9,7 @@ import { problemMessages } from '@/shared/api/problemDetails';
 import { isApiError } from '@/shared/api/types';
 import { PAGE_ACTION_WIDTH, SECONDARY_ACTION_WIDTH, SHORT_SUMMARY_LABEL_WIDTH } from '@/shared/components/layout';
 import { PageHeader } from '@/shared/components/PageHeader';
+import { ResultTitle } from '@/shared/components/ResultTitle';
 import { formatDateTime, formatNumber } from '@/shared/utils/format';
 import { isGuid } from '@/shared/utils/guid';
 import { AttemptsTable } from './components/AttemptsTable';
@@ -68,7 +69,7 @@ export function ProcessingTaskPage() {
     return (
       <Result
         status="404"
-        title={t('processing.detail.notFound.title')}
+        title={<ResultTitle>{t('processing.detail.notFound.title')}</ResultTitle>}
         subTitle={t('processing.detail.notFound.description')}
         extra={
           <Button type="primary" onClick={() => void navigate(PROCESSING_PATH)} style={{ width: PAGE_ACTION_WIDTH }}>

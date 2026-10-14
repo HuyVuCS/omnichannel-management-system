@@ -8,3 +8,14 @@ body,
 body {
   margin: 0;
 }
+
+/*
+ * Visible focus (task 027 A3, review 026c q1): one ring for every focusable element of the application - buttons,
+ * links, menu items, inputs, sortable column headers - in the brand blue (6.2:1 on white; WCAG 1.4.11 asks 3:1).
+ * `!important` because AntD's own focus rules are more specific (`.ant-btn:not(:disabled):focus-visible`) and some set
+ * `outline: 0`; the theme token `colorPrimaryBorder` is not touched (it also draws info alerts and tags).
+ */
+:focus-visible {
+  outline: 2px solid #0958d9 !important;
+  outline-offset: 2px !important;
+}
