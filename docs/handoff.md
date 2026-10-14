@@ -3,18 +3,15 @@
 This file is an index and a snapshot of what is in flight. The repository documents are the memory; follow the links.
 
 ## 1. Snapshot
-- Written: 2026-10-13 23:05 (+07:00), by Claude Code, in the middle of task 026c (Parts A–D done, Part G waiting).
-- Branch `master`, pushed to `origin` (`HuyVuCS/omnichannel-management-system`, public). HEAD: `6e930cc`
-  "task 026c: report - results of CI and of the development smoke runs filled in" (this file is committed on top).
-  Task 026c is `2f78c4e` … `70b1d3f` (code, scripts, README, runbook; CI run 38426116916 green on `70b1d3f`) and
-  `e6c7afc` + `6e930cc` (report).
-- Branch `production` is at `a980747` — what the live frontend and the live stack run (image tag `a980747a49fc`).
-- Uncommitted: `docs/tasks/026b-database-performance-stale-tasks.review.md` (an edit by Cowork: F6 done by the user;
-  not Claude Code's to commit).
-- Nothing of Claude Code is running (no host, preview server, throwaway stack or measuring container). Running on the
-  machine: the development containers (`omnichannel`) and the **production stack** (`omnichannel-prod`), untouched.
-- Newest migration: **`20261013132359_TaskListOrderIndex`** (one index) — applied to **development**; **not yet on
-  production** (production is at `20261013092919_PerformanceIndexes`; Part G applies it).
+- Written: 2026-10-14 12:55 (+07:00), by Claude Code, right after the release of task 026c.
+- Branch `master`, pushed to `origin` (`HuyVuCS/omnichannel-management-system`, public). HEAD: `bcebe73`
+  "task 026c: report - Part G, the release to production (9712cf1); ..." (this file is committed on top).
+- Branch `production` is at `9712cf1` — what the live frontend and the live stack run (image tag `9712cf1f7544`;
+  rollback images `:a980747a49fc` kept).
+- Uncommitted: `docs/tasks/026b-database-performance-stale-tasks.review.md` (an edit by Cowork; not Claude Code's).
+- Nothing of Claude Code is running. Running on the machine: the development containers (`omnichannel`) and the
+  production stack (`omnichannel-prod`).
+- Newest migration: **`20261013132359_TaskListOrderIndex`** — applied to development and production (16).
 
 ## 2. Project in 5 lines
 Multi-channel order and inventory management: React dashboard → ASP.NET Core API → PostgreSQL (source of truth) →
@@ -38,41 +35,25 @@ Source-of-truth order when documents disagree:
 ## 4. Progress
 - 001–025, 025b, 025d, 026, 026b — Done (titles in [docs/roadmap.md](roadmap.md)).
 - 025c — Oracle Always Free VM (optional) — Planned
-- 026c — Follow-ups of 026b, object storage hygiene, required-field text, accessibility — **Open, in progress**
-  (report status *Partially done*): [task](tasks/026c-storage-hygiene-forms-accessibility.md),
+- 026c — Follow-ups of 026b, object storage hygiene, required-field text, accessibility — **Review** (report status
+  *Done*, released): [task](tasks/026c-storage-hygiene-forms-accessibility.md),
   [report](tasks/026c-storage-hygiene-forms-accessibility.report.md).
 - 027 — End-to-end smoke tests against the acceptance criteria — Planned
 
 ## 5. In flight — task 026c
-**Parts A–D implemented, verified, committed, pushed, applied to development; Part G (release to production) not
-started.** What was built and every number: the report. In one breath: proxy body limit 1 MiB (the API answers the
-readable 413), task list by a per-row lookup + index, the flaky frontend tests behind the red CI runs fixed, uploads
-to a staging key and copied to a final key at confirmation, signed `Content-Length`, the image clean-up in the Workers
-with a dry run, one required-field text, axe-core on every test, theme colours at AA contrast.
-Verified: backend 1935 / 1935 (one local run), 14 / 14 mutants killed, frontend 526 / 526 twice + slow, CI green;
-throwaway stack `omni026c` (removed): smoke 025 53 / 53, 026 five of five, 026b 16 / 16, 026c 41 / 41 with the drill.
-**Left — Part G**, as the task file says and by runbook sections 4, 5 and 16:
-1. USER: go-ahead for the count (step 3) and for the release.
-2. Runbook 4 steps 0–2: `set-image-tag.ps1`, `--profile migrate build` (old containers keep running).
-3. **Count, read-only:** `docker compose @stack run --rm --no-deps workers --image-cleanup-dry-run=true` — no worker
-   starts, nothing is deleted or written; tell the user the number and the keys, **wait for the go-ahead**.
-4. `run --rm migrate` (exactly `TaskListOrderIndex` pending, additive), `up -d --wait`, health; report the downtime.
-5. Push HEAD to `production`; wait for Vercel.
-6. Live: `task-026.ps1` and `task-025b.ps1` five times each (all green; a run may wait 61 s for the login limit),
-   the first `Image clean-up run ...` line in `logs workers` (what it deleted: only unreferenced objects older than
-   24 h), the images of the live products still shown (user check or the 025b step).
-7. Remove images older than the previous tag; finish the report (status, "Production steps (applied)") and commit.
-Open questions for Cowork (report, "Blocked / questions"): focus-ring contrast, the new colours, no `<h1>` per page,
-a staging key reusable while its link lives, the `updatedAt` sort, no index on `Products.ImageKey`.
-Not in a committed file elsewhere: nothing — the lessons of this chat are in the report and the runbook.
+**Report written, released, awaiting Cowork review.** Everything built, measured and released is in the report;
+Part G: count before the release 0 objects to delete (2 images in use), migration in 4 s, about 20 s of API downtime,
+the first clean-up run deleted nothing, live `task-026.ps1` 5 / 5 and `task-025b.ps1` 4 / 5.
+Open questions for Cowork (report, "Blocked / questions", 7): focus-ring contrast, the new colours, no `<h1>` per
+page, a staging key reusable while its link lives, the `updatedAt` sort, no index on `Products.ImageKey`, and the
+chunked oversize body that Funnel sometimes answers with 502 (`task-025b.ps1` steps 23–24 stay strict until decided).
+Nothing of this chat is outside committed files.
 
 ## 6. Pending for the user
-- **Go-ahead for the read-only count on production**, then for the release (section 5). The session's permission
-  layer also refuses commands against `omnichannel-prod` without an explicit yes in the chat.
-- **Look at the new colours once before the release** (brand blue `#1677ff` → `#0958d9`, darker status, secondary and
-  placeholder texts): `cd frontend; npm run dev`.
+- Open the live dashboard once: the new colours (brand blue `#0958d9`, darker status / secondary / placeholder
+  texts), the two product images on **Products**, one image upload.
 - No manual development step is open. `OMNICHANNEL_MIGRATOR_CONNECTION` is set at user level (never printed).
-- Open decisions: none in the roadmap.
+- Open decisions: none in the roadmap; the seven questions of report 026c are Cowork's.
 
 ## 7. Environment
 - **Development:** docker compose (PostgreSQL, RabbitMQ, object storage emulator), then three terminals: API,
@@ -98,7 +79,9 @@ Not in a committed file elsewhere: nothing — the lessons of this chat are in t
 
 ## 8. Gotchas learned
 - **A push to `master` deploys nothing**; only `production` does. → runbook "Release".
-- **The downtime of a release starts at `run migrate` when a service definition changed.** → runbook 4.
+- **The downtime of a release starts at `run migrate` when a service definition changed; a changed Caddyfile needs
+  `restart proxy`.** → runbook 4.
+- **Through Funnel an oversize body can be answered 502 by the tunnel** (the proxy said 413). → runbook 15, report 026c q7.
 - **Docker Desktop does not come back by itself after Windows upgrades WSL**: `wsl --status`, `docker desktop
   restart`. After a WSL restart Windows reserves other port ranges: throwaway ports below 49152. → runbook 11.
 - **Throwaway production-like stacks have their own `IMAGE_TAG`**, project name, ports and edge subnet. → runbook 4.
@@ -120,9 +103,8 @@ Not in a committed file elsewhere: nothing — the lessons of this chat are in t
 - **Inventory rows are always locked in `ProductId` order.** → log, "Task 003 result".
 
 ## 9. Next action
-**User:** say yes to the read-only count on production and to the release (section 6); look at the new colours.
-**Claude Code:** then run Part G of task 026c (section 5), finish the report and commit it.
-**Cowork:** review task 026c only after the report says the release is done; the six questions can be answered now.
+**Cowork:** review task 026c (report and diff `f363c23..bcebe73`), answer its seven questions, write the next task (027
+or a follow-up). **User:** the look at the live dashboard (section 6).
 
 ## 10. Resume prompts
 New Claude Code chat:
@@ -134,5 +116,5 @@ docs/handoff.md.")
 
 New Cowork chat:
 ```
-Dự án Management System. Đọc docs/handoff.md, docs/roadmap.md và docs/implementation-log.md trong thư mục đã kết nối, rồi tiếp tục vai trò lập kế hoạch/review theo docs/tasks/README.md. Việc tiếp theo: task 026c đang dở (Parts A–D xong, commit 2f78c4e … 70b1d3f + report 6e930cc, CI xanh; Part G — release lên production — đang chờ người dùng cho phép đếm chỉ-đọc bằng dry run rồi release). Chưa review cho đến khi report ghi release đã xong; trong lúc chờ có thể trả lời 6 câu hỏi trong report (viền focus, màu mới, thiếu h1, staging key dùng lại, sort theo updatedAt, index cho Products.ImageKey).
+Dự án Management System. Đọc docs/handoff.md, docs/roadmap.md và docs/implementation-log.md trong thư mục đã kết nối, rồi tiếp tục vai trò lập kế hoạch/review theo docs/tasks/README.md. Việc tiếp theo: review task 026c (report docs/tasks/026c-storage-hygiene-forms-accessibility.report.md, đã release lên production 9712cf1), trả lời 7 câu hỏi trong report, rồi viết task tiếp theo (027 hoặc follow-up).
 ```
