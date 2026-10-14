@@ -3,9 +3,9 @@
 This file is an index and a snapshot of what is in flight. The repository documents are the memory; follow the links.
 
 ## 1. Snapshot
-- Written: 2026-10-14 12:55 (+07:00), by Claude Code, right after the release of task 026c.
-- Branch `master`, pushed to `origin` (`HuyVuCS/omnichannel-management-system`, public). HEAD: `bcebe73`
-  "task 026c: report - Part G, the release to production (9712cf1); ..." (this file is committed on top).
+- Written: 2026-10-14 13:05 (+07:00), by Claude Code, after the release of task 026c.
+- Branch `master`, pushed to `origin` (`HuyVuCS/omnichannel-management-system`, public). HEAD: `80dfbed`
+  "docs: handoff snapshot" (this file is committed on top); the report of the release is `bcebe73`.
 - Branch `production` is at `9712cf1` — what the live frontend and the live stack run (image tag `9712cf1f7544`;
   rollback images `:a980747a49fc` kept).
 - Uncommitted: `docs/tasks/026b-database-performance-stale-tasks.review.md` (an edit by Cowork; not Claude Code's).
