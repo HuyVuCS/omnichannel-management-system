@@ -1,8 +1,9 @@
 # Report 026c — Follow-ups of 026b; object storage hygiene; one required-field text; accessibility pass
 
-Status: Partially done — Parts A to D are implemented, verified and applied to development. **Part G (the release to
-production) has not started: the task makes it wait for the user's go-ahead**, and the count of what the first
-clean-up run would delete on production comes before that (see "Manual steps for the user").
+Status: Done — Parts A to D implemented, verified and applied to development; **Part G: released to production on
+2026-10-14** (`9712cf1`, image tag `9712cf1f7544`) after the user's go-ahead ("cho phép release"). The read-only count
+before it: the first clean-up run would delete **0** objects (2 listed, both images in use) — and it deleted 0.
+One live finding (question 7): a *chunked* oversize body through Funnel is answered 502 now and then.
 Commit: `2f78c4e` (A1), `e73cd24` (A2), `e9a20d5` + `060ee4a` (B backend), `c2077c8` + `78958e9` (frontend: event label,
 C1, C2, A3), `8cb22b6` (smoke scripts, README, runbook), `70b1d3f` (README; the commit CI ran on); this report in commits of its own.
 
@@ -275,6 +276,12 @@ pane** (it was hidden, and a hidden pane does not advance the close animation): 
     otherwise fail on the new key form.
 16. **Worker test hosts run without the clean-up** unless a test switches it on (`WorkersFixture`), like the stale
     sweep and reconciliation.
+17. **Part G: the proxy was restarted** (`compose restart proxy`) after `up`: its Caddyfile is a bind mount, the
+    service definition did not change, so `up` would have kept the old limit (runbook 4 now says so).
+18. **Part G: the live checks ran in two series of five.** In the first, `task-025b.ps1` run 5 got **502** for the body
+    above 1 MiB (the proxy's log: 413; the 502 is Funnel reporting the connection the proxy closed under the rest of
+    the body). That step only asserts "refused", so `_hardening.ps1` accepts 413 or 502 there (commented). The second
+    series is the one in the table; its one red step is question 7.
 
 ## Blocked / questions for Cowork
 1. **Focus indicator.** The focus ring is AntD's light-blue outline (about 1.9:1 against white) and a sortable
@@ -294,6 +301,14 @@ pane** (it was hidden, and a hidden pane does not advance the close animation): 
    `COALESCE(UpdatedAt, CreatedAt)`; an expression index would serve it. Recorded, not added.
 6. **`Products.ImageKey` has no index:** the clean-up's reference question reads the products once per page of 200
    keys. Fine at this size; an index when products are in the tens of thousands.
+7. **A chunked oversize body through Funnel (live only).** 128 KiB + 1 *without* a Content-Length: the API's readable
+   413 in 14 of 15 live runs; once Funnel answered **502** (no CORS header, no problem document). The API answers
+   before the whole body is sent (Kestrel stops reading at 128 KiB) and the tunnel reports the closed connection —
+   the race of review 026b q1, now in front of the proxy instead of in it. With a Content-Length (what a browser's
+   `fetch` always sends) the readable 413 came in all 15 live runs and all 5 throwaway runs; on the throwaway stack
+   (no tunnel) the chunked case was readable in 5 of 5. Options: (a) accept it — no dashboard request is chunked;
+   the smoke step would then accept 502 like the 1 MiB step; (b) let the API drain an oversize chunked body up to the
+   proxy's limit before answering (more reading for a refused request). The step stays strict until decided.
 
 ## Development steps (applied)
 - Storage keys, compose services: nothing changed for development (`docker/docker-compose.yml` is untouched).
@@ -308,16 +323,31 @@ pane** (it was hidden, and a hidden pane does not advance the close animation): 
   are removed.
 
 ## Production steps (applied)
-None. Part G has not started (it needs the user's go-ahead, and the count below comes first). No request was sent to
-production in this task.
+Part G — release of `9712cf1` (runbook 4 and 5), after the user's go-ahead in the chat. Production's stateful
+containers (and the development ones) had started with Docker at 12:25:32, before the first command of this release.
+
+| # | Step (command, no secret) | Result |
+| --- | --- | --- |
+| 0 | `git log --oneline origin/production..origin/master`; the diff of the migrations and of `docker/`; applied migrations (`Get-AppliedMigrations`); products and tasks (read-only `psql`) | 12 commits; one migration (`TaskListOrderIndex`); 15 applied; only `docker/proxy/Caddyfile` changed under `docker/` (compose file unchanged); 8 products, 2 with an image; 26 tasks, all `Succeeded` |
+| 1 | `$env:GIT_COMMIT = git rev-parse HEAD`; `set-image-tag.ps1 -EnvFile docker\.env.prod` | `IMAGE_TAG: a980747a49fc -> 9712cf1f7544` |
+| 2 | `docker compose @stack --profile migrate build` | exit 0 in 5 s (layers of the drill build of the same backend code) |
+| 3 | **count:** `docker compose @stack run --rm --no-deps workers --image-cleanup-dry-run=true` | "2 objects listed; a run now would delete **0 uploads and 0 unreferenced images** older than 1.00:00:00; **2 old images in use would be kept**, 0 unknown keys" — the same 2 as the products with an image. (The one-off container also printed `libgssapi_krb5.so.2: cannot open shared object file`: Npgsql's optional Kerberos probe; the running Workers log it too, 14 times in 20 h) |
+| 4 | `docker compose @stack --profile migrate run --rm migrate` (12:32:19) | `Applying migration '20261013132359_TaskListOrderIndex'. Done.` at 12:32:23; nothing recreated (definitions unchanged) |
+| 5 | `docker compose @stack up -d --wait`; `docker compose @stack restart proxy` (deviation 17); `up -d --wait` again | `api`, `workers` x2 on `:9712cf1f7544` at 12:32:25, proxy restarted 12:32:33, everything healthy at 12:32:43; `/health` 200 on `127.0.0.1:8080` and on the public origin |
+| 6 | `git push origin 9712cf1…:refs/heads/production` | `a980747..9712cf1`; Vercel served a new build about 50 s later; its chunks contain the new theme colour and `requiredField` |
+| 7 | `task-026.ps1` live x 5 (second series) | **PASSED 11 / 11 five of five** (one run waited 61 s for the login limit) |
+| 7 | `task-025b.ps1` live x 5 (second series) | **28 / 28 in four runs**; run 2: 26 / 28 — steps 23–24, the chunked body through Funnel answered 502 (question 7). The first series (before deviation 18): `task-026` 5 / 5, `task-025b` 4 / 5 (the 1 MiB step, 502) |
+| 8 | first `ImageCleanup` run in `logs workers` | Workers 2, 12:33: "2 objects listed, **0 uploads and 0 unreferenced images deleted, 2 old images in use kept**, 0 unknown keys left alone, 0 not deleted; 358 ms"; Workers 1 found the run in progress (lock). Both logged `Image clean-up started: every 06:00:00 ... older than 1.00:00:00`. No warning or error in either Workers log since the start |
+| 9 | old images | removed `omnichannel-*:0d7abc5f5f16`; kept `:9712cf1f7544` (running) and `:a980747a49fc` (rollback) |
+
+- **Downtime:** about 20 s for the API (12:32:23 old API stopped → 12:32:43 everything healthy, proxy restart
+  included); PostgreSQL, RabbitMQ and the storage were not restarted by the release.
+- **Images of the live products:** both objects are listed by the clean-up as "in use, kept", and nothing was deleted;
+  the display in the browser is the user's look (Manual steps).
+- Rollback: a migration ran (an index only), so forward (runbook 4); the previous images `:a980747a49fc` would run
+  with the extra index.
 
 ## Manual steps for the user
-1. **Go-ahead for the count on production (read-only).** Method: after step 2 of the release procedure (the new
-   images are built, the old containers keep running), `docker compose @stack run --rm --no-deps workers
-   --image-cleanup-dry-run=true` — a one-off container of the new Workers image that starts no worker, lists the two
-   image prefixes, asks the database which of the old objects a product refers to, **deletes nothing and writes
-   nothing**, and logs the counts and the keys. I will report the number before anything else happens.
-2. **Go-ahead for the release (Part G)** after that number: runbook section 4 with section 5 for the one index
-   migration (`TaskListOrderIndex`, additive), then `task-026.ps1` and `task-025b.ps1` live five times each, the
-   first `ImageCleanup` line in the Workers log, and the images of the live products.
-3. Look at the new colours once before the release (question 2): `npm run dev` in `frontend/`, any page.
+1. Open the live dashboard once: the new colours (question 2), the two product images on **Products**, and an image
+   upload (it now goes to a staging key and is copied at confirmation).
+2. Nothing else: development is migrated, production is released, every throwaway environment is removed.

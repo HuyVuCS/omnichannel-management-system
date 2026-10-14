@@ -96,11 +96,15 @@ function Invoke-HardeningChecks([string]$ApiOrigin, [string]$StorageOrigin, [int
     $chunked = Invoke-HardeningRefused POST "$ApiOrigin/api/auth/login" $tooLarge -Chunked
     Assert-Step ('{0:00} the same body without a Content-Length -> the same 413 of the API' -f $n) "413 $expected" (Get-ApiHeaderSummary $chunked); $n++
     Assert-Step ('{0:00} ... as the same problem document' -f $n) 'request_body_too_large | correlation id True' (Get-ProblemSummary $chunked); $n++
-    # Above the proxy's limit: refused, by the proxy or by the API - only the status counts.
+    # Above the proxy's limit: refused, by the proxy or by the API - only the status counts. A tunnel in front of the
+    # proxy (Funnel on the live system) can report the connection the proxy closed under the rest of the body as 502
+    # (seen once in ten live runs of task 026c; the proxy's log had 413): that is a refusal as well.
     $huge = New-Object byte[] ($script:ProxyBodyLimitBytes + 1)
     for ($i = 0; $i -lt $huge.Length; $i++) { $huge[$i] = 32 }
-    Assert-Step ('{0:00} a body above 1 MiB (the limit of the proxy) is refused: 413' -f $n) 413 (Invoke-HardeningRefused POST "$ApiOrigin/api/auth/login" $huge).Status; $n++
-    Assert-Step ('{0:00} ... and without a Content-Length: 413' -f $n) 413 (Invoke-HardeningRefused POST "$ApiOrigin/api/auth/login" $huge -Chunked).Status; $n++
+    $hugeAnnounced = (Invoke-HardeningRefused POST "$ApiOrigin/api/auth/login" $huge).Status
+    Assert-Step ('{0:00} a body above 1 MiB (the limit of the proxy) is refused: 413 (502 from a tunnel)' -f $n) 'refused' $(if (@(413, 502) -contains $hugeAnnounced) { 'refused' } else { "status $hugeAnnounced" }); $n++
+    $hugeChunked = (Invoke-HardeningRefused POST "$ApiOrigin/api/auth/login" $huge -Chunked).Status
+    Assert-Step ('{0:00} ... and without a Content-Length' -f $n) 'refused' $(if (@(413, 502) -contains $hugeChunked) { 'refused' } else { "status $hugeChunked" }); $n++
     $atLimit = New-Object byte[] $script:BodyLimitBytes
     for ($i = 0; $i -lt $atLimit.Length; $i++) { $atLimit[$i] = 32 }
     $atLimit[0] = 123; $atLimit[1] = 125

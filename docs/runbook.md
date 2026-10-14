@@ -138,6 +138,8 @@ docker image rm omnichannel-api:<old tag> omnichannel-workers:<old tag> omnichan
   without changing what production runs. Never `docker image prune -a` and never `docker image rm` of the running or
   the previous tag while a rollback might be needed; `docker builder prune` (build cache) is always safe.
 
+- **A changed `docker/proxy/Caddyfile` needs `docker compose @stack restart proxy` after step 4**: the file is mounted,
+  the service definition does not change, and `up` keeps the running proxy with the old configuration.
 - **The downtime starts at step 3, not at step 4, when the definition of a service changed** (its image digest,
   environment, command, limits): `compose run migrate` first brings up what `migrate` depends on, and that recreates
   `postgres` when its definition differs from the running container (seen in the release of 026: the API was without
@@ -524,7 +526,10 @@ docker compose @stack up -d --wait objectstorage
   asserts the relation): a backstop. With equal limits the answer was a race - the proxy fails only when it reads
   past its limit, and then with a bare 413 no page can read (task 026b); now every body between the two limits
   reaches the API, which answers `413` with a problem document (`errorCode` `request_body_too_large`, the correlation
-  id, the CORS headers), with or without a Content-Length. Above 1 MiB the proxy refuses by itself (status only).
+  id, the CORS headers), with or without a Content-Length - except, now and then, a body **without** a
+  Content-Length through Funnel: the tunnel answers 502 when the API has refused before the whole body was sent (no
+  browser request is sent that way; report 026c, question 7). Above 1 MiB the proxy refuses by itself (status only;
+  through Funnel 413 or 502).
   **Change the two numbers together.** The storage site has no limit (the size of an image is signed into its upload
   link and checked again when it is confirmed).
 - **Headers:** every answer of the API carries `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`,
