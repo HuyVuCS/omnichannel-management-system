@@ -19,3 +19,22 @@ body {
   outline: 2px solid #0958d9 !important;
   outline-offset: 2px !important;
 }
+
+/*
+ * Two places where that ring would not show as a ring (seen in the browser, task 027):
+ * - an input inside one of AntD's field boxes (clear button, prefix, select, number, date): the ring goes around the
+ *   whole field, like around any other control, instead of inside its border;
+ * - a header cell: the cells next to it paint over a ring outside it, so it is drawn inside.
+ */
+:is(.ant-input-affix-wrapper, .ant-select, .ant-input-number, .ant-picker):has(input:focus-visible) {
+  outline: 2px solid #0958d9;
+  outline-offset: 2px;
+}
+
+:is(.ant-input-affix-wrapper, .ant-select, .ant-input-number, .ant-picker) input:focus-visible {
+  outline: none !important;
+}
+
+th:focus-visible {
+  outline-offset: -2px !important;
+}

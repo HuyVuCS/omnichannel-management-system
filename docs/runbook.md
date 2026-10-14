@@ -576,3 +576,22 @@ Product images live in the bucket under two prefixes; export files under `export
   logs it as "no key of the application".
 - Settings are environment variables of `workers` (`ImageCleanup__Interval`, `ImageCleanup__MinAge`,
   `ImageCleanup__MaxPerRun`, `ImageCleanup__Enabled`); the compose file sets none, the defaults apply.
+
+## 17. Acceptance runs (task 027)
+
+What proves each acceptance criterion and the latest evidence: `docs/acceptance.md`. README "Acceptance" has the commands.
+
+- **`docker/docker-compose.acceptance.yml` is for throwaway stacks and CI only** - never in a command for
+  `omnichannel-prod`. It switches the channel simulator's SKU rules on (`SIM-TEMP-` / `SIM-DOWN-` / `SIM-PERM-` /
+  `SIM-LOST-` external SKUs fail or drift on purpose) and shortens the retry delays to 1 s / 2 s; the delays shape the
+  broker topology, so such a stack starts with a fresh broker volume. `task-027.ps1 -Mode Full` refuses the projects
+  `omnichannel-prod` and `omnichannel` and any public origin.
+- **The live subset** (only after a release, with the user's go-ahead - it writes `ACC027-` / `E2E027-` demo data and
+  leaves it; mappings are deactivated and accounts locked at the end, products cannot be deactivated):
+  - `task-027.ps1 -Mode NoDrills -Live` with `SMOKE_BASE_URL` = the public API origin and `SMOKE_ENV_FILE` =
+    `docker\.env.prod` (the first Admin). Production's SKU rules are off: the retry and DLQ parts report
+    `skipped: SKU rules off`, never passed.
+  - `npm run e2e` in `frontend/` with `E2E_BASE_URL` = the Vercel origin, `E2E_API_URL` = the public API origin and the
+    production Admin in `E2E_ADMIN_EMAIL` / `E2E_ADMIN_PASSWORD` (set in the shell, never written down); no
+    `E2E_STACK_CONTROL`.
+  - Nothing else on production: no load scenario, no drill, no container stop, no `psql` write.

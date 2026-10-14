@@ -19,6 +19,13 @@ public sealed class ChannelSimulationOptions
     public const string TransientErrorSkuPrefix = "SIM-TEMP-";
 
     /// <summary>
+    /// External SKU prefix that fails with <c>channel_unavailable</c> on <b>every</b> attempt, when <see cref="SkuRules"/> is
+    /// on: a channel that stays down for one product, so its task retries to the limit, fails and ends in the dead-letter
+    /// queue (task 027, the acceptance drill of retry and DLQ).
+    /// </summary>
+    public const string UnavailableSkuPrefix = "SIM-DOWN-";
+
+    /// <summary>
     /// External SKU prefix of a product whose updates the channel accepts and then loses, when <see cref="SkuRules"/> is
     /// on: the push succeeds but the channel keeps no value, so a read never shows the central stock (permanent drift,
     /// for demonstrating reconciliation).
@@ -30,7 +37,7 @@ public sealed class ChannelSimulationOptions
 
     /// <summary>
     /// Deterministic behaviour by external SKU prefix (<see cref="PermanentErrorSkuPrefix"/>,
-    /// <see cref="TransientErrorSkuPrefix"/>, <see cref="LostUpdateSkuPrefix"/>). Pushes only: reads are not affected.
+    /// <see cref="TransientErrorSkuPrefix"/>, <see cref="UnavailableSkuPrefix"/>, <see cref="LostUpdateSkuPrefix"/>). Pushes only: reads are not affected.
     /// Off by default; switched on in <c>appsettings.Development.json</c> only.
     /// </summary>
     public bool SkuRules { get; set; }

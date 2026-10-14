@@ -182,6 +182,14 @@ public sealed class SimulatedChannelStockClient(
                 isTransient: false);
         }
 
+        if (HasPrefix(externalSku, ChannelSimulationOptions.UnavailableSkuPrefix))
+        {
+            return new ChannelApiException(
+                ChannelApiErrorCodes.Unavailable,
+                $"Simulated channel '{update.ChannelSlug}' is unavailable for external SKU '{externalSku}'.",
+                isTransient: true);
+        }
+
         if (HasPrefix(externalSku, ChannelSimulationOptions.TransientErrorSkuPrefix) && update.AttemptNo == 1)
         {
             return new ChannelApiException(

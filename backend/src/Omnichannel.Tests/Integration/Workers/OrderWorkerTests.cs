@@ -1,7 +1,9 @@
+using System.Data.Common;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -294,6 +296,68 @@ public sealed partial class OrderWorkerTests(WorkersFixture fixture) : IAsyncLif
         Assert.Equal(ProcessingAttemptStatus.Succeeded, attempts[1].Status);
         Assert.Equal((10, 4, 6), await StockAsync(products[0].ProductId));
         Assert.Equal(1, await fixture.WithDbAsync(db => db.OrderItems.CountAsync(i => i.ProductId == products[0].ProductId)));
+    }
+
+    [Fact]
+    public async Task A_failure_inside_the_reserve_transaction_leaves_neither_movement_nor_outbox_row_and_the_retry_reserves_once()
+    {
+        // Doc 16, "InventoryMovement + OutboxEvent in one transaction" (task 027 E1): the reservation's transaction
+        // fails at its commit - after the stock update, the order, its movement and its outbox event were written in it.
+        var (customerId, products) = await SeedAsync(stock: [10]);
+        var productId = products[0].ProductId;
+        var taskId = await SubmitAsync(customerId, (productId, 3));
+        var failure = new ReserveCommitFailure();
+
+        var hosts = StartWorkers(
+            instances: 1,
+            configureServices: services => services.ConfigureDbContext<OmnichannelDbContext>(o => o.AddInterceptors(failure)));
+        try
+        {
+            await WaitForTasksAsync([taskId], ProcessingTaskStatus.Succeeded);
+        }
+        finally
+        {
+            await StopAsync(hosts);
+        }
+
+        Assert.Equal(1, failure.Failed);
+        var attempts = (await LoadTaskAsync(taskId)).Attempts.OrderBy(a => a.AttemptNo).ToList();
+        Assert.Equal([ProcessingAttemptStatus.Failed, ProcessingAttemptStatus.Succeeded], attempts.Select(a => a.Status));
+        Assert.Contains("injected", attempts[0].ErrorMessage);
+        // Nothing of the failed transaction is left: the stock is reserved once, there is one movement and one
+        // inventory.changed event of it (besides the import's) - the retry's.
+        Assert.Equal((10, 3, 7), await StockAsync(productId));
+        var movement = Assert.Single(await MovementsAsync(productId, InventoryMovementType.Reserve));
+        var events = await fixture.WithDbAsync(db => db.OutboxEvents.AsNoTracking()
+            .Where(e => e.EventType == EventTypes.InventoryChanged && e.AggregateId == productId.ToString())
+            .ToListAsync());
+        Assert.Equal(2, events.Count);
+        Assert.Single(events, e => e.InventoryMovementId == movement.InventoryMovementId);
+        Assert.Equal(1, await fixture.WithDbAsync(db => db.OrderItems.CountAsync(i => i.ProductId == productId)));
+    }
+
+    /// <summary>
+    /// Fails, once, the commit of the first transaction that holds a <c>Reserve</c> movement - the Order Worker's
+    /// reservation - when everything of it has been written but not committed.
+    /// </summary>
+    private sealed class ReserveCommitFailure : DbTransactionInterceptor
+    {
+        private int _failed;
+
+        public int Failed => Volatile.Read(ref _failed);
+
+        public override ValueTask<InterceptionResult> TransactionCommittingAsync(
+            DbTransaction transaction,
+            TransactionEventData eventData,
+            InterceptionResult result,
+            CancellationToken cancellationToken = default)
+        {
+            var reserving = eventData.Context?.ChangeTracker.Entries<InventoryMovement>()
+                .Any(entry => entry.Entity.Type == InventoryMovementType.Reserve) == true;
+            return reserving && Interlocked.CompareExchange(ref _failed, 1, 0) == 0
+                ? throw new InvalidOperationException("injected failure before the commit of the reservation")
+                : base.TransactionCommittingAsync(transaction, eventData, result, cancellationToken);
+        }
     }
 
     // ---- helpers ----------------------------------------------------------------------------------------------

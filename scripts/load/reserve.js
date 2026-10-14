@@ -4,7 +4,8 @@
 //
 // Environment: BASE_URL (the API origin as the k6 container reaches it), TOKEN (an access token; never printed),
 // SCENARIO (contention | spread | duplicates), RUN_ID (part of every external order id), CUSTOMER_ID,
-// PRODUCT_IDS (comma-separated), CHANNEL (default website).
+// PRODUCT_IDS (comma-separated), CHANNEL (default website), ITERATIONS (optional: the orders of contention / the
+// external ids of duplicates instead of 300 / 100 - the small size of the acceptance run, task 027).
 import http from 'k6/http';
 import exec from 'k6/execution';
 import { Counter } from 'k6/metrics';
@@ -15,6 +16,7 @@ const RUN_ID = __ENV.RUN_ID;
 const CHANNEL = __ENV.CHANNEL || 'website';
 const CUSTOMER_ID = __ENV.CUSTOMER_ID;
 const PRODUCT_IDS = (__ENV.PRODUCT_IDS || '').split(',').filter((id) => id);
+const ITERATIONS = __ENV.ITERATIONS ? parseInt(__ENV.ITERATIONS, 10) : null;
 
 const SCENARIOS = {
   // One product with a stock of 100 and 300 orders of one piece, as fast as the intake accepts them.
@@ -24,6 +26,10 @@ const SCENARIOS = {
   // 100 external order ids, each submitted twice at the same moment.
   duplicates: { executor: 'shared-iterations', vus: 20, iterations: 100, maxDuration: '5m' },
 };
+
+if (ITERATIONS && SCENARIOS[SCENARIO].executor === 'shared-iterations') {
+  SCENARIOS[SCENARIO].iterations = ITERATIONS;
+}
 
 export const options = {
   scenarios: { [SCENARIO]: SCENARIOS[SCENARIO] },

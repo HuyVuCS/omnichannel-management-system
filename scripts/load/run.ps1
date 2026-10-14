@@ -1,5 +1,6 @@
 # Load test of the reserve path (task 026b, Part E) against a THROWAWAY production-like stack - never production,
-# never development: it writes thousands of orders. Windows PowerShell 5.1 compatible, ASCII only.
+# never development: it writes thousands of orders. Windows PowerShell 5.1 and PowerShell 7 (Linux: the CI job
+# "acceptance") compatible, ASCII only.
 #
 #   powershell -ExecutionPolicy Bypass -File scripts\load\run.ps1 -Project omni026b -BaseUrl http://localhost:18080 `
 #       -EnvFile docker\.env.prod.026b -Scenario all
@@ -12,11 +13,14 @@
 #   4. prints the numbers of the intake (k6), of the Order Worker (task timestamps) and the invariants
 #      (scripts\load\invariants.sql, run inside the stack's PostgreSQL container).
 # The exit code is 1 when an expectation of a scenario or an invariant does not hold.
+# -Size small (task 027, the acceptance run): contention 60 orders for a stock of 20, duplicates 50 ids sent twice
+# (100 requests); spread has no small size.
 param(
     [Parameter(Mandatory = $true)][string]$Project,
     [Parameter(Mandatory = $true)][string]$BaseUrl,
     [Parameter(Mandatory = $true)][string]$EnvFile,
     [ValidateSet('contention', 'spread', 'duplicates', 'all')][string]$Scenario = 'all',
+    [ValidateSet('full', 'small')][string]$Size = 'full',
     [int]$DrainSeconds = 600
 )
 
@@ -25,7 +29,7 @@ $ErrorActionPreference = 'Stop'
 $K6Image = 'grafana/k6:1.3.0@sha256:3ddc8b1a33a2c3d8edc6e99b6a762ae36cba08788463458f5e6a7703e14eb77d'
 
 if (($Project -eq 'omnichannel-prod') -or ($Project -eq 'omnichannel')) { throw 'A load test never runs against production or development: give the compose project of a throwaway stack.' }
-$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $envPath = (Resolve-Path $EnvFile).Path
 Set-Location $repoRoot
 $BaseUrl = $BaseUrl.TrimEnd('/')
@@ -87,12 +91,18 @@ $login = Invoke-RestMethod -Method Post -Uri "$BaseUrl/api/auth/login" -ContentT
 $script:Token = [string]$login.accessToken
 if (-not $script:Token) { throw 'The login of the first Admin failed.' }
 
+# Iterations: orders of contention, external ids of duplicates (each sent twice); spread runs by time.
 $plan = @{
-    contention = @{ Products = 1; Stock = 100 }
-    spread     = @{ Products = 50; Stock = 200 }
-    duplicates = @{ Products = 10; Stock = 100 }
+    contention = @{ Products = 1; Stock = 100; Iterations = 300 }
+    spread     = @{ Products = 50; Stock = 200; Iterations = 0 }
+    duplicates = @{ Products = 10; Stock = 100; Iterations = 100 }
+}
+if ($Size -eq 'small') {
+    $plan.contention = @{ Products = 1; Stock = 20; Iterations = 60 }
+    $plan.duplicates = @{ Products = 10; Stock = 100; Iterations = 50 }
 }
 $names = if ($Scenario -eq 'all') { @('contention', 'spread', 'duplicates') } else { @($Scenario) }
+if (($Size -eq 'small') -and ($names -contains 'spread')) { throw 'The spread scenario has no small size.' }
 $run = [guid]::NewGuid().ToString('N').Substring(0, 8)
 Write-Host "Load test $run against $Project ($($workers.Count) Workers), k6 image $K6Image"
 
@@ -121,15 +131,30 @@ foreach ($name in $names) {
             Start-Sleep -Seconds 2
         }
     }
+    # The k6 container gets the script by "docker cp" (no stdin redirection: the same commands on Windows and Linux) and
+    # the token from this process's environment (-e TOKEN, never on the command line).
     $env:TOKEN = $script:Token
-    $summaryFile = Join-Path ([System.IO.Path]::GetTempPath()) "omni-load-$run-$name.json"
-    $k6 = "docker run --rm -i --network $network -e TOKEN -e BASE_URL=http://proxy:8080 -e SCENARIO=$name -e RUN_ID=$run -e CUSTOMER_ID=$($customer.customerId) -e PRODUCT_IDS=$($productIds -join ',') $K6Image run --quiet --no-usage-report -"
-    $started = Get-Date
-    cmd /c "$k6 < scripts\load\reserve.js > `"$summaryFile`" 2>nul"
-    $k6Exit = $LASTEXITCODE
+    $k6Name = "omni-load-$run-$name"
+    $iterations = if ($plan[$name].Iterations -gt 0) { @('-e', "ITERATIONS=$($plan[$name].Iterations)") } else { @() }
+    [void](Invoke-Docker (@('create', '--name', $k6Name, '--network', $network, '-e', 'TOKEN', '-e', 'BASE_URL=http://proxy:8080', '-e', "SCENARIO=$name",
+                '-e', "RUN_ID=$run", '-e', "CUSTOMER_ID=$($customer.customerId)", '-e', "PRODUCT_IDS=$($productIds -join ',')") + $iterations +
+            @($K6Image, 'run', '--quiet', '--no-usage-report', '/tmp/reserve.js')))
     $env:TOKEN = $null
+    $started = Get-Date
+    try {
+        [void](Invoke-Docker @('cp', (Join-Path $PSScriptRoot 'reserve.js'), "$($k6Name):/tmp/reserve.js"))
+        $previous = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        try { $k6Output = @(& docker start -a $k6Name 2>$null) } finally { $ErrorActionPreference = $previous }
+        $k6Exit = $LASTEXITCODE
+    } finally {
+        $previous = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        try { & docker rm -f $k6Name 2>$null | Out-Null } finally { $ErrorActionPreference = $previous }
+    }
     if ($k6Exit -ne 0) { Stop-Job $sampler ; Remove-Job $sampler ; throw "k6 ended with exit code $k6Exit." }
-    $summary = Get-Content $summaryFile -Raw | ConvertFrom-Json
+    # handleSummary writes one JSON line to stdout.
+    $summary = @($k6Output | Where-Object { ([string]$_).StartsWith('{') })[-1] | ConvertFrom-Json
 
     # 3. Until nothing is unfinished and nothing waits.
     $deadline = (Get-Date).AddSeconds($DrainSeconds)
@@ -183,7 +208,6 @@ where t."TaskType" = 'OrderProcessing' and o."ExternalOrderId" like '$prefix%';
         }
         Remove-Item $statsFile -ErrorAction SilentlyContinue
     }
-    Remove-Item $summaryFile -ErrorAction SilentlyContinue
 
     # 5. What the scenario must show.
     Expect 'unfinished tasks and waiting messages after the drain' 0 $open
@@ -191,10 +215,11 @@ where t."TaskType" = 'OrderProcessing' and o."ExternalOrderId" like '$prefix%';
     Expect 'requests the intake did not accept (not 202)' 0 ($summary.requests - $summary.statuses.'202')
     switch ($name) {
         'contention' {
-            Expect 'orders' 300 $orders
-            Expect 'orders Reserved (the stock was 100)' 100 ([int]$byStatus['Reserved'])
-            Expect 'orders refused for insufficient stock' 200 ([int]$byStatus['InsufficientStock'])
-            Expect 'stock total|reserved|available' '100|100|0' $stock
+            $stockOf = $plan.contention.Stock
+            Expect 'orders' $plan.contention.Iterations $orders
+            Expect "orders Reserved (the stock was $stockOf)" $stockOf ([int]$byStatus['Reserved'])
+            Expect 'orders refused for insufficient stock' ($plan.contention.Iterations - $stockOf) ([int]$byStatus['InsufficientStock'])
+            Expect 'stock total|reserved|available' "$stockOf|$stockOf|0" $stock
         }
         'spread' {
             # 20 per second for 100 s: k6 starts 2,000 or 2,001 iterations (one at each end of the time).
@@ -204,10 +229,11 @@ where t."TaskType" = 'OrderProcessing' and o."ExternalOrderId" like '$prefix%';
             Expect 'iterations k6 could not start in time' 0 $summary.droppedIterations
         }
         'duplicates' {
-            Expect 'requests (100 external order ids, twice each)' 200 $summary.requests
-            Expect 'orders' 100 $orders
-            Expect 'orders Reserved' 100 ([int]$byStatus['Reserved'])
-            Expect 'stock total|reserved|available' '1000|100|900' $stock
+            $ids = $plan.duplicates.Iterations
+            Expect "requests ($ids external order ids, twice each)" (2 * $ids) $summary.requests
+            Expect 'orders' $ids $orders
+            Expect 'orders Reserved' $ids ([int]$byStatus['Reserved'])
+            Expect 'stock total|reserved|available' "1000|$ids|$(1000 - $ids)" $stock
         }
     }
     Expect 'attempts of the Order Worker = orders (no order processed twice)' $orders ([int]$worker[5])

@@ -1,6 +1,6 @@
 import { fileURLToPath, URL } from 'node:url';
 import react from '@vitejs/plugin-react';
-import { defineConfig } from 'vitest/config';
+import { configDefaults, defineConfig } from 'vitest/config';
 import { contentSecurityPolicy } from './vite/contentSecurityPolicy.ts';
 
 // The API runs on http://localhost:5080 (backend launchSettings). In development the dev server proxies /api to it,
@@ -22,6 +22,8 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
+    // The end-to-end suite runs in a real browser with Playwright (`npm run e2e`), not here.
+    exclude: [...configDefaults.exclude, 'e2e/**'],
     css: false,
     testTimeout: 20_000,
     restoreMocks: true,

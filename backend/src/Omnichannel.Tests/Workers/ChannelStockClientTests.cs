@@ -184,6 +184,26 @@ public sealed class SimulatedChannelStockClientTests
 
         await client.PushAvailableStockAsync(Update("website", "SIM-PERM-1"), CancellationToken.None);
         await client.PushAvailableStockAsync(Update("website", "SIM-TEMP-1", attemptNo: 1), CancellationToken.None);
+        await client.PushAvailableStockAsync(Update("website", "SIM-DOWN-1", attemptNo: 1), CancellationToken.None);
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(5)]
+    [InlineData(100)]
+    public async Task Sku_rules_fail_the_down_prefix_as_unavailable_on_every_attempt(int attemptNo)
+    {
+        var client = Client(new ChannelSimulationOptions { SkuRules = true });
+
+        var unavailable = await Assert.ThrowsAsync<ChannelApiException>(() =>
+            client.PushAvailableStockAsync(Update("pos", "SIM-DOWN-1", attemptNo: attemptNo), CancellationToken.None));
+
+        // Temporary: retried with delay until the limit, then the task fails and the message goes to the DLQ.
+        Assert.Equal((ChannelApiErrorCodes.Unavailable, true), (unavailable.ErrorCode, unavailable.IsTransient));
+        // Case-sensitive, and only as a prefix.
+        await client.PushAvailableStockAsync(Update("pos", "sim-down-1", attemptNo: attemptNo), CancellationToken.None);
+        await client.PushAvailableStockAsync(Update("pos", "X-SIM-DOWN-1", attemptNo: attemptNo), CancellationToken.None);
     }
 
     [Fact]
