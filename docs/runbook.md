@@ -588,10 +588,13 @@ What proves each acceptance criterion and the latest evidence: `docs/acceptance.
   `omnichannel-prod` and `omnichannel` and any public origin.
 - **The live subset** (only after a release, with the user's go-ahead - it writes `ACC027-` / `E2E027-` demo data and
   leaves it; mappings are deactivated and accounts locked at the end, products cannot be deactivated):
-  - `task-027.ps1 -Mode NoDrills -Live` with `SMOKE_BASE_URL` = the public API origin and `SMOKE_ENV_FILE` =
-    `docker\.env.prod` (the first Admin). Production's SKU rules are off: the retry and DLQ parts report
-    `skipped: SKU rules off`, never passed.
+  - `task-027.ps1 -Mode NoDrills -Live` with `SMOKE_BASE_URL` = the public API origin and the production Admin in
+    `SMOKE_ADMIN_EMAIL` / `SMOKE_ADMIN_PASSWORD` (`docker\.env.prod` holds no Admin password since go-live; in task 027
+    the user stored them as temporary user-level variables, read in-process and removed afterwards). Production's SKU
+    rules are off: the retry and DLQ parts report `skipped: SKU rules off`, never passed.
   - `npm run e2e` in `frontend/` with `E2E_BASE_URL` = the Vercel origin, `E2E_API_URL` = the public API origin and the
     production Admin in `E2E_ADMIN_EMAIL` / `E2E_ADMIN_PASSWORD` (set in the shell, never written down); no
-    `E2E_STACK_CONTROL`.
+    `E2E_STACK_CONTROL`. From this machine also `E2E_HOST_RESOLVER_RULES="MAP <api host> <public Funnel address>"`:
+    here the name resolves to the tailnet address, which Chromium blocks for the public Vercel page (README
+    "Acceptance").
   - Nothing else on production: no load scenario, no drill, no container stop, no `psql` write.

@@ -840,6 +840,10 @@ What proves each acceptance criterion of the architecture document (section 16),
     `E2E_API_URL=http://localhost:5080`.
   - Against a throwaway stack: build the frontend with that stack's `VITE_API_BASE_URL` / `VITE_STORAGE_ORIGIN`, serve
     it with `npm run preview -- --port <port of its FRONTEND_ORIGIN>`.
+  - Against the live system from the machine that hosts it: `E2E_HOST_RESOLVER_RULES="MAP <api host> <a public
+    Funnel address>"` (the public answer, e.g. from `https://dns.google/resolve?name=<api host>&type=A`). On that
+    machine the name resolves to its tailnet address, which Chromium blocks for a public page (Local Network Access);
+    visitors reach the API through Funnel.
 - **CI** - the job `acceptance` of `.github/workflows/ci.yml` (push to `master`, manual dispatch; not on pull
   requests): a generated environment file (random values, masked, never uploaded), the production compose file + the
   acceptance override with two Workers, `migrate`, `up --wait`, the frontend built for the stack and served by

@@ -29,5 +29,19 @@ export default defineConfig({
     bypassCSP: true,
     viewport: { width: 1280, height: 800 },
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 800 } } }],
+  projects: [
+    {
+      name: 'chromium',
+      use: {
+        ...devices['Desktop Chrome'],
+        viewport: { width: 1280, height: 800 },
+        // E2E_HOST_RESOLVER_RULES (optional): how the browser resolves host names, e.g. "MAP api.host 203.0.113.7". For
+        // the live run from the machine that hosts the API: there the name resolves to the tailnet address, which
+        // Chromium blocks for a public page (Local Network Access); the internet reaches it through Funnel instead.
+        launchOptions: process.env.E2E_HOST_RESOLVER_RULES
+          ? { args: [`--host-resolver-rules=${process.env.E2E_HOST_RESOLVER_RULES}`] }
+          : {},
+      },
+    },
+  ],
 });
