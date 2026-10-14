@@ -38,6 +38,8 @@ describe('route error page', () => {
     const { user, location } = renderApp({ route: '/customers', session: sessionOf(staffUser) });
 
     expect(await screen.findByText('Không tải được trang')).toBeInTheDocument();
+    // The title is the page's one <h1> (task 027 A4).
+    expect(screen.getAllByRole('heading', { level: 1 }).map((h) => h.textContent)).toEqual(['Không tải được trang']);
     expect(
       screen.getByText('Có thể ứng dụng vừa có phiên bản mới. Hãy tải lại trang để tiếp tục.'),
     ).toBeInTheDocument();
@@ -102,6 +104,7 @@ describe('route error page', () => {
 
     expect(await screen.findByText('Không tải được trang')).toBeInTheDocument();
     expect(screen.getByTestId('route-error').getAttribute('style')).toContain('min-height: 100vh');
+    expect(screen.getAllByRole('heading', { level: 1 }).map((h) => h.textContent)).toEqual(['Không tải được trang']);
     expect(screen.queryByTestId('app-sider')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Về trang tổng quan' })).not.toBeInTheDocument();
 

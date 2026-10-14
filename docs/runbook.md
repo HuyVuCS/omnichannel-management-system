@@ -528,7 +528,8 @@ docker compose @stack up -d --wait objectstorage
   reaches the API, which answers `413` with a problem document (`errorCode` `request_body_too_large`, the correlation
   id, the CORS headers), with or without a Content-Length - except, now and then, a body **without** a
   Content-Length through Funnel: the tunnel answers 502 when the API has refused before the whole body was sent (no
-  browser request is sent that way; report 026c, question 7). Above 1 MiB the proxy refuses by itself (status only;
+  browser request is sent that way; review 026c q7: accepted - `_hardening.ps1` takes that 502 as a refusal only when
+  the target is not this machine, `Test-TunnelledOrigin`, and stays strict everywhere else). Above 1 MiB the proxy refuses by itself (status only;
   through Funnel 413 or 502).
   **Change the two numbers together.** The storage site has no limit (the size of an image is signed into its upload
   link and checked again when it is confirmed).

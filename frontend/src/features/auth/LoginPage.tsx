@@ -6,6 +6,7 @@ import { applyProblemToForm } from '@/shared/api/problemDetails';
 import { isApiError } from '@/shared/api/types';
 import { LanguageSwitch } from '@/shared/components/LanguageSwitch';
 import { useAppDispatch, useAppSelector } from '@/shared/hooks/store';
+import { useHeadingLook } from '@/shared/hooks/useHeadingLook';
 import { useLoginMutation, type LoginRequest } from './authApi';
 import { selectSession, sessionStarted } from './authSlice';
 import { RETURN_URL_PARAM, safeReturnUrl } from './returnUrl';
@@ -24,6 +25,8 @@ export function LoginPage() {
   const [login, { isLoading }] = useLoginMutation();
   const [failure, setFailure] = useState<LoginFailure | null>(null);
   const [formErrors, setFormErrors] = useState<string[]>([]);
+  // The page's one <h1>, with the look of the level-3 heading it was.
+  const titleLook = useHeadingLook(3);
 
   if (session) {
     return <Navigate to={safeReturnUrl(searchParams.get(RETURN_URL_PARAM))} replace />;
@@ -63,7 +66,7 @@ export function LoginPage() {
         <LanguageSwitch />
       </div>
       <Card style={{ width: CARD_WIDTH, maxWidth: '100%' }}>
-        <Typography.Title level={3} style={{ marginTop: 0 }}>
+        <Typography.Title level={1} style={{ ...titleLook, marginTop: 0 }}>
           {t('auth.title')}
         </Typography.Title>
         {failure && <Alert type="error" showIcon title={t(failure)} style={{ marginBottom: 16 }} />}

@@ -58,6 +58,14 @@ function Invoke-HardeningRefused([string]$Method, [string]$Url, [byte[]]$Body, [
     return $answer
 }
 
+# Whether the API is reached through a tunnel in front of the proxy: any origin that is not this machine (the live
+# system through Tailscale Funnel). Review 026c q7: for a body sent without a Content-Length the tunnel can answer 502
+# when the proxy closes the connection under the rest of the body - a refusal as well. Against this machine (development,
+# throwaway stacks, CI) nothing stands between the client and the proxy, and the readable 413 of the API is required.
+function Test-TunnelledOrigin([string]$Origin) {
+    return -not ([uri]$Origin).IsLoopback
+}
+
 # "errorCode | the correlationId of the body is the X-Correlation-Id header" of a problem document.
 function Get-ProblemSummary($Answer) {
     $problem = $null
@@ -94,8 +102,14 @@ function Invoke-HardeningChecks([string]$ApiOrigin, [string]$StorageOrigin, [int
     Assert-Step ('{0:00} a body of limit + 1 bytes -> 413 of the API, with the same headers' -f $n) "413 $expected" (Get-ApiHeaderSummary $announced); $n++
     Assert-Step ('{0:00} ... as a problem document with the correlation id of the X-Correlation-Id header' -f $n) 'request_body_too_large | correlation id True' (Get-ProblemSummary $announced); $n++
     $chunked = Invoke-HardeningRefused POST "$ApiOrigin/api/auth/login" $tooLarge -Chunked
-    Assert-Step ('{0:00} the same body without a Content-Length -> the same 413 of the API' -f $n) "413 $expected" (Get-ApiHeaderSummary $chunked); $n++
-    Assert-Step ('{0:00} ... as the same problem document' -f $n) 'request_body_too_large | correlation id True' (Get-ProblemSummary $chunked); $n++
+    if ((Test-TunnelledOrigin $ApiOrigin) -and ($chunked.Status -eq 502)) {
+        # Through the tunnel only (Test-TunnelledOrigin): its 502 is a refusal too; there is no problem document to read.
+        Assert-Step ('{0:00} the same body without a Content-Length -> the same 413 of the API (502 of the tunnel)' -f $n) 'refused' 'refused'; $n++
+        Assert-Step ('{0:00} ... as the same problem document (none behind a 502 of the tunnel)' -f $n) 'skipped: 502 of the tunnel' 'skipped: 502 of the tunnel'; $n++
+    } else {
+        Assert-Step ('{0:00} the same body without a Content-Length -> the same 413 of the API' -f $n) "413 $expected" (Get-ApiHeaderSummary $chunked); $n++
+        Assert-Step ('{0:00} ... as the same problem document' -f $n) 'request_body_too_large | correlation id True' (Get-ProblemSummary $chunked); $n++
+    }
     # Above the proxy's limit: refused, by the proxy or by the API - only the status counts. A tunnel in front of the
     # proxy (Funnel on the live system) can report the connection the proxy closed under the rest of the body as 502
     # (seen once in ten live runs of task 026c; the proxy's log had 413): that is a refusal as well.

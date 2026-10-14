@@ -914,6 +914,9 @@ namespace Omnichannel.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("ProductId");
 
+                    b.HasIndex("ChannelId", "UpdatedAt")
+                        .HasFilter("\"TaskType\" = 'StockSync' AND \"Status\" = 'Succeeded'");
+
                     b.HasIndex("CreatedAt", "TaskId");
 
                     b.HasIndex("Status", "UpdatedAt");

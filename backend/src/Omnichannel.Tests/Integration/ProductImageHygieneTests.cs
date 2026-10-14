@@ -161,6 +161,53 @@ public sealed class ProductImageHygieneTests(ApiFactory factory) : IAsyncLifetim
         Assert.Equal((currentKey, current.UpdatedAt), (await ImageKeyAsync(product.ProductId), (await GetAsync(product.ProductId)).Image?.UpdatedAt));
     }
 
+    public enum HeldAt
+    {
+        /// <summary>After the first read of the product, before the look at the upload.</summary>
+        Head,
+
+        /// <summary>After the look at the upload, before the copy.</summary>
+        Copy
+    }
+
+    [Theory]
+    [InlineData(HeldAt.Head)]
+    [InlineData(HeldAt.Copy)]
+    public async Task A_second_confirmation_of_one_upload_that_loses_the_race_answers_the_product_the_first_one_confirmed(HeldAt heldAt)
+    {
+        // Review 026c F1, a double click: the second confirmation read the product before the first committed, and
+        // reaches the storage after the first deleted the upload.
+        var product = await CreateProductAsync();
+        var uploadKey = await UploadNewAsync(product.ProductId, Image(900));
+        HttpResponseMessage? first = null;
+        async Task RunFirstAsync(string key)
+        {
+            if (key == uploadKey && first is null)
+            {
+                // The first confirmation, through the API, runs to its end: commit, staging object deleted.
+                first = await ConfirmAsync(product.ProductId, uploadKey);
+            }
+        }
+
+        var hooks = heldAt == HeldAt.Head
+            ? new StorageHooks { BeforeHead = RunFirstAsync }
+            : new StorageHooks { BeforeCopy = (source, _) => RunFirstAsync(source) };
+        await using var tools = Tools(TimeProvider.System, hooks);
+        await using var scope = tools.CreateAsyncScope();
+
+        var second = await scope.ServiceProvider.GetRequiredService<IProductImageService>()
+            .ConfirmAsync(product.ProductId, new ConfirmProductImageRequest(uploadKey), CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.OK, first?.StatusCode);
+        var firstImage = (await first!.ReadAsync<ProductResponse>()).Image;
+        // One image - the one of the first confirmation - and nothing left over: no second copy, no upload.
+        var imageKey = await ImageKeyAsync(product.ProductId);
+        Assert.NotNull(imageKey);
+        Assert.Equal(heldAt == HeldAt.Copy ? 1 : 0, hooks.Copies);
+        Assert.Equal([imageKey!], await ObjectsOfAsync(product.ProductId));
+        Assert.Equal((firstImage?.SizeBytes, firstImage?.UpdatedAt), (second.Image?.SizeBytes, second.Image?.UpdatedAt));
+    }
+
     [Fact]
     public async Task A_confirmation_held_up_longer_than_the_deadline_after_its_copy_gives_up_and_removes_the_copy()
     {
@@ -626,6 +673,8 @@ public sealed class ProductImageHygieneTests(ApiFactory factory) : IAsyncLifetim
     /// <summary>What a test does around the storage calls of the code under test.</summary>
     private sealed class StorageHooks
     {
+        public Func<string, Task>? BeforeHead { get; init; }
+
         public Func<string, string, Task>? BeforeCopy { get; init; }
 
         public Func<string, string, Task>? AfterCopy { get; init; }
@@ -645,7 +694,15 @@ public sealed class ProductImageHygieneTests(ApiFactory factory) : IAsyncLifetim
 
         public PresignedUrl PresignGet(string key, TimeSpan lifetime) => inner.PresignGet(key, lifetime);
 
-        public Task<StoredObject?> HeadAsync(string key, CancellationToken cancellationToken) => inner.HeadAsync(key, cancellationToken);
+        public async Task<StoredObject?> HeadAsync(string key, CancellationToken cancellationToken)
+        {
+            if (hooks.BeforeHead is not null)
+            {
+                await hooks.BeforeHead(key);
+            }
+
+            return await inner.HeadAsync(key, cancellationToken);
+        }
 
         public Task<byte[]> ReadStartAsync(string key, int count, CancellationToken cancellationToken) => inner.ReadStartAsync(key, count, cancellationToken);
 

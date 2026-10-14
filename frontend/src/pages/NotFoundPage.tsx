@@ -1,6 +1,7 @@
 import { Button, Result } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router';
+import { ResultTitle } from '@/shared/components/ResultTitle';
 
 export function NotFoundPage() {
   const { t } = useTranslation();
@@ -9,7 +10,7 @@ export function NotFoundPage() {
   return (
     <Result
       status="404"
-      title={t('pages.notFound.title')}
+      title={<ResultTitle>{t('pages.notFound.title')}</ResultTitle>}
       subTitle={t('pages.notFound.description')}
       extra={
         <Button type="primary" onClick={() => void navigate('/')}>

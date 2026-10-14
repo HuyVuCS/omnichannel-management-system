@@ -30,6 +30,7 @@ import {
   SINGLE_ACTION_COLUMN_WIDTH,
 } from '@/shared/components/layout';
 import { PageHeader } from '@/shared/components/PageHeader';
+import { ResultTitle } from '@/shared/components/ResultTitle';
 import { TruncatedText } from '@/shared/components/TruncatedText';
 import { useListQueryState } from '@/shared/hooks/useListQueryState';
 import { formatDateTime } from '@/shared/utils/format';
@@ -197,7 +198,7 @@ export function ChannelDetailPage() {
     return (
       <Result
         status="404"
-        title={t('channelDetail.notFound.title')}
+        title={<ResultTitle>{t('channelDetail.notFound.title')}</ResultTitle>}
         subTitle={t('channelDetail.notFound.description')}
         extra={
           <Button type="primary" onClick={() => void navigate(CHANNELS_PATH)} style={{ width: PAGE_ACTION_WIDTH }}>
