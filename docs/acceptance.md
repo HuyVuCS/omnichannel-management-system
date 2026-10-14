@@ -19,12 +19,15 @@ How to run them: README "Acceptance". Known limitations: at the end.
 
 | Run | Where | Commit | Result |
 | --- | --- | --- | --- |
-| `task-027.ps1 -Mode Full` | throwaway stack `omni027` (production compose + acceptance override, 2 Workers), 2026-10-14 | (task 027 report) | 106 / 106, every criterion PASS (14: one step skipped, see 14) |
-| `npm run e2e` × 5, `E2E_STACK_CONTROL=1` | `omni027`, `vite preview` of the build for it, 2026-10-14 | (task 027 report) | see the report of task 027 |
-| `task-027.ps1 -Mode NoDrills` | development, 2026-10-14 | (task 027 report) | see the report of task 027 |
-| `npm run e2e` | development (dev server), 2026-10-14 | (task 027 report) | see the report of task 027 |
-| CI job `acceptance` | GitHub Actions (`-Mode Full` + `npm run e2e`) | (task 027 report) | see the report of task 027 |
-| Live: `task-027.ps1 -Mode NoDrills -Live`, `npm run e2e` | production (Vercel origin + public API) | (task 027 report) | see the report of task 027 |
+| `task-027.ps1 -Mode Full` | throwaway stack `omni027` (production compose + acceptance override, 2 Workers), 2026-10-14 | `3a2abe0` | 106 / 106, criteria 1–14 PASS (14: the expired-token step skipped, see 14); load `duplicates` 100 requests → 50 orders, `contention` 60 orders / stock 20 → 20 reserved, 40 refused; every invariant 0 |
+| Mutant: one inventory row changed by hand (`TotalStock + 1`), same script | `omni027`, 2026-10-14 | `3a2abe0` | red as it must be: 3 of 106 (the new history invariant and the invariants of both load scenarios) |
+| `npm run e2e` × 5, `E2E_STACK_CONTROL=1` | `omni027`, `vite preview` of the build for it, 2026-10-14 | `3a2abe0` | 5 of 5 runs, 8 / 8 each (73 s, then 130–133 s with the login-limit waits) |
+| `task-027.ps1 -Mode NoDrills` | development, 2026-10-14 | `3b27e91` | 75 / 75 (criterion 4 Full only; webhook, load, DLQ drill skipped by design) |
+| `npm run e2e` | development (dev server), 2026-10-14 | `3b27e91` | 8 / 8 |
+| CI job `acceptance` | GitHub Actions run 38548985519 / 38552842941 (`-Mode Full` under pwsh on Linux + `npm run e2e` with stack control) | `3a2abe0` / `3b27e91` | success / success |
+| Release of task 027 | production, 2026-10-14 18:10 (+07:00) | `3b27e91` (image tag `3b27e91c6daa`) | migration `LastStockSyncIndex`, public `/health` down ≈ 6 s; `task-025b.ps1` 28 / 28, `task-026.ps1` 11 / 11 |
+| Live: `task-027.ps1 -Mode NoDrills -Live` | production (public API), 2026-10-14 | `3b27e91` | 75 / 75 (production's SKU rules are off: the retry part reported as skipped) |
+| Live: `npm run e2e` | production: Vercel origin + public API through Funnel, 2026-10-14 | `3b27e91` | 8 / 8 |
 
 ## Criteria
 
