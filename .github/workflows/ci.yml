@@ -114,3 +114,111 @@ jobs:
       - name: Build for linux/arm64
         if: github.event_name == 'workflow_dispatch' && inputs.arm64
         run: docker buildx build --platform linux/arm64 --file docker/${{ matrix.image }}.Dockerfile backend
+
+  # Task 027 Part D: the acceptance criteria end to end on a throwaway production-like stack (production compose file +
+  # docker/docker-compose.acceptance.yml), with a generated environment file that is never printed nor uploaded.
+  acceptance:
+    name: Acceptance (task-027.ps1 -Mode Full, Playwright)
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      COMPOSE: docker compose -p omni-ci --env-file docker/.env.prod.ci -f docker/docker-compose.prod.yml -f docker/docker-compose.acceptance.yml
+    steps:
+      - uses: actions/checkout@v4
+
+      # Random letters and digits (the compose file substitutes them into connection strings); masked in the log.
+      - name: Environment file (generated, CI only)
+        run: |
+          rnd() { openssl rand -base64 192 | tr -dc 'A-Za-z0-9' | head -c "$1"; }
+          file=docker/.env.prod.ci
+          cp docker/prod.env.example "$file"
+          set_value() {
+            echo "::add-mask::$2"
+            sed -i "s|^$1=.*|$1=$2|" "$file"
+          }
+          sed -i "s|^IMAGE_TAG=.*|IMAGE_TAG=ci-${GITHUB_SHA::12}|; s|^FRONTEND_ORIGIN=.*|FRONTEND_ORIGIN=http://localhost:4173|; s|^STORAGE_PUBLIC_URL=.*|STORAGE_PUBLIC_URL=http://localhost:8081|; s|^API_HTTPS_REDIRECT=.*|API_HTTPS_REDIRECT=false|; s|^WORKERS_REPLICAS=.*|WORKERS_REPLICAS=2|; s|^BOOTSTRAP_ADMIN_EMAIL=.*|BOOTSTRAP_ADMIN_EMAIL=ci-admin@example.com|" "$file"
+          for name in POSTGRES_PASSWORD OMNI_MIGRATOR_PASSWORD OMNI_APP_PASSWORD RABBITMQ_PASSWORD; do set_value "$name" "$(rnd 32)"; done
+          set_value JWT_SIGNING_KEY "$(rnd 64)"
+          set_value BOOTSTRAP_ADMIN_PASSWORD "Ci$(rnd 18)7"
+          for name in WEBHOOK_SECRET_WEBSITE WEBHOOK_SECRET_POS WEBHOOK_SECRET_DIGITAL_PLATFORM; do set_value "$name" "$(rnd 48)"; done
+          set_value OBJECT_STORAGE_ACCESS_KEY_ID "$(rnd 20)"
+          set_value OBJECT_STORAGE_SECRET_ACCESS_KEY "$(rnd 40)"
+          if grep -qE '^(POSTGRES_PASSWORD|JWT_SIGNING_KEY|BOOTSTRAP_ADMIN_PASSWORD)=$' "$file"; then echo 'a value is empty'; exit 1; fi
+
+      - name: Build the images
+        run: $COMPOSE --profile migrate build
+
+      - name: Start the stack (migrate, up --wait, two Workers)
+        run: |
+          $COMPOSE up -d --wait postgres
+          $COMPOSE --profile migrate run --rm migrate
+          $COMPOSE up -d --wait
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: frontend/.nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Frontend for the stack (build, vite preview on the stack's FRONTEND_ORIGIN)
+        working-directory: frontend
+        env:
+          VITE_API_BASE_URL: http://localhost:8080
+          VITE_STORAGE_ORIGIN: http://localhost:8081
+        run: |
+          npm ci
+          npm run build
+          nohup npm run preview -- --port 4173 --strictPort > ../preview.log 2>&1 &
+          npx playwright install --with-deps chromium
+          for i in $(seq 1 30); do curl -fsS http://localhost:4173/ > /dev/null && break; sleep 1; done
+
+      - name: Acceptance script (task-027.ps1 -Mode Full)
+        shell: pwsh
+        env:
+          SMOKE_BASE_URL: http://localhost:8080
+        run: ./scripts/smoke/task-027.ps1 -Mode Full -Project omni-ci -EnvFile docker/.env.prod.ci
+
+      - name: End-to-end suite (Playwright)
+        working-directory: frontend
+        env:
+          E2E_BASE_URL: http://localhost:4173
+          E2E_API_URL: http://localhost:8080
+          E2E_STACK_CONTROL: '1'
+          E2E_COMPOSE_PROJECT: omni-ci
+          E2E_COMPOSE_ENV_FILE: docker/.env.prod.ci
+        run: |
+          export E2E_ADMIN_EMAIL="$(grep '^BOOTSTRAP_ADMIN_EMAIL=' ../docker/.env.prod.ci | cut -d= -f2-)"
+          export E2E_ADMIN_PASSWORD="$(grep '^BOOTSTRAP_ADMIN_PASSWORD=' ../docker/.env.prod.ci | cut -d= -f2-)"
+          npm run e2e
+
+      # Only when something failed. Nothing is uploaded that holds a value of the environment file: checked first.
+      - name: Collect the Playwright report and the stack's logs
+        if: failure()
+        run: |
+          mkdir -p acceptance-artifacts
+          cp -r frontend/playwright-report acceptance-artifacts/ 2>/dev/null || true
+          cp -r frontend/test-results acceptance-artifacts/ 2>/dev/null || true
+          cp preview.log acceptance-artifacts/ 2>/dev/null || true
+          $COMPOSE logs --no-color > acceptance-artifacts/compose.log 2>&1 || true
+          grep -E '^(POSTGRES_PASSWORD|OMNI_MIGRATOR_PASSWORD|OMNI_APP_PASSWORD|RABBITMQ_PASSWORD|JWT_SIGNING_KEY|BOOTSTRAP_ADMIN_PASSWORD|WEBHOOK_SECRET_[A-Z_]+|OBJECT_STORAGE_ACCESS_KEY_ID|OBJECT_STORAGE_SECRET_ACCESS_KEY)=' docker/.env.prod.ci | cut -d= -f2- > /tmp/secret-values
+          if grep -rqFf /tmp/secret-values acceptance-artifacts; then
+            echo 'A value of the environment file is in the collected files: nothing is uploaded.'
+            rm -rf acceptance-artifacts
+          fi
+          rm -f /tmp/secret-values
+
+      - name: Upload the Playwright report and the logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acceptance-artifacts
+          path: acceptance-artifacts
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Remove the stack
+        if: always()
+        run: |
+          $COMPOSE --profile migrate down -v || true
+          rm -f docker/.env.prod.ci

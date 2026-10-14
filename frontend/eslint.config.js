@@ -6,7 +6,7 @@ import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  { ignores: ['dist', 'coverage', 'node_modules'] },
+  { ignores: ['dist', 'coverage', 'node_modules', 'playwright-report', 'test-results'] },
   {
     files: ['**/*.{ts,tsx}'],
     extends: [
@@ -29,8 +29,15 @@ export default tseslint.config(
   {
     // Test helpers export render utilities next to components; the route table declares the lazy page components
     // next to the routes. Fast refresh does not matter for either.
-    files: ['src/test/**', '**/*.test.{ts,tsx}', 'src/app/router.tsx'],
+    files: ['src/test/**', '**/*.test.{ts,tsx}', 'src/app/router.tsx', 'e2e/**'],
     rules: { 'react-refresh/only-export-components': 'off' },
+  },
+  {
+    // The end-to-end suite runs in Node with Playwright: its fixtures call `use` (not React's) and take `{}` when they
+    // need no other fixture.
+    files: ['e2e/**', 'playwright.config.ts'],
+    languageOptions: { globals: globals.node },
+    rules: { 'react-hooks/rules-of-hooks': 'off', 'no-empty-pattern': 'off' },
   },
   prettier,
 );

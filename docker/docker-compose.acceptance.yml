@@ -1,0 +1,18 @@
+# Acceptance override (task 027) - ONLY for throwaway stacks and the CI job "acceptance", never for omnichannel-prod
+# (scripts/smoke/task-027.ps1 -Mode Full refuses that project; docs/runbook.md "Acceptance run").
+#
+#   docker compose -p omni027 --env-file docker/.env.prod.027 \
+#     -f docker/docker-compose.prod.yml -f docker/docker-compose.acceptance.yml up -d --wait
+#
+# Two differences from production, nothing else:
+# - the channel simulator's SKU rules are on (SIM-TEMP- / SIM-DOWN- / SIM-PERM- / SIM-LOST- external SKUs fail or drift
+#   on purpose), so retry, DLQ and manual retry can be shown end to end;
+# - retry delays of 1 s and 2 s instead of 5 s / 30 s / 2 min / 10 min, so a task retries to its limit in seconds. Within
+#   the validation of RabbitMq:RetryDelays (ascending, 100 ms .. 1 day) and far below StaleTasks:StaleAfter (30 min).
+#   The delays shape the broker topology (one delay queue per tier): use a fresh broker volume - a throwaway stack.
+services:
+  workers:
+    environment:
+      ChannelSimulation__SkuRules: "true"
+      RabbitMq__RetryDelays__0: "00:00:01"
+      RabbitMq__RetryDelays__1: "00:00:02"

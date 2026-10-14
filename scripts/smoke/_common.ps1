@@ -21,7 +21,7 @@ function Test-SkipFrontend([string]$Skip, [bool]$ForeignEnvironment) {
     return $true
 }
 
-$script:RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+$script:RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $script:ForeignEnvironment = [bool]$env:SMOKE_BASE_URL
 $script:SkipFrontend = Test-SkipFrontend $env:SMOKE_SKIP_FRONTEND $script:ForeignEnvironment
 $script:BaseUrl  = if ($env:SMOKE_BASE_URL) { $env:SMOKE_BASE_URL } else { 'http://localhost:5080' }

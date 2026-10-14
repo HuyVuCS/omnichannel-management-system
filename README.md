@@ -803,6 +803,50 @@ message left in the outbox, a queue or a dead-letter queue. Exit code 1 when an 
 hold: that is a defect to report, not a number to tune. There is no performance target; the numbers of task 026b on
 one machine are in `docs/implementation-log.md` as a baseline.
 
+## Acceptance
+
+What proves each acceptance criterion of the architecture document (section 16), and the evidence of the last runs:
+[docs/acceptance.md](docs/acceptance.md). Two tools walk the criteria end to end:
+
+- **`scripts\smoke\task-027.ps1`** - one step table, then a table *criterion -> steps -> result*. Smoke data is named
+  `ACC027-{n}-...`; mappings are deactivated and the accounts locked at the end.
+  - `-Mode NoDrills` (development, or the live system with `-Live`): no load scenario, no container access, no DLQ
+    drill; the retry case (`SIM-TEMP-`) only when the simulator's SKU rules are on (otherwise `skipped: SKU rules off`).
+    On development: `powershell -ExecutionPolicy Bypass -File scripts\smoke\task-027.ps1 -Mode NoDrills`.
+  - `-Mode Full` (a throwaway stack, also CI): every block - a signed webhook, the load scenarios `duplicates` and
+    `contention` of `scripts\load\run.ps1` at a small size, the DLQ drill (`SIM-DOWN-`: retries to the limit, the
+    messages in `stock.sync.marketplace.dlq`, correction and manual retry), read-only `psql` / `rabbitmqctl` in the
+    stack's containers and the invariants of `scripts\load\invariants.sql` (0 violations each). The stack runs the
+    production compose file **plus `docker\docker-compose.acceptance.yml`** (SKU rules on, retry delays 1 s / 2 s; never
+    with `omnichannel-prod`), with a fresh broker. The script refuses the projects `omnichannel-prod` and `omnichannel`
+    and any public origin:
+
+    ```powershell
+    $env:SMOKE_BASE_URL = 'http://localhost:18080'
+    powershell -ExecutionPolicy Bypass -File scripts\smoke\task-027.ps1 -Mode Full -Project omni027 -EnvFile docker\.env.prod.027
+    ```
+  - The script runs under Windows PowerShell 5.1 and under PowerShell 7 on Linux (the CI job).
+- **`npm run e2e`** in `frontend/` - the Playwright suite (`frontend/e2e`, Chromium only, `@playwright/test` pinned):
+  order entry in the three panels by push, the dashboard changing by itself within 5 s, the trace of an order to its
+  attempts and the Logs page, the low-stock alert and its acknowledgement, an export downloaded, an image uploaded,
+  access by role; axe-core in the real browser with colour contrast on every view and every menu page, and the focus
+  ring. Configuration from the environment only, never printed: `E2E_BASE_URL` (the frontend), `E2E_API_URL`,
+  `E2E_ADMIN_EMAIL`, `E2E_ADMIN_PASSWORD`; with `E2E_STACK_CONTROL=1` (+ `E2E_COMPOSE_PROJECT`,
+  `E2E_COMPOSE_ENV_FILE`; a throwaway acceptance stack only) the realtime spec restarts the API container and checks
+  the reconnection and the resync. The suite creates its own Staff and Manager (random passwords, locked at the end)
+  and `E2E027-...` data. One worker; no trace, no video (they would hold the bearer token), a screenshot only on
+  failure. First time: `npx playwright install chromium`.
+  - Against development: `npm run dev` (5173) with the API and Workers running, `E2E_BASE_URL=http://localhost:5173`,
+    `E2E_API_URL=http://localhost:5080`.
+  - Against a throwaway stack: build the frontend with that stack's `VITE_API_BASE_URL` / `VITE_STORAGE_ORIGIN`, serve
+    it with `npm run preview -- --port <port of its FRONTEND_ORIGIN>`.
+- **CI** - the job `acceptance` of `.github/workflows/ci.yml` (push to `master`, manual dispatch; not on pull
+  requests): a generated environment file (random values, masked, never uploaded), the production compose file + the
+  acceptance override with two Workers, `migrate`, `up --wait`, the frontend built for the stack and served by
+  `vite preview`, then `pwsh scripts/smoke/task-027.ps1 -Mode Full` and `npm run e2e` with stack control. On failure
+  the Playwright report and `docker compose logs` are uploaded for 7 days - only after a check that none of them holds
+  a value of the environment file.
+
 ## Frontend
 
 React dashboard in `frontend/` (Vietnamese by default, English switchable in the header).

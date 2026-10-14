@@ -91,6 +91,12 @@ export const PRIMARY_COLOR = '#0958d9';
  */
 export const THEME_COLORS = {
   colorPrimary: PRIMARY_COLOR,
+  /**
+   * Hover of primary buttons (white text) and of primary-coloured text: AntD derives `#2e7ae6` (4.2:1 with white -
+   * found by axe in the browser, task 027 C4); a slightly lighter blue than the brand colour keeps the hover visible
+   * at 5.8:1.
+   */
+  colorPrimaryHover: '#1f5fd1',
   /** "Processing" tags and info alerts follow the brand colour. */
   colorInfo: PRIMARY_COLOR,
   /** green-8 (`#52c41a`: 2.2:1 as tag text). */

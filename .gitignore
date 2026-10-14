@@ -12,6 +12,9 @@ appsettings.*.local.json
 node_modules/
 dist/
 coverage/
+# Playwright (frontend/e2e): report and failure screenshots
+playwright-report/
+test-results/
 
 # Environment / secrets
 .env

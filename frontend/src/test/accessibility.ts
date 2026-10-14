@@ -1,4 +1,5 @@
 import axe from 'axe-core';
+import { FAILING_IMPACTS, factsOf, isUnnamedSelectList } from './accessibilityException';
 
 /**
  * The automated accessibility check of the test suite (task 026c): axe-core on whatever a test has on screen when it
@@ -16,22 +17,6 @@ const OPTIONS: axe.RunOptions = {
     'color-contrast': { enabled: false },
   },
 };
-
-const FAILING_IMPACTS: ReadonlySet<string> = new Set(['serious', 'critical']);
-
-/**
- * The one known violation that is the UI library's and cannot be fixed from here (report 026c): the list of options of
- * an AntD `Select` (`role="listbox"` inside its dropdown) has no accessible name, and the component offers no way to
- * give it one. The combobox that owns the list is named (its form label or `aria-label`) — that is what a screen
- * reader announces; every other element of a select is checked like the rest of the page.
- */
-function isUnnamedSelectList(rule: string, element: Element | null): boolean {
-  return (
-    rule === 'aria-input-field-name' &&
-    element?.getAttribute('role') === 'listbox' &&
-    element.closest('.ant-select-dropdown') !== null
-  );
-}
 
 /**
  * One line per `serious` / `critical` violation under `root`: the rule, what it asks for, and the elements.
@@ -55,7 +40,7 @@ export async function seriousAccessibilityViolations(root: Element = document.bo
     .map((violation) => ({
       violation,
       nodes: violation.nodes.filter(
-        (node) => !isUnnamedSelectList(violation.id, document.querySelector(String(node.target[0]))),
+        (node) => !isUnnamedSelectList(violation.id, factsOf(document.querySelector(String(node.target[0])))),
       ),
     }))
     .filter(({ nodes }) => nodes.length > 0)
