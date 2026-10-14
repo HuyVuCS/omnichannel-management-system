@@ -3,7 +3,7 @@
 Reviewer: Cowork, 2026-10-13
 Verdict: **Accepted.** Both releases are done (026 as `0d7abc5`, 026b as `a980747`), production runs the hardened
 stack with the stale-task sweep and the two indexes; no P0 / P1. Task 026 is closed with it (its report completed in
-`a1a4263`), except the user's live browser check (F6), still open. All eleven deviations accepted (11 with a
+`a1a4263`); the user's live browser check (F6) passed on 2026-10-13 without CSP messages. All eleven deviations accepted (11 with a
 reminder). Questions: 1 → **(b) proxy limit above the API's**; 2 → accepted as designed; 3 → **026c Part A**;
 4 → the user's call, recommendation below, plus the red CI run into 026c A; 5 → no drop.
 
@@ -91,4 +91,4 @@ invariant violations, nothing unfinished, empty queues and DLQs. This is the evi
 | P3 | Task list "last attempt" scales with all attempts (q3b). | 026c A2. |
 | P3 | Red CI run on `294cb91` not explained (q4). | 026c A3. |
 | P3 | Production was down ≈ 40 min before Part 0 because Windows upgraded WSL and Docker Desktop did not recover by itself. | Runbook "Incidents": add "after a WSL upgrade: `wsl --status`, then `docker desktop restart`" (026c A4). Known limitation (uptime = the machine). |
-| — | The user's live browser check of 026 (F6) is still open. | User. |
+| — | The user's live browser check of 026 (F6). | **Done by the user 2026-10-13: no Content Security Policy message in the console.** |
