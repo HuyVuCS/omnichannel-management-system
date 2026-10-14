@@ -1124,3 +1124,24 @@ text; axe-core after every frontend test; theme colours at AA contrast. Backend 
 | CI | Job `acceptance` on push to `master` / dispatch: production compose + acceptance override with a generated env file, `task-027.ps1 -Mode Full` under pwsh, `npm run e2e` | Acceptance becomes a regression check, not a one-off | CI minutes become a cost |
 | Live acceptance | Once, after the release and the user's go-ahead, `NoDrills`; leaves `ACC027-` / `E2E027-` demo data | Production holds demo data only; the user decides | — |
 
+## Task 027 result (reviewed 2026-10-14) — roadmap complete
+
+Released as `3b27e91` (tag `3b27e91c6daa`, migration `LastStockSyncIndex`, ≈ 6 s public downtime). Part A: a lost
+confirmation race answers 200; partial index `(ChannelId, UpdatedAt) WHERE TaskType = 'StockSync' AND Status =
+'Succeeded'` (channels statement 13 ms → 0.2 ms for a channel without a success); global `:focus-visible` ring
+`#0958d9`; one `<h1>` per page; tunnel-only 502 leniency. Acceptance: `scripts/smoke/task-027.ps1` (`Full` / `NoDrills`
+/ `-Live`), simulator prefix `SIM-DOWN-`, history and outbox invariants, `docker/docker-compose.acceptance.yml`,
+Playwright 1.63.0 (8 specs, axe in Chromium with contrast), CI job `acceptance`, `docs/acceptance.md`. Backend 1942,
+frontend 546. `Microsoft.*` 10.0.12 → 10.0.13 and .NET base images pulled (CVE-2026-70159). Review:
+`docs/tasks/027-*.review.md`.
+
+| Topic | Decision | Reason | Revisit when |
+| --- | --- | --- | --- |
+| Acceptance evidence | `docs/acceptance.md` per criterion of doc §16 (quoted verbatim), runs with commit and date; `task-027.ps1` + e2e + CI job `acceptance` keep it re-provable | Doc §16 | A criterion changes |
+| Acceptance override | `docker-compose.acceptance.yml` (SKU rules on, 1 s / 2 s retry delays) for throwaway stacks and CI only, refused for `omnichannel-prod` | Drills without touching production configuration | — |
+| E2E secrets | No trace, no video, no storage state; passwords typed without titled steps; `bypassCSP` for axe injection | A trace records the bearer token | A CSP regression check is wanted (one spec without `bypassCSP`) |
+| .NET servicing | Packages and base images raised together when an advisory fails the restore (NU1903, warnings are errors) | CI is the trigger; images must run the patched runtime | Every advisory |
+| `libgssapi_krb5` message at start | Harmless (Npgsql's GSSAPI probe; password authentication); printed since at least 026c | — | Kerberos authentication |
+| Checkbox / radio focus | Known limitation (AntD draws on a sibling of a hidden input) | Out of A3's list; roadmap closed | The user asks |
+| Roadmap | Complete; no task 028; follow-ups only on the user's request; 025c optional | User, 2026-10-14 | — |
+
