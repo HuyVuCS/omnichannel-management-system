@@ -1090,3 +1090,37 @@ frontend 524. Review: `docs/tasks/026b-*.review.md`.
 | Signed `Content-Length` | Kept only if SeaweedFS through the proxy refuses a mismatched length; otherwise recorded and not used | A signature the provider ignores is false comfort | Another provider |
 | Required-field text | One `validateMessages` in the `ConfigProvider`: "{label} là bắt buộc" / "{label} is required" | Review 024b q2 | — |
 | Accessibility | `axe-core` (dev dependency) on every rendered page in tests, no serious / critical violations; keyboard and contrast checked in the browser; local fixes only | jsdom cannot judge contrast; structural changes need their own task | — |
+
+## Task 026c result (reviewed 2026-10-14)
+
+Released as `9712cf1` (tag `9712cf1f7544`, migration `TaskListOrderIndex`, ≈ 20 s API downtime). Proxy body limit
+1 MiB = 8 × the API's (relation tested; readable 413 through the proxy every run); task list "last attempt" by a
+per-row `max(AttemptNo)` lookup + index `(CreatedAt, TaskId)` (unfiltered page 40 ms → 0.4 ms at the 026b seed);
+`lastSucceededAt` per channel in the channels statement; red CI runs = flaky frontend tests (fixed by waiting for each
+condition); uploads to `uploads/products/{productId}/{uuid}`, confirmation copies to a final key new per confirmation
+and checks the copy; signed `Content-Length` (SeaweedFS enforces it, also through the proxy); `ImageCleanup` in the
+Workers host (age + reference, advisory lock, dry run, event `product_image.orphans_deleted`); one required-field
+text; axe-core after every frontend test; theme colours at AA contrast. Backend 1935, frontend 526, CI green. Review:
+`docs/tasks/026c-*.review.md`.
+
+| Topic | Decision | Reason | Revisit when |
+| --- | --- | --- | --- |
+| Image confirmation | Cheap look at the upload → copy to a key new per confirmation (digest of the upload id + random, UUID v8) → checks on **the copy** → product refers to the copy within 30 s or gives up | The copy is the only object nobody else can write; a repeated confirmation is recognised from the key alone | — |
+| Image clean-up | `ImageCleanup` (default every 6 h, `MinAge` 24 h, floor 2 min = 4 deadlines, `MaxPerRun` 500); unknown keys never deleted; `--image-cleanup-dry-run=true` before a release that could delete | Safe under every interleaving found (argument in the class comment) | A provider lifecycle rule |
+| Signed `Content-Length` | Kept: SeaweedFS 4.48 refuses a different length (403), directly and through Caddy | Measured | Another provider |
+| Theme | Brand blue `#0958d9`; status texts `#237804` / `#a35a00` / `#cf1322` with explicit tints; secondary text 65 %, placeholders 60 % black (review 026c q2: accepted, one blue everywhere) | AA contrast | — |
+| Upload link after confirmation (q4) | A staging key stays confirmable while its link lives; no store of confirmed upload ids | Same right and same checks as any upload | — |
+| `updatedAt` sort (q5), `Products.ImageKey` (q6) | No index | 9–16 ms at 24k tasks; tens of products | ~100k tasks; ~10k products |
+| Chunked oversize body through Funnel (q7) | Accepted: 413 or 502 for the chunked step only against a public origin; strict elsewhere; the API does not drain refused bodies | No browser request is chunked; draining serves the requests it wants to refuse | — |
+
+## Task 027 plan — acceptance end to end, the last planned task (2026-10-14)
+
+| Topic | Decision | Reason | Revisit when |
+| --- | --- | --- | --- |
+| Scope | One complete task, not split (user, 2026-10-14): follow-ups of 026c, acceptance script, browser e2e, CI job, acceptance matrix, release; what is not finished is reported, not moved to 027b | End of the roadmap; 025c stays optional | The user asks for more |
+| Acceptance evidence | `scripts/smoke/task-027.ps1` per criterion of doc §16 (`Full` on throwaway / CI, `NoDrills` on development / live) + `docs/acceptance.md` mapping each criterion to tests, steps and live evidence | One place that proves §16; repeatable | — |
+| Browser e2e | `@playwright/test` (exact pin, Chromium only) in `frontend/e2e`; axe-core injected in the real browser with `color-contrast` on | Criteria 1 and 8 are UI statements; jsdom and manual passes are not repeatable evidence | — |
+| DLQ drill | New simulator prefix `SIM-DOWN-` (always `channel_unavailable`, SKU rules only); throwaway / CI stacks via `docker-compose.acceptance.yml` (SKU rules on, short retry delays) — never with `omnichannel-prod` | Shows retry → DLQ → manual retry end to end without touching a whole channel | — |
+| CI | Job `acceptance` on push to `master` / dispatch: production compose + acceptance override with a generated env file, `task-027.ps1 -Mode Full` under pwsh, `npm run e2e` | Acceptance becomes a regression check, not a one-off | CI minutes become a cost |
+| Live acceptance | Once, after the release and the user's go-ahead, `NoDrills`; leaves `ACC027-` / `E2E027-` demo data | Production holds demo data only; the user decides | — |
+
