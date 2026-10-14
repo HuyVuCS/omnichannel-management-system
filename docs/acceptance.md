@@ -1,8 +1,8 @@
 # Acceptance — doc §16, criterion by criterion
 
-Task 027. For each acceptance criterion of the architecture document (section 16) — the Vietnamese wording below is
-this repository's rendering; the document itself (`THIET_KE_KIEN_TRUC_HE_THONG_OMNICHANNEL_AI_CODING_GUIDE.docx`) is
-kept in the Cowork project, not here — what proves it:
+Task 027. For each acceptance criterion of the architecture document (section 16) — the Vietnamese line under each
+heading is the criterion quoted verbatim from the document (`THIET_KE_KIEN_TRUC_HE_THONG_OMNICHANNEL_AI_CODING_GUIDE.docx`,
+kept in the Cowork project; quoted by Cowork in review 027) — what proves it:
 
 - **Backend tests** (`backend/src/Omnichannel.Tests`, xUnit; integration tests run PostgreSQL, RabbitMQ and the
   storage emulator in containers), by class and test name;
@@ -32,7 +32,7 @@ How to run them: README "Acceptance". Known limitations: at the end.
 ## Criteria
 
 ### 1. Orders from Website / POS / Digital Platform
-*Nhận đơn hàng từ ba thành phần Website, POS và Digital Platform.*
+*Tạo được order từ 3 component Website/POS/Digital Platform Online.* (doc §16, verbatim)
 
 - Backend: `OrderIntakeTests` (`Staff_order_is_accepted_as_task_and_outbox_event_without_creating_an_order`,
   `Unknown_or_inactive_channel_is_not_found`, `Anonymous_cannot_submit_orders`), `OrderEndToEndTests`
@@ -45,7 +45,7 @@ How to run them: README "Acceptance". Known limitations: at the end.
   the WebSocket, all three in the Orders list.
 
 ### 2. Orders normalised and put on RabbitMQ
-*Đơn hàng được chuẩn hoá và đưa vào RabbitMQ.*
+*Order được normalize và đưa vào RabbitMQ.* (doc §16, verbatim)
 
 - Backend: `OrderIntakeTests.Correlation_id_header_is_stored_on_task_and_outbox_and_returned`,
   `WebhookEndpointsTests.Orders` (the channel's shape → the normalised order), `OutboxPublisherTests`,
@@ -55,7 +55,7 @@ How to run them: README "Acceptance". Known limitations: at the end.
   product line with the server price); the webhook order of the same shape.
 
 ### 3. Duplicate orders not processed twice
-*Đơn trùng (cùng kênh, cùng mã đơn ngoài) không bị xử lý hai lần.*
+*Duplicate order không bị xử lý hai lần.* (doc §16, verbatim)
 
 - Backend: `OrderIntakeTests` (`Resubmitting_the_same_order_returns_the_existing_task`,
   `Concurrent_identical_submissions_create_one_task`, `Resubmission_with_different_content_is_a_conflict_and_writes_nothing`,
@@ -68,7 +68,7 @@ How to run them: README "Acceptance". Known limitations: at the end.
 - Load baseline 026b: 200 requests / 100 ids → 100 orders.
 
 ### 4. Concurrent orders do not oversell
-*Nhiều đơn đồng thời cho cùng một SKU không bán vượt tồn kho.*
+*Nhiều order đồng thời cùng SKU không gây oversell.* (doc §16, verbatim)
 
 - Backend: `OrderWorkerTests` (`Concurrent_orders_for_the_last_units_never_oversell`,
   `Concurrent_multi_item_orders_in_opposite_order_and_imports_do_not_deadlock`, `One_short_item_reserves_nothing`),
@@ -78,7 +78,7 @@ How to run them: README "Acceptance". Known limitations: at the end.
 - Load baseline 026b: 300 orders / stock 100 → 100 reserved, 200 refused.
 
 ### 5. Total / Reserved / Available stock correct
-*TotalStock, ReservedStock, AvailableStock luôn đúng.*
+*TotalStock/ReservedStock/AvailableStock chính xác.* (doc §16, verbatim)
 
 - Backend: `InventoryTests`, `InventoryImportTests` (`Concurrent_imports_for_one_product_are_all_applied_with_movement_and_outbox_each`,
   `Import_beyond_the_maximum_stock_is_a_conflict_and_changes_nothing`), `OrderWorkerTests` (stock after each case).
@@ -87,7 +87,7 @@ How to run them: README "Acceptance". Known limitations: at the end.
   over the whole movement history.
 
 ### 6. InventoryMovement + OutboxEvent in one transaction
-*Biến động tồn kho và sự kiện outbox được ghi trong cùng một giao dịch.*
+*InventoryMovement và OutboxEvent được ghi đúng transaction.* (doc §16, verbatim)
 
 - Backend: **`OrderWorkerTests.A_failure_inside_the_reserve_transaction_leaves_neither_movement_nor_outbox_row_and_the_retry_reserves_once`**
   (task 027: the reservation's commit fails after its stock update, order, movement and outbox event were written →
@@ -99,7 +99,7 @@ How to run them: README "Acceptance". Known limitations: at the end.
   movement".
 
 ### 7. Stock sync with retry and DLQ
-*Đồng bộ tồn kho có retry và DLQ.*
+*Stock sync có retry và DLQ.* (doc §16, verbatim)
 
 - Backend: `StockSyncWorkerTests` (`Transient_channel_failure_is_retried_with_delay_and_then_succeeds`,
   `Channel_that_stays_unavailable_fails_the_task_after_max_attempts_and_the_message_goes_to_the_dlq`,
@@ -114,7 +114,7 @@ How to run them: README "Acceptance". Known limitations: at the end.
 - Frontend: `processing.test.tsx`, `processingTask.test.tsx`, `channelDetail.test.tsx`.
 
 ### 8. Near-real-time dashboard
-*Dashboard cập nhật gần thời gian thực.*
+*Dashboard nhận cập nhật gần real-time.* (doc §16, verbatim)
 
 - Backend: `RealtimeHubTests` (`Staff_client_receives_a_hint_after_a_stock_import`,
   `Listener_reconnects_after_losing_its_connection_and_tells_clients_to_resync`), `RealtimeNotifyTests`,
@@ -127,7 +127,7 @@ How to run them: README "Acceptance". Known limitations: at the end.
   a fresh API read.
 
 ### 9. Trace an order to task, worker, instance, attempt, error
-*Truy vết đơn hàng tới tác vụ, worker, instance, lần thử và lỗi.*
+*Có thể tra một order và biết task, worker, instance, attempt, lỗi.* (doc §16, verbatim)
 
 - Backend: `ProcessingTaskEndpointsTests` (`Task_detail_shows_attempts_and_the_publish_state_of_its_message`,
   `Task_search_filters_on_task_and_attempt_fields`), `ProcessingAttemptFlowTests`, `OrderQueryTests`,
@@ -141,7 +141,7 @@ How to run them: README "Acceptance". Known limitations: at the end.
   the failed first attempt (`SIM-TEMP-`, `channel_unavailable`) → the Logs page filtered by a flow's correlation id.
 
 ### 10. Low-stock alert by threshold
-*Cảnh báo sắp hết hàng theo ngưỡng.*
+*Low-stock alert hoạt động theo threshold.* (doc §16, verbatim)
 
 - Backend: `AlertLifecycleTests`, `AlertEndpointsTests` (`Manager_acknowledges_an_open_alert_once_with_audit_and_hint_and_acknowledging_again_changes_nothing`,
   `Acknowledge_is_refused_for_a_resolved_alert_for_staff_for_anonymous_and_for_an_unknown_alert`), `AlertKeyTests`, `AlertModelTests`.
@@ -151,7 +151,7 @@ How to run them: README "Acceptance". Known limitations: at the end.
 - E2E: `alerts.spec.ts` — the alert on the Alerts page and counted on the dashboard card; the Manager acknowledges.
 
 ### 11. Inventory and processing history
-*Lịch sử tồn kho và lịch sử xử lý.*
+*Có lịch sử inventory và processing.* (doc §16, verbatim)
 
 - Backend: `InventoryImportTests` (`Movements_are_filtered_and_paged_newest_first`,
   `Movement_carries_the_email_of_the_user_who_made_it_and_null_for_any_other_actor`), `ProcessingTaskEndpointsTests`,
@@ -161,7 +161,7 @@ How to run them: README "Acceptance". Known limitations: at the end.
   and user; its stock-sync tasks, all `Succeeded`, each with its `StockSyncWorker` attempt.
 
 ### 12. Excel export
-*Xuất báo cáo Excel.*
+*Có export Excel.* (doc §16, verbatim)
 
 - Backend: `ReportExportEndToEndTests`, `ReportExportEndpointsTests`, `ReportWorkbookTests`, `ReportExportSnapshotTests`.
 - Frontend: `reports.test.tsx`.
@@ -170,7 +170,7 @@ How to run them: README "Acceptance". Known limitations: at the end.
 - E2E: `export.spec.ts` — requested on Reports, "Succeeded" without a reload, the download starts with `PK`.
 
 ### 13. Product images in S3-compatible storage
-*Ảnh sản phẩm lưu trên S3 (lưu trữ tương thích S3, quyết định của task 019).*
+*Ảnh sản phẩm lưu S3.* (doc §16, verbatim)
 
 - Backend: `ProductImageEndpointsTests`, `ProductImageHygieneTests` (task 027 A1:
   `A_second_confirmation_of_one_upload_that_loses_the_race_answers_the_product_the_first_one_confirmed`),
@@ -181,7 +181,7 @@ How to run them: README "Acceptance". Known limitations: at the end.
 - E2E: `image.spec.ts` — uploaded in the product dialog, the thumbnail loads (`naturalWidth > 0`).
 
 ### 14. API authentication / authorization
-*Xác thực và phân quyền API.*
+*API có authentication/authorization.* (doc §16, verbatim)
 
 - Backend: `UserManagementTests`, `TokenRevocationTests`, `JwtAccessTokenIssuerTests`, `JwtOptionsValidatorTests`,
   `UserGuardTests`, `SecurityHardeningTests`, `OrderIntakeTests.Anonymous_cannot_submit_orders`, the role checks of
@@ -202,7 +202,7 @@ How to run them: README "Acceptance". Known limitations: at the end.
   address while signed out → login.
 
 ### 15. Tests for the important flows
-*Có kiểm thử cho các luồng quan trọng.*
+*Có test cho các flow quan trọng.* (doc §16, verbatim)
 
 | Flow (CLAUDE.md §19) | At least one test |
 | --- | --- |
