@@ -223,6 +223,12 @@ No flow is without a test. The suites as a whole: backend `dotnet test` (≈ 1,9
 
 ## Known limitations
 
+- **Order polling from channels not implemented** (doc §8.1 "UI / Webhook / Polling"; user, 2026-10-15): orders
+  arrive through the order-entry page (UI) and signed webhooks only; no worker asks a channel periodically for new
+  orders. Not an acceptance criterion of §16 (criterion 1 is met by UI and webhook). Reason: the channels are simulated
+  (task 014), so polling would only query our own simulator. If needed later: a periodic worker in the Workers host
+  (advisory lock, one cursor per channel, a simulated `IChannelOrderClient`) feeding the existing intake — duplicates
+  are already stopped by `UNIQUE(ChannelId, ExternalOrderId)`; one additive migration for the cursors.
 - **Simulated integrations**: the three channels, the invoice provider, the mail sender and the payment step are
   simulated in-process (no real external API); the simulators' failure rules exist for drills only (off in production).
 - **No production backup** (decision of the user, 2026-10-12): losing Docker Desktop's data or the disk loses all

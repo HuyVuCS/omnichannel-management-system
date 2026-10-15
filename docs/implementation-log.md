@@ -1144,4 +1144,4 @@ frontend 546. `Microsoft.*` 10.0.12 → 10.0.13 and .NET base images pulled (CVE
 | `libgssapi_krb5` message at start | Harmless (Npgsql's GSSAPI probe; password authentication); printed since at least 026c | — | Kerberos authentication |
 | Checkbox / radio focus | Known limitation (AntD draws on a sibling of a hidden input) | Out of A3's list; roadmap closed | The user asks |
 | Roadmap | Complete; no task 028; follow-ups only on the user's request; 025c optional | User, 2026-10-14 | — |
-
+| Order polling (doc §8.1) | **Not implemented — recorded as a known limitation** (user, 2026-10-15, after the end-to-end audit). Orders enter by UI and webhook only | Channels are simulated; not a §16 criterion; it had never been planned (a gap of planning, noticed in the audit) | Real channel APIs without webhooks |
