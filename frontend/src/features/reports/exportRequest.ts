@@ -7,7 +7,7 @@ import { isApiError } from '@/shared/api/types';
 /**
  * The longest range of an orders export, in local days. The API decides (`Reports:MaxRangeDays`, default 366); this
  * copy only answers before a request is sent. A deployment that changes the server's limit changes this constant too
- * (README "Reports and Excel export") - a lower server limit costs one request that comes back with a field error.
+ * (docs/operations-guide.md "Reports and Excel export") - a lower server limit costs one request that comes back with a field error.
  */
 export const MAX_EXPORT_RANGE_DAYS = 366;
 

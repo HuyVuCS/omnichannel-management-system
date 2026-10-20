@@ -2,7 +2,7 @@
 
 Task 027. For each acceptance criterion of the architecture document (section 16) — the Vietnamese line under each
 heading is the criterion quoted verbatim from the document (`THIET_KE_KIEN_TRUC_HE_THONG_OMNICHANNEL_AI_CODING_GUIDE.docx`,
-kept in the Cowork project; quoted by Cowork in review 027) — what proves it:
+the architecture document, kept outside the repository) — what proves it:
 
 - **Backend tests** (`backend/src/Omnichannel.Tests`, xUnit; integration tests run PostgreSQL, RabbitMQ and the
   storage emulator in containers), by class and test name;
@@ -13,7 +13,7 @@ kept in the Cowork project; quoted by Cowork in review 027) — what proves it:
 - the **load-test baseline** of task 026b (`docs/implementation-log.md`, "Task 026b result");
 - the **live evidence** of the release run (section "Runs").
 
-How to run them: README "Acceptance". Known limitations: at the end.
+How to run them: docs/operations-guide.md "Acceptance". Known limitations: at the end.
 
 ## Runs
 
@@ -204,7 +204,7 @@ How to run them: README "Acceptance". Known limitations: at the end.
 ### 15. Tests for the important flows
 *Có test cho các flow quan trọng.* (doc §16, verbatim)
 
-| Flow (CLAUDE.md §19) | At least one test |
+| Flow (architecture document) | At least one test |
 | --- | --- |
 | Inventory reservation | `OrderWorkerTests.Order_with_enough_stock_is_reserved_with_movement_outbox_and_attempt` |
 | Concurrent stock reservation | `OrderWorkerTests.Concurrent_multi_item_orders_in_opposite_order_and_imports_do_not_deadlock` |

@@ -1,6 +1,6 @@
 # Smoke check for task 016 (product SKU on processing tasks; the API side of the dashboard and the Sync & Processing
 # page; frontend build and tests).
-# Needs PostgreSQL and RabbitMQ running (README section 1). No new migration.
+# Needs PostgreSQL and RabbitMQ running (docs/operations-guide.md section 1). No new migration.
 # Uses a running API / Workers host or - for the local default only - builds and starts them, and stops what it started.
 # The smoke mapping is deactivated at the end; the real channels are not changed.
 # Usage (repository root):  powershell -ExecutionPolicy Bypass -File scripts\smoke\task-016.ps1
@@ -75,7 +75,7 @@ try {
     Write-Host 'Waiting for the Stock Sync Worker (up to 60 s)...'
     $syncTask = Wait-Task $mapping.Body.syncTaskId $staff 60
     if ($null -eq $syncTask) {
-        throw 'The stock-sync task did not finish within 60 s. Is the Workers host running (README section 6)?'
+        throw 'The stock-sync task did not finish within 60 s. Is the Workers host running (docs/operations-guide.md section 6)?'
     }
     Assert-Step '09 sync task' 'Succeeded' $syncTask.status
     Assert-Step '10 task detail carries the product SKU' $sku $syncTask.productSku

@@ -1,5 +1,5 @@
 # Smoke check for task 017 (alerts: low stock, insufficient stock, stock-sync failure; acknowledge; dashboard summary).
-# Needs PostgreSQL and RabbitMQ running (README section 1) and the Alerts migration applied (README section 4).
+# Needs PostgreSQL and RabbitMQ running (docs/operations-guide.md section 1) and the Alerts migration applied (docs/operations-guide.md section 4).
 # Uses a running API / Workers host or - for the local default only - builds and starts them, and stops what it started.
 # The Workers host must run in Development: only there the simulator's SKU rule SIM-PERM- is on.
 # The smoke mapping ends Inactive and the smoke accounts are locked, also after a failed step.
@@ -92,7 +92,7 @@ try {
     Write-Host 'Waiting for the Order Worker (up to 60 s)...'
     $orderTask = if ($submitted.Body) { Wait-Task $submitted.Body.taskId $staff 60 } else { $null }
     if ($null -eq $orderTask) {
-        throw 'The order did not reach a terminal state within 60 s. Is the Workers host running a build of task 017 (README section 6)?'
+        throw 'The order did not reach a terminal state within 60 s. Is the Workers host running a build of task 017 (docs/operations-guide.md section 6)?'
     }
     Assert-Step '11 order task' 'Succeeded' (Get-TaskStatus $orderTask)
     $low = Get-ProductAlerts $staff $productId 'LowStock'

@@ -1,5 +1,5 @@
 /**
- * What the application needs from the notifications hub (`/api/hubs/notifications`, README "Realtime hints and
+ * What the application needs from the notifications hub (`/api/hubs/notifications`, docs/operations-guide.md "Realtime hints and
  * dashboard summary"), behind a small interface: the SignalR client lives in `signalrHub.ts` and is loaded only after
  * sign-in; tests use a fake hub and never touch the library.
  */

@@ -1,7 +1,7 @@
 # Smoke check for task 023 (webhooks: POST /api/webhooks/{slug} - signed, normalised through the channel's mappings,
 # accepted by the order intake; and one external SKU per channel among mappings without an external product id).
-# Needs PostgreSQL and RabbitMQ running (README section 1), the migrations ChannelProductExternalSku and
-# ChannelCustomers applied (README section 4) and the webhook secrets (scripts\setup-webhook-secrets.ps1, README
+# Needs PostgreSQL and RabbitMQ running (docs/operations-guide.md section 1), the migrations ChannelProductExternalSku and
+# ChannelCustomers applied (docs/operations-guide.md section 4) and the webhook secrets (scripts\setup-webhook-secrets.ps1, README
 # section 9). Uses a running API / Workers host or builds and starts them, and stops what it started. An API that was
 # started before the secrets were set must be restarted first.
 # Another environment (SMOKE_BASE_URL, see _common.ps1) has a webhook secret of its own: name a .env-style file that
@@ -98,7 +98,7 @@ try {
     $taskId = [string]$sent.Body.taskId
     Write-Host 'Waiting for the Order Worker (up to 60 s)...'
     $task = Wait-Task $taskId $manager 60
-    if ($null -eq $task) { throw 'The order task did not finish within 60 s. Is the Workers host running (README section 6)?' }
+    if ($null -eq $task) { throw 'The order task did not finish within 60 s. Is the Workers host running (docs/operations-guide.md section 6)?' }
     Assert-Step '09 the task of the webhook order' 'Succeeded' (Get-TaskStatus $task)
     $order = (Invoke-Api GET "/api/orders/$($task.orderId)" $manager).Body
     Assert-Step '10 the order is Reserved under the channel order id' "Reserved $orderId" "$($order.status) $($order.externalOrderId)"

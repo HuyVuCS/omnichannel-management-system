@@ -1,4 +1,4 @@
-# Signs a webhook the way a channel would and posts it to POST /api/webhooks/{slug} (README "Webhooks").
+# Signs a webhook the way a channel would and posts it to POST /api/webhooks/{slug} (docs/operations-guide.md "Webhooks").
 # Windows PowerShell 5.1 and PowerShell 7 compatible. ASCII only on purpose.
 #
 #   powershell -ExecutionPolicy Bypass -File scripts\send-webhook.ps1 -Channel website -BodyFile order.json

@@ -1,4 +1,4 @@
-# Production stack: everything on one machine, one entry (the reverse proxy). README "Production deployment".
+# Production stack: everything on one machine, one entry (the reverse proxy). docs/operations-guide.md "Production deployment".
 #
 #   powershell -ExecutionPolicy Bypass -File scripts\deploy\new-prod-env.ps1 -AdminEmail you@example.com   # once: docker/.env.prod
 #   docker compose --env-file docker/.env.prod -f docker/docker-compose.prod.yml build

@@ -91,7 +91,7 @@ services:
       BootstrapAdmin__Email: ${BOOTSTRAP_ADMIN_EMAIL:-}
       BootstrapAdmin__Password: ${BOOTSTRAP_ADMIN_PASSWORD:-}
       # Reached from inside the compose network. Links the containerised API hands out carry this address, which a
-      # browser on the host cannot resolve: images work with the API run from the IDE (README "Product images").
+      # browser on the host cannot resolve: images work with the API run from the IDE (docs/operations-guide.md "Product images").
       ObjectStorage__ServiceUrl: http://objectstorage:8333
       ObjectStorage__BucketName: ${OBJECT_STORAGE_BUCKET}
       ObjectStorage__AccessKeyId: ${OBJECT_STORAGE_ACCESS_KEY_ID}

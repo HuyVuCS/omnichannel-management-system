@@ -1,6 +1,6 @@
 # Smoke check for task 016b (stockSyncEnabled on channels; the mapping API as the channel detail page uses it: create,
 # change, deactivate, search; frontend build and tests).
-# Needs PostgreSQL and RabbitMQ running (README section 1). No new migration.
+# Needs PostgreSQL and RabbitMQ running (docs/operations-guide.md section 1). No new migration.
 # Uses a running API / Workers host or - for the local default only - builds and starts them, and stops what it started.
 # The smoke mapping ends Inactive, also after a failed step; the mappings of real products are never touched.
 # Usage (repository root):  powershell -ExecutionPolicy Bypass -File scripts\smoke\task-016b.ps1
@@ -89,7 +89,7 @@ try {
     Write-Host 'Waiting for the Stock Sync Worker (up to 60 s)...'
     $firstTask = Wait-Task $mapping.Body.syncTaskId $staff 60
     if ($null -eq $firstTask) {
-        throw 'The stock-sync task did not finish within 60 s. Is the Workers host running (README section 6)?'
+        throw 'The stock-sync task did not finish within 60 s. Is the Workers host running (docs/operations-guide.md section 6)?'
     }
     Assert-Step '13 sync task' 'Succeeded' $firstTask.status
 

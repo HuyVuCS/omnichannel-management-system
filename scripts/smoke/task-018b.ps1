@@ -1,5 +1,5 @@
 # Smoke check for task 018b (Logs/Audit: GET /api/system-events - roles, allowed details, trace by correlation id).
-# Needs PostgreSQL and RabbitMQ running (README section 1) and every migration applied (README section 4).
+# Needs PostgreSQL and RabbitMQ running (docs/operations-guide.md section 1) and every migration applied (docs/operations-guide.md section 4).
 # Uses a running API / Workers host or - for the local default only - builds and starts them, and stops what it started.
 # The Workers host must run in Development: only there the simulator's SKU rule SIM-PERM- is on.
 # The smoke mapping ends Inactive and the smoke accounts are locked, also after a failed step.
@@ -115,7 +115,7 @@ try {
     Write-Host 'Waiting for the Stock Sync Worker (up to 60 s)...'
     $failedTask = if ($syncTaskId) { Wait-Task $syncTaskId $manager 60 } else { $null }
     if ($null -eq $failedTask) {
-        throw 'The sync task did not reach a terminal state within 60 s. Is the Workers host running a build of task 018b (README section 6)?'
+        throw 'The sync task did not reach a terminal state within 60 s. Is the Workers host running a build of task 018b (docs/operations-guide.md section 6)?'
     }
     if ($failedTask.status -ceq 'Succeeded') {
         Write-Host 'The SIM-PERM- task succeeded: ChannelSimulation:SkuRules is OFF (Workers host not in Development).' -ForegroundColor Yellow

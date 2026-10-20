@@ -1,5 +1,8 @@
 # Implementation log
 
+> Historical record of the decisions taken while building the system. References to `docs/tasks/*` point to the per-task
+> task/report/review files that were removed from the working tree after acceptance; they remain in the git history.
+
 Decisions taken while implementing the architecture document, in order of the implementation plan (section 15).
 Anything listed under "Deviations" differs from, or adds to, the architecture document and should be confirmed.
 
@@ -359,7 +362,7 @@ smoke 38/38 (throwaway environment; the development run, migration and manual ch
 
 Realtime hints (`RealtimeHintInterceptor` → `pg_notify('omnichannel_ui')` → `PostgresHintListener` → hub
 `/api/hubs/notifications`, message `hints` `{ events, resync }`), `GET /api/dashboard/summary`; Part A: stale stock-sync
-task after deactivation (014 P2), `GET` of one mapping, README section 6, `.http` samples. Backend 745/745 (505 unit, 240
+task after deactivation (014 P2), `GET` of one mapping, docs/operations-guide.md section 6, `.http` samples. Backend 745/745 (505 unit, 240
 integration), smoke 27/27 (throwaway environment; the development run and the manual check confirmed by the user on
 2026-10-02), 15 mutations; frontend untouched; no migration. Review: `docs/tasks/015-*.review.md`.
 

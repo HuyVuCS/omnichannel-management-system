@@ -7,7 +7,7 @@ namespace Omnichannel.Infrastructure.RabbitMQ;
 
 /// <summary>
 /// Consumes one queue with manual acknowledgements: prefetch = concurrency, up to <c>concurrency</c> handlers in parallel
-/// (channel dispatch concurrency), one DI scope per delivery. Settlement (doc §8.3, CLAUDE.md §10):
+/// (channel dispatch concurrency), one DI scope per delivery. Settlement (doc §8.3):
 /// <list type="bullet">
 /// <item><c>Ack</c> → ACK (only after the handler returned, i.e. after it committed).</item>
 /// <item><c>Reject</c> → reject without requeue → <c>&lt;queue&gt;.dlq</c>.</item>

@@ -1,5 +1,5 @@
 # VS Code REST Client / Visual Studio .http file.
-# Use the bootstrap admin configured via user-secrets (see README).
+# Use the bootstrap admin configured via user-secrets (see docs/operations-guide.md).
 # Credentials are read from backend/src/Omnichannel.Api/.env (git-ignored), e.g.:
 #   BOOTSTRAP_ADMIN_EMAIL=...
 #   BOOTSTRAP_ADMIN_PASSWORD=...

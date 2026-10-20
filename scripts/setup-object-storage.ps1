@@ -24,7 +24,7 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 if (-not $EnvFile) { $EnvFile = Join-Path $repoRoot 'docker\.env' }
 if (-not (Test-Path $EnvFile)) {
-    throw "$EnvFile does not exist. Copy docker/.env.example to docker/.env and fill it in first (README section 1)."
+    throw "$EnvFile does not exist. Copy docker/.env.example to docker/.env and fill it in first (docs/operations-guide.md section 1)."
 }
 
 $BucketName = 'OBJECT_STORAGE_BUCKET'

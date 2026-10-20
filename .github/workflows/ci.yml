@@ -107,7 +107,7 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
 
-      # Built, not pushed: the stack builds its images on the machine it runs on (README "Production deployment").
+      # Built, not pushed: the stack builds its images on the machine it runs on (docs/operations-guide.md "Production deployment").
       - name: Build for linux/amd64
         run: docker buildx build --platform linux/amd64 --file docker/${{ matrix.image }}.Dockerfile backend
 

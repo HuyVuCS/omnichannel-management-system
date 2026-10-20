@@ -25,3 +25,7 @@ test-results/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Local AI-assistant configuration (not part of the system)
+.claude/
+CLAUDE.md

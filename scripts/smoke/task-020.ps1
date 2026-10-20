@@ -1,7 +1,7 @@
 # Smoke check for task 020 (Excel exports built in the background: request, build by the Report Export Worker, download).
-# Needs PostgreSQL and RabbitMQ running (README section 1), migration ReportExports applied (README section 4), the
+# Needs PostgreSQL and RabbitMQ running (docs/operations-guide.md section 1), migration ReportExports applied (docs/operations-guide.md section 4), the
 # object storage emulator up, and its keys in the user-secrets of the API AND of the Workers host
-# (scripts\setup-object-storage.ps1, then docker compose up -d - README "Reports and Excel export").
+# (scripts\setup-object-storage.ps1, then docker compose up -d - docs/operations-guide.md "Reports and Excel export").
 # Uses a running API / Workers host or - for the local default only - builds and starts them, and stops what it started.
 # When the storage does not answer, the script fails with a step that says so. It never prints a download link: a
 # presigned link is a credential until it expires. The smoke accounts are locked, also after a failed step.
@@ -137,7 +137,7 @@ try {
     Assert-Step '16 orders export -> 202' 202 $accepted.Status
     $exportId = [string]$accepted.Body.taskId
     $waited = Wait-Export $exportId $manager $ExportWaitSeconds
-    Assert-Step '17 the Report Export Worker reached the object storage (is the emulator up, do the Workers have its keys? README "Reports and Excel export")' $true (-not $waited.StorageDown)
+    Assert-Step '17 the Report Export Worker reached the object storage (is the emulator up, do the Workers have its keys? docs/operations-guide.md "Reports and Excel export")' $true (-not $waited.StorageDown)
     if ($waited.StorageDown) { throw 'The Report Export Worker cannot reach the object storage: start it, run scripts\setup-object-storage.ps1, restart the Workers host and run the script again.' }
     Assert-Step "18 the export is built within $ExportWaitSeconds s (is the Workers host running?)" 'Succeeded' $waited.Status
 

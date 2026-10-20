@@ -1,8 +1,8 @@
 # Runbook — operating the live system
 
 For the person who runs the system. Every procedure is a list of commands from the **repository root** in Windows
-PowerShell. Background and reasons: README "Production deployment", `docs/implementation-log.md` ("Hosting decision",
-"Task 025 result", "Task 025b plan"). Rules for who may run what on production: `docs/tasks/README.md` "Production steps".
+PowerShell. Background and reasons: docs/operations-guide.md "Production deployment", `docs/implementation-log.md` ("Hosting decision",
+"Task 025 result", "Task 025b plan").
 
 ```powershell
 # Used by every procedure below.
@@ -48,7 +48,7 @@ and 7).
 | RabbitMQ | volume `omnichannel-prod_rabbitmq-data` | messages in transit only |
 
 Only the proxy has host ports, and only on `127.0.0.1`. TLS ends at Funnel; inside the machine everything is plain HTTP.
-The channels, the invoice provider and the e-mail sender are **simulated** in production too (README sections 7 and 10):
+The channels, the invoice provider and the e-mail sender are **simulated** in production too (docs/operations-guide.md sections 7 and 10):
 no order leaves the system, no invoice is issued, no e-mail is sent.
 
 ## 2. Start, stop, status, logs
@@ -175,7 +175,7 @@ docker image rm omnichannel-api:<old tag> omnichannel-workers:<old tag> omnichan
   The compose file and the Caddyfile of the checkout are used either way: a release that changed them (as 026 did)
   is rolled back from the checkout of the previous commit.
 - **Backend, a migration ran:** the old code does not know the new schema and migrations are never taken back
-  (`docs/tasks/README.md`). Fix forward with a new release. There is no backup to restore: data that a release
+  (additive migrations only). Fix forward with a new release. There is no backup to restore: data that a release
   damaged stays damaged.
 
 ## 5. Migrations
@@ -187,7 +187,7 @@ docker image rm omnichannel-api:<old tag> omnichannel-workers:<old tag> omnichan
 Get-ChildItem backend\src\Omnichannel.Infrastructure\Persistence\Migrations\*_*.cs -Exclude *.Designer.cs | Select-Object Name
 ```
 
-Rules (unchanged, `docs/tasks/README.md`): the pending list must be exactly what the release brings; **additive only**
+Rules: the pending list must be exactly what the release brings; **additive only**
 — a migration that drops or renames a table or column, narrows a type or rewrites rows is never applied to
 production (there is no backup; the user decides what happens instead); never `database update <earlier migration>`. The `migrate` service applies what is
 pending as the role `omnichannel_migrator` and exits; the application role cannot change the schema.
@@ -236,7 +236,7 @@ and the number of entries of the storage archive), and one line in `<backup fold
 ## 7. Restore (available, not in use)
 
 Without a backup of production (top of this runbook) there is nothing to restore: this section applies to drills and
-to backups the user asks for. After the machine is lost the system starts again **empty** (README "Production
+to backups the user asks for. After the machine is lost the system starts again **empty** (docs/operations-guide.md "Production
 deployment", steps 1 and 2).
 
 `restore-prod.ps1` restores **only into a stack that does not exist** (no container, no volume of that project name).
@@ -445,7 +445,7 @@ Go-live of task 025b (2026-10-12); public information only.
 | Storage downtime during a backup | 13 to 14 s (measured on throwaway stacks in 025b, 025d and 026; never on production) |
 | Restore into a new stack | healthy after 40 s, counts and storage entries identical to the manifest (throwaway stack with smoke data, 025d) |
 | After a reboot (2026-10-12) | nothing was started by hand: all containers running 62 s after the boot (logon included), both Funnel ports on, first login from the internet 112 s after the boot. Docker Desktop - and with it the stack - starts with the logon; whether Tailscale alone serves before a logon was not measured |
-| Backups | **none (user decision 2026-10-12)**: no backup task is registered, no backup of production exists, the backup scripts have never run against `omnichannel-prod`; "Production steps" (`docs/tasks/README.md`) no longer asks for one |
+| Backups | **none (user decision 2026-10-12)**: no backup task is registered, no backup of production exists, the backup scripts have never run against `omnichannel-prod` |
 | Backup destination, time of the daily task | none |
 
 What reaches the proxy (its access log), measured at go-live:
@@ -579,7 +579,7 @@ Product images live in the bucket under two prefixes; export files under `export
 
 ## 17. Acceptance runs (task 027)
 
-What proves each acceptance criterion and the latest evidence: `docs/acceptance.md`. README "Acceptance" has the commands.
+What proves each acceptance criterion and the latest evidence: `docs/acceptance.md`. docs/operations-guide.md "Acceptance" has the commands.
 
 - **`docker/docker-compose.acceptance.yml` is for throwaway stacks and CI only** - never in a command for
   `omnichannel-prod`. It switches the channel simulator's SKU rules on (`SIM-TEMP-` / `SIM-DOWN-` / `SIM-PERM-` /
@@ -595,6 +595,6 @@ What proves each acceptance criterion and the latest evidence: `docs/acceptance.
   - `npm run e2e` in `frontend/` with `E2E_BASE_URL` = the Vercel origin, `E2E_API_URL` = the public API origin and the
     production Admin in `E2E_ADMIN_EMAIL` / `E2E_ADMIN_PASSWORD` (set in the shell, never written down); no
     `E2E_STACK_CONTROL`. From this machine also `E2E_HOST_RESOLVER_RULES="MAP <api host> <public Funnel address>"`:
-    here the name resolves to the tailnet address, which Chromium blocks for the public Vercel page (README
+    here the name resolves to the tailnet address, which Chromium blocks for the public Vercel page (docs/operations-guide.md
     "Acceptance").
   - Nothing else on production: no load scenario, no drill, no container stop, no `psql` write.

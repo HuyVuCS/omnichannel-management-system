@@ -3,7 +3,7 @@
 # takes what nothing refers to and leaves the image in use (B2).
 #
 # Default: the local development API (started and stopped by this script when it is not running; no Workers needed)
-# with the object storage emulator up (README "Product images").
+# with the object storage emulator up (docs/operations-guide.md "Product images").
 # Another environment (a production-like stack through its proxy):
 #   SMOKE_BASE_URL          the API origin of the proxy, e.g. http://localhost:18080
 #   SMOKE_ENV_FILE          the environment file of that stack (its admin), or SMOKE_ADMIN_EMAIL / SMOKE_ADMIN_PASSWORD
@@ -138,7 +138,7 @@ try {
     Assert-Step '05 ... the link writes that key' $uploadKey (Get-KeyOfLink $uploadUrl)
     $probe = Invoke-Storage GET (([uri]$uploadUrl).GetLeftPart([System.UriPartial]::Authority) + '/') $null $null
     Assert-Step '06 the object storage answers (is it up?)' $true ($probe.Status -ne 0)
-    if ($probe.Status -eq 0) { throw 'The object storage does not answer: start it (README "Product images") and run the script again.' }
+    if ($probe.Status -eq 0) { throw 'The object storage does not answer: start it (docs/operations-guide.md "Product images") and run the script again.' }
 
     $longer = New-Object byte[] ($png.Length + 1)
     [System.Array]::Copy($png, $longer, $png.Length)

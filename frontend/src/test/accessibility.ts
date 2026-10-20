@@ -6,7 +6,7 @@ import { FAILING_IMPACTS, factsOf, isUnnamedSelectList } from './accessibilityEx
  * ends — every page, dialog, form and error state the page tests render. A violation axe rates `serious` or
  * `critical` fails the test.
  *
- * What it cannot see in jsdom, and is therefore checked in a browser instead (report 026c, README "Accessibility"):
+ * What it cannot see in jsdom, and is therefore checked in a browser instead (report 026c, docs/operations-guide.md "Accessibility"):
  * colour contrast (no layout, no computed colours — the rule is switched off) and everything about focus order and
  * visibility.
  */

@@ -1,6 +1,6 @@
 # Smoke check for task 014 (channel product mapping and stock sync with the simulated channels: initial sync, retry
 # after a temporary failure, permanent failure, manual retry, sync after an order).
-# Needs PostgreSQL and RabbitMQ running (README section 1) and the StockSync migration applied (README section 4).
+# Needs PostgreSQL and RabbitMQ running (docs/operations-guide.md section 1) and the StockSync migration applied (docs/operations-guide.md section 4).
 # Uses a running API / Workers host or builds and starts them, and stops what it started.
 # The Workers host must run in Development: only there the simulator's SKU rules (SIM-TEMP- / SIM-PERM-) are on.
 # Usage (repository root):  powershell -ExecutionPolicy Bypass -File scripts\smoke\task-014.ps1
@@ -82,7 +82,7 @@ try {
     Write-Host 'Waiting for the Stock Sync Worker (up to 60 s)...'
     $webTask = Wait-Task $mapWeb.Body.syncTaskId $staff 60
     if ($null -eq $webTask) {
-        throw 'The first stock-sync task did not finish within 60 s. Is the Workers host running a build of task 014 (README section 6)?'
+        throw 'The first stock-sync task did not finish within 60 s. Is the Workers host running a build of task 014 (docs/operations-guide.md section 6)?'
     }
     Assert-Step '09 website sync task' 'Succeeded' $webTask.status
     Assert-Step '10 ... one attempt by the StockSyncWorker' '1 StockSyncWorker' "$($webTask.attempts.Count) $($webTask.attempts[0].workerName)"

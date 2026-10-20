@@ -2,7 +2,7 @@ import { parseOrigin } from './origin';
 
 /**
  * Where the API is. By default the origin of the page: the dev server and `vite preview` proxy `/api` to it. A
- * deployment that serves the frontend from another origin (README "Production deployment") sets `VITE_API_BASE_URL`
+ * deployment that serves the frontend from another origin (docs/operations-guide.md "Production deployment") sets `VITE_API_BASE_URL`
  * at build time to the origin of the API, e.g. `https://api.example.com`.
  *
  * The value is an origin: scheme, host and optional port. A trailing slash is accepted and means the same; anything

@@ -1,5 +1,5 @@
 # Smoke check for task 024 (payment step; invoice and payment confirmation as two independent background tasks).
-# Needs PostgreSQL and RabbitMQ running (README section 1), migration PaymentAndInvoices applied (README section 4) and
+# Needs PostgreSQL and RabbitMQ running (docs/operations-guide.md section 1), migration PaymentAndInvoices applied (docs/operations-guide.md section 4) and
 # the Workers host in Development (the rules of the simulated e-mail sender: a recipient at sim-reject.test is refused).
 # Uses a running API / Workers host or - for the local default only - builds and starts them, and stops what it started.
 # What it leaves behind: three paid smoke orders with their invoices. The e-mail task that must fail is retried at the

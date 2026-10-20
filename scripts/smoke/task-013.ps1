@@ -1,6 +1,6 @@
 # Smoke check for task 013 (order entry end to end: intake, idempotency, Order Worker reservation, orders list and
 # detail, movements of an order; frontend build and tests).
-# Needs PostgreSQL, RabbitMQ and the Workers host running (README sections 1 and 6) and Node.js (see frontend/.nvmrc);
+# Needs PostgreSQL, RabbitMQ and the Workers host running (docs/operations-guide.md sections 1 and 6) and Node.js (see frontend/.nvmrc);
 # starts the API if needed. The Workers host is NOT started by this script.
 # Usage (repository root):  powershell -ExecutionPolicy Bypass -File scripts\smoke\task-013.ps1
 . (Join-Path $PSScriptRoot '_common.ps1')
@@ -84,7 +84,7 @@ try {
     Write-Host 'Waiting for the Order Worker (up to 60 s)...'
     $task = Wait-Task $taskId $staff 60
     if ($null -eq $task) {
-        throw 'The first order did not reach a terminal state within 60 s. The Workers host is probably not running (README section 6).'
+        throw 'The first order did not reach a terminal state within 60 s. The Workers host is probably not running (docs/operations-guide.md section 6).'
     }
     Assert-Step '15 task finished within 60 s' 'Succeeded' $task.status
     Assert-Step '16 task has an order id' $true ([bool]$task.orderId)

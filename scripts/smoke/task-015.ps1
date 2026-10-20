@@ -1,5 +1,5 @@
 # Smoke check for task 015 (realtime hub: authentication of negotiate; dashboard summary before and after an order).
-# Needs PostgreSQL and RabbitMQ running (README section 1). No new migration.
+# Needs PostgreSQL and RabbitMQ running (docs/operations-guide.md section 1). No new migration.
 # Uses a running API / Workers host or builds and starts them, and stops what it started.
 # Usage (repository root):  powershell -ExecutionPolicy Bypass -File scripts\smoke\task-015.ps1
 . (Join-Path $PSScriptRoot '_common.ps1')
@@ -75,7 +75,7 @@ try {
     Write-Host 'Waiting for the Order Worker (up to 60 s)...'
     $task = if ($submitted.Body) { Wait-Task $submitted.Body.taskId $staff 60 } else { $null }
     if ($null -eq $task) {
-        throw 'The order did not reach a terminal state within 60 s. Is the Workers host running (README section 6)?'
+        throw 'The order did not reach a terminal state within 60 s. Is the Workers host running (docs/operations-guide.md section 6)?'
     }
     Assert-Step '15 order task' 'Succeeded' $task.status
 

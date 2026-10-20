@@ -1,6 +1,6 @@
 # Smoke check for task 019 (product images in S3-compatible object storage: presign, upload to the storage, confirm, remove).
-# Needs PostgreSQL running, migration ProductImage applied (README section 4), and the object storage emulator up with
-# the keys of the API (README "Product images": scripts\setup-object-storage.ps1, then docker compose up -d).
+# Needs PostgreSQL running, migration ProductImage applied (docs/operations-guide.md section 4), and the object storage emulator up with
+# the keys of the API (docs/operations-guide.md "Product images": scripts\setup-object-storage.ps1, then docker compose up -d).
 # Uses a running API or - for the local default only - builds and starts it (Development), and stops what it started.
 # The storage is reached at the address of the upload link the API hands out; when it does not answer, the script
 # fails with a step that says so. Never prints a link: a presigned link is a credential until it expires.
@@ -113,7 +113,7 @@ try {
     # The storage itself: any HTTP answer from the origin of the upload link.
     $probe = Invoke-Storage GET "$storageOrigin/" $null $null
     Assert-Step "17 the object storage answers (is the emulator up? docker compose up -d)" $true ($probe.Status -ne 0)
-    if ($probe.Status -eq 0) { throw 'The object storage does not answer: start it (README "Product images") and run the script again.' }
+    if ($probe.Status -eq 0) { throw 'The object storage does not answer: start it (docs/operations-guide.md "Product images") and run the script again.' }
 
     $put = Invoke-Storage $presign.Body.method $presign.Body.uploadUrl $png 'image/png'
     Assert-Step '18 PUT the PNG to the storage with the link -> 2xx' $true (Test-Success $put.Status)

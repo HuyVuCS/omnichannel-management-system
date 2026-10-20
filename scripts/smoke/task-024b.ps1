@@ -1,6 +1,6 @@
 # Smoke check for task 024b (payment on the order detail: the API the page uses, the invoice number of the simulated
 # provider, the answer to a payment method the system does not know).
-# Needs PostgreSQL and RabbitMQ running (README section 1) and migration PaymentAndInvoices applied (README section 4).
+# Needs PostgreSQL and RabbitMQ running (docs/operations-guide.md section 1) and migration PaymentAndInvoices applied (docs/operations-guide.md section 4).
 # Uses a running API / Workers host or - for the local default only - builds and starts them, and stops what it started.
 # What it leaves behind: one paid smoke order with its invoice and one unpaid smoke order; the smoke account is locked,
 # also after a failed step.

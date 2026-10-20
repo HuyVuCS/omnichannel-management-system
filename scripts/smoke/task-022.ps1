@@ -1,6 +1,6 @@
 # Smoke check for task 022 (reconciliation: the Workers host compares the central stock with what the simulated channels
 # hold and starts a stock sync where they differ; the simulated channels keep the value of every push they accept).
-# Needs PostgreSQL and RabbitMQ running (README section 1) and the SimulatedChannelStocks migration applied (README
+# Needs PostgreSQL and RabbitMQ running (docs/operations-guide.md section 1) and the SimulatedChannelStocks migration applied (docs/operations-guide.md
 # section 4). Uses a running API / Workers host or builds and starts them, and stops what it started.
 # The Workers host must run in Development: only there the simulator's SKU rules (SIM-LOST-) are on and a reconciliation
 # run starts every minute. The script waits for runs of that timer: it takes about six minutes before the frontend checks.
@@ -77,7 +77,7 @@ try {
     Assert-Step '05 map on pos (SIM-LOST-)' 201 $mapping.Status
     Write-Host 'Waiting for the Stock Sync Worker (up to 60 s)...'
     $initial = Wait-Task $mapping.Body.syncTaskId $manager 60
-    if ($null -eq $initial) { throw 'The initial stock-sync task did not finish within 60 s. Is the Workers host running (README section 6)?' }
+    if ($null -eq $initial) { throw 'The initial stock-sync task did not finish within 60 s. Is the Workers host running (docs/operations-guide.md section 6)?' }
     Assert-Step '06 its initial sync task (accepted by the channel, not stored)' 'Succeeded' (Get-TaskStatus $initial)
 
     # The channel holds no value for the product: the next reconciliation run finds the drift and starts a sync.
@@ -89,7 +89,7 @@ try {
         $found = @(Get-ReconciliationTasks $pos $productId $since $manager)
     }
     if ($found.Count -eq 0) {
-        throw "No reconciliation task for the product within $RunWaitSeconds s. Is the Workers host a build of task 022, running in Development (SKU rules on, a run every minute - README section 8)? Restart a host of an older build."
+        throw "No reconciliation task for the product within $RunWaitSeconds s. Is the Workers host a build of task 022, running in Development (SKU rules on, a run every minute - docs/operations-guide.md section 8)? Restart a host of an older build."
     }
     Assert-Step "07 a reconciliation run created a stock-sync task for (pos, product) within $RunWaitSeconds s" $true ($found.Count -ge 1)
     $reconciled = $found[$found.Count - 1]

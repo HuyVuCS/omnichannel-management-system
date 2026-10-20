@@ -1,4 +1,4 @@
-/** RFC 7807 body as the API returns it (see README "API conventions"). */
+/** RFC 7807 body as the API returns it (see docs/operations-guide.md "API conventions"). */
 export interface ProblemDetails {
   type?: string;
   title?: string;

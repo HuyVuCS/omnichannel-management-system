@@ -202,7 +202,7 @@ function Test-WorkersRunning {
 
 # Uses a running Workers host if there is one; otherwise, for the local default only, builds and starts it (Development:
 # the channel simulator's SKU rules are on), writes its output to a log file, and stops it again in Stop-Smoke. Needs the
-# Workers user-secrets (README section 6). For another environment (SMOKE_BASE_URL) nothing is started: a Workers host
+# Workers user-secrets (docs/operations-guide.md section 6). For another environment (SMOKE_BASE_URL) nothing is started: a Workers host
 # found on this machine is assumed to be that environment's, and none at all is an error.
 function Start-SmokeWorkers {
     if (Test-WorkersRunning) {
@@ -225,7 +225,7 @@ function Start-SmokeWorkers {
     Start-Sleep -Seconds 8
     if ($script:StartedWorkers.HasExited) {
         $script:StartedWorkers = $null
-        throw "The Workers host stopped right after its start (log: $script:WorkersLog). Are its user-secrets set (README section 6)?"
+        throw "The Workers host stopped right after its start (log: $script:WorkersLog). Are its user-secrets set (docs/operations-guide.md section 6)?"
     }
     Write-Host "Workers host started (log: $script:WorkersLog)."
 }
